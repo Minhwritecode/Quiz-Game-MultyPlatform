@@ -70,6 +70,7 @@ supabase/
 ├── migrations/                  # PostgreSQL schema, RLS, submit_answer RPC
 └── functions/                   # Deno Edge Functions
 docs/                            # architecture notes and decisions
+docs/reports/                     # Capstone proposal and architecture reports
 fastlane/                        # Android build lanes
 docker/                          # Nginx runtime configuration
 .github/workflows/               # CI and manual Android release
@@ -109,6 +110,11 @@ The Edge Function is deliberately a safe `501` scaffold until the team selects a
 ## Milestone alignment
 
 The base maps to the specification's first two milestones: repo conventions, architecture skeleton, local schema, auth boundary, theme, CI and release lane. The next vertical slice is OCR → editable text → authenticated streaming generation → question review → local persistence → sync.
+
+## Capstone reports
+
+- [Report 1 - Project Proposal](docs/reports/Capstone-Report-1-Proposal.md)
+- [Report 2 - Detailed Architecture](docs/reports/Capstone-Report-2-Architecture.md)
 
 ## License
 
