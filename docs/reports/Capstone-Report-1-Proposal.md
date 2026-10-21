@@ -18,7 +18,11 @@ Papyrus is an offline-first, mobile-first learning application for students who 
 
 The proposal focuses on a realistic capstone scope. The first release prioritizes authentication, document capture, OCR correction, question generation and review, offline practice, basic history, synchronization and one realtime speed-battle mode. Global matchmaking, chat, purchases, a custom-trained model and web/desktop product support are explicitly outside the first release.
 
-The repository already contains a runnable Flutter base, a Material 3 shell, feature-oriented architecture boundaries, local Drift schema, Supabase migration/RLS/RPC scaffolding, Docker, CI and Fastlane setup. This proposal defines the product and the prototype work that follows.
+The repository contains a runnable Flutter/Dart transition baseline, while the
+approved target architecture is React Native + TypeScript. New UI and feature
+slices will be implemented under `src/` with Expo; the existing Dart base is
+kept temporarily so the team can migrate vertical slices without losing the
+tested local contracts and backend scaffolding.
 
 ## 1. Project motivation and problem statement
 
@@ -64,11 +68,11 @@ and milestone review.
 | 1 | Authentication & Profile | Google/Apple-ready OAuth boundary, email sign-in, guest mode, profile | Must-Have | Supabase Auth owns sessions; guest mode keeps local study available; user-owned records are isolated by `auth.uid()`. |
 | 2 | Core Business Logic | Personal material → OCR correction → AI quiz review → offline study → realtime battle | Must-Have | The learner must confirm source text and generated questions before saving; a saved set can be studied offline or used in a 2–4 player room. |
 | 3 | Artificial Intelligence (AI) | On-device OCR and protected streaming question generation | Must-Have | Google ML Kit processes images locally; only confirmed text is sent to an authenticated Edge Function; malformed question objects are rejected. |
-| 4 | Offline Resilience | Local caching, attempt persistence and background auto-sync | Should-Have | Drift is the local source of truth; writes enter an ordered outbox and sync when connectivity returns without losing the learner's work. |
+| 4 | Offline Resilience | Local caching, attempt persistence and background auto-sync | Should-Have | SQLite is the React Native local source of truth; writes enter an ordered outbox and sync when connectivity returns without losing the learner's work. The existing Drift adapter is the transition baseline. |
 
 ### 2.1 Objectives
 
-- Demonstrate a maintainable Flutter application using a strict three-layer boundary.
+- Demonstrate a maintainable React Native + TypeScript application using a strict three-layer boundary.
 - Keep the core learning loop available without a network.
 - Protect document images by keeping OCR on-device and sending only confirmed text to the generation endpoint.
 - Make generated questions editable and reviewable before persistence.
@@ -104,19 +108,19 @@ The first capstone release does not include global matchmaking, ELO ranking, cha
 
 ## 3. TECH STACK & INITIAL ARCHITECTURE
 
-* **Framework:** Flutter 3.x / Dart 3 • **State Management:** Riverpod 2 • **Navigation:** go_router
-* **Backend:** Supabase (Auth, PostgreSQL, RLS, Realtime, Edge Functions) • **AI Engine:** Google ML Kit Text Recognition
-* **Local persistence:** Drift over SQLite • **Preferences:** SharedPreferences • **Delivery:** Docker, GitHub Actions and Fastlane
+* **Framework:** React Native + TypeScript with Expo • **Routing:** Expo Router • **State:** Zustand + TanStack Query
+* **Backend:** Supabase (Auth, PostgreSQL, RLS, Realtime, Edge Functions) • **AI Engine:** ML Kit through an Expo development build
+* **Local persistence:** expo-sqlite with a typed repository/outbox • **Validation:** React Hook Form + Zod • **Delivery:** EAS, GitHub Actions and Docker web preview
 * **🔗 Figma Prototype URL:** [Papyrus UI UX Prototype](https://www.figma.com/design/qdGvcsHXoTJcuq2NqsK9XS/Papyrus-UI-UX-Prototype?t=wiS4ZAcDfeWtDAkV-1)
 
 ```text
-Presentation: Flutter screens, widgets, Riverpod providers and go_router
+Presentation: React Native screens/components, Zustand stores and Expo Router
         │ calls use cases
         ▼
-Domain: pure entities, validation, scoring rules and repository interfaces
+Domain: pure TypeScript entities, validation, scoring rules and repository interfaces
         ▲ implemented by
         │
-Data: Drift/SQLite, Supabase, ML Kit adapter and Edge Function client
+Data: SQLite, Supabase, ML Kit adapter and Edge Function client
 ```
 
 The initial architecture keeps framework dependencies at the edges. The
@@ -128,12 +132,12 @@ Week 4 scope understandable to reviewers.
 
 | Quality attribute | Requirement | Verification |
 |---|---|---|
-| Architecture | Domain code is pure Dart and dependencies point inward | Import boundary script and code review |
+| Architecture | New domain code is pure TypeScript and dependencies point inward | TypeScript boundary checks and code review |
 | Offline-first | Library, OCR and study mode remain useful without network | Airplane-mode scenario |
 | Privacy | Images stay on-device; text transmission requires user confirmation | Data-flow review and demo |
 | Security | No provider API key in the client; RLS on user data; server-side battle scoring | Supabase policy review and negative access tests |
-| Performance | Aim for 60 fps; generation and OCR must not block the UI isolate | Flutter DevTools profile run |
-| Accessibility | Material 3, large text support, readable contrast and explicit loading/error/empty states | Manual light/dark and text-scale checks |
+| Performance | Aim for 60 fps; generation and OCR must not block the JS/UI thread | React Native performance profile |
+| Accessibility | Native semantics, large text support, readable contrast and explicit loading/error/empty states | Manual light/dark and text-scale checks |
 | Reliability | Realtime reconnect and sync retries do not silently discard data | Disconnect/reconnect scenarios |
 
 ## 5. Prototype and user experience plan
@@ -153,15 +157,22 @@ The Week 4 prototype should contain these ten screens:
 9. Results and leaderboard.
 10. Settings.
 
-The repository currently provides a clickable Flutter shell for Home, Library, Study, Battle, Leaderboard, Settings, Auth, Scan and Generate entry points. The visual design and interaction source is the team Figma file:
+The repository currently provides a clickable Flutter transition shell for Home,
+Library, Study, Battle, Leaderboard, Settings, Auth, Scan and Generate entry
+points. New visual implementation is React Native-first and uses the team
+Figma file as its source:
 
 **Figma prototype URL:** [Papyrus UI UX Prototype](https://www.figma.com/design/qdGvcsHXoTJcuq2NqsK9XS/Papyrus-UI-UX-Prototype?t=wiS4ZAcDfeWtDAkV-1)
 
 ### 5.2 Figma handoff and prototype coverage
 
-The Figma file is the design reference for the proposal review. The screen names below are the required handoff map between the prototype, the Flutter routes and the user story. The team should keep the Figma frame names aligned with this table so that reviewers can move from the report to the prototype without guessing.
+The Figma file is the design reference for the proposal review. The screen
+names below are the required handoff map between the prototype, the React
+Native routes and the user story. The team should keep the Figma frame names
+aligned with this table so that reviewers can move from the report to the
+prototype without guessing.
 
-| Figma frame / flow | Flutter route or surface | Main interaction to demonstrate |
+| Figma frame / flow | React Native route or surface | Main interaction to demonstrate |
 |---|---|---|
 | Authentication and guest entry | `/auth` | Sign in, Google option and offline guest path |
 | Home and library | `/` and `/sets` | See recent sets, sync status and create-set action |
@@ -174,7 +185,9 @@ The Figma file is the design reference for the proposal review. The screen names
 | Results and leaderboard | `/leaderboard` plus result state | Match summary, ranking and missed questions |
 | Settings and profile | `/settings` | Theme, language, sync and account controls |
 
-The current Figma URL is included as a team-owned artifact. Visual details should be updated in the Figma file first, then reflected in Flutter widgets and this report's traceability table.
+The current Figma URL is included as a team-owned artifact. Visual details
+should be updated in the Figma file first, then reflected in React Native
+components and this report's traceability table.
 
 ### 5.3 Interaction principles
 
@@ -188,30 +201,33 @@ The current Figma URL is included as a team-owned artifact. Visual details shoul
 
 | Layer | Choice | Rationale |
 |---|---|---|
-| Client | Flutter and Dart 3 | One codebase, native performance and broad plugin ecosystem |
-| State and DI | Riverpod 2 | Testable providers and explicit composition root |
-| Navigation | go_router | Declarative routes and deep-link-ready structure |
-| Local database | Drift over SQLite | Typed schema, migrations and transactional outbox support |
-| Preferences | SharedPreferences | Small local settings and sync cursor |
+| Client | React Native, TypeScript and Expo | One codebase, native UI and fast iteration with a native escape hatch |
+| State and server cache | Zustand + TanStack Query | Explicit UI state plus cache, retry and invalidation behavior |
+| Navigation | Expo Router | Typed file-based routes and universal deep links |
+| Local database | expo-sqlite with typed repositories | Persistent cache, migrations and transactional outbox support |
+| Preferences | SQLite key-value store / SecureStore where appropriate | Small local settings and session-safe storage |
 | Cloud | Supabase | Auth, PostgreSQL, RLS, Realtime and Edge Functions |
 | OCR | Google ML Kit Text Recognition | On-device processing and offline support |
 | LLM | Provider accessed only through Edge Function | Keeps secrets off-device and enables rate limits |
-| Tests | flutter_test, mocktail and integration tooling | Domain, widget and device-flow coverage |
-| Delivery | GitHub Actions, Fastlane and Docker | Repeatable quality checks and release packaging |
+| Tests | Jest, React Native Testing Library and Maestro/Detox | Domain, component and device-flow coverage |
+| Delivery | EAS Build/Submit/Update, GitHub Actions and Docker | Repeatable quality checks and release packaging |
 
 ## 7. Initial architecture details
 
 ```text
-Presentation: screens, widgets, Riverpod notifiers, router
+Presentation: screens, components, Zustand stores, query hooks and router
         │ calls use cases
         ▼
 Domain: entities, repository contracts, validation and scoring rules
         ▲ implemented by
         │
-Data: Drift DAOs, Supabase data sources, ML Kit adapter, Edge Function client, sync engine
+Data: SQLite repositories, Supabase data sources, ML Kit adapter, Edge Function client, sync engine
 ```
 
-Dependencies are assembled in `lib/app/di`. Feature modules own their contracts. The domain layer does not import Flutter, Drift, Supabase or ML Kit.
+Dependencies are assembled in `src/app/_layout.tsx` and feature composition
+modules. Feature modules own their contracts. The TypeScript domain layer does
+not import React Native, Expo, SQLite, Supabase or ML Kit. The old Dart
+composition root remains only for the transition baseline.
 
 ## 8. Privacy, security and data handling
 
@@ -235,7 +251,7 @@ Dependencies are assembled in `lib/app/di`. Feature modules own their contracts.
 
 | Member | Primary responsibility | Shared evidence |
 |---|---|---|
-| Dinh Tran Tien Minh | UI/UX, Presentation, Material 3 and performance | Widget tests and review participation |
+| Dinh Tran Tien Minh | UI/UX, React Native presentation and performance | Component tests and review participation |
 | Le Tuan Khai | AI/OCR, Domain, generation parser and domain tests | Use-case tests and experiment notes |
 | Du Thi Nhu Yen | Data, Supabase, synchronization, CI/Fastlane | Migration review, integration checklist and release evidence |
 
@@ -250,13 +266,13 @@ All members review pull requests, contribute commits and understand the code the
 | Realtime timing drift | High | Server timestamps, RPC scoring and reconnect state machine |
 | Scope growth | High | Freeze P0 by Week 8 and cut P2 first |
 | Signing delays | Medium | Run the lane early and keep secrets outside Git |
-| Architecture erosion | Medium | Import boundary check, review and pure-Dart domain tests |
+| Architecture erosion | Medium | Import boundary check, review and pure-TypeScript domain tests |
 
 ## 12. Current repository evidence
 
 - Repository: [Minhwritecode/Quiz-Game-MultyPlatform](https://github.com/Minhwritecode/Quiz-Game-MultyPlatform)
 - Base commit: `ffa46aa` - `feat: scaffold Papyrus quiz platform base`
-- Local quality checks: `flutter analyze`, `flutter test`, `flutter build web --release` and architecture boundary check pass.
+- Local transition checks: `flutter analyze`, `flutter test`, `flutter build web --release` and architecture boundary check pass; the React Native quality lane is defined as `tsc --noEmit`, ESLint, Jest/RNTL and device-flow checks after Expo bootstrap.
 - Current limitation: provider credentials and demo video are not embedded in the repository. The team Figma prototype URL is now recorded above and should remain the single design reference for the submission.
 
 ## Conclusion

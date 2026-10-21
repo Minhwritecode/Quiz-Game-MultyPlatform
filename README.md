@@ -2,29 +2,36 @@
 
 > From Ancient Scroll to AI Power.
 
-Papyrus is a Flutter-first, offline-first learning quiz platform for turning personal study material into reviewable question sets and realtime 2–4 player quiz battles. OCR stays on-device; only user-confirmed text is sent to the protected generation endpoint.
+Papyrus is a React Native + TypeScript-first, offline-first learning quiz platform for turning personal study material into reviewable question sets and realtime 2–4 player quiz battles. OCR stays on-device; only user-confirmed text is sent to the protected generation endpoint.
 
 This repository is the Capstone base for QuizClash. It contains the production-shaped skeleton, architecture boundaries, local/cloud data contracts, CI/CD scaffolding and a small runnable demo slice. It does not claim that provider credentials, native OCR, LLM streaming or the realtime battle vertical slice are complete yet.
 
 ## Product scope
 
-- Flutter multi-platform client with Material 3 and system Light/Dark mode.
+- React Native + TypeScript client target with Expo, responsive navigation and Papyrus design tokens.
+- Transitional Flutter/Dart baseline under `lib/` kept runnable while vertical slices migrate to React Native.
 - Clean Architecture by feature: `Presentation → Domain ← Data`.
-- Riverpod composition root and `go_router` navigation.
-- Drift schema for local question sets, questions and the sync outbox.
+- Existing Flutter transition baseline uses Riverpod, `go_router` and Drift.
+- React Native target uses Expo Router, Zustand, TanStack Query and `expo-sqlite` for the same local-first contracts.
 - Supabase migration with RLS, Realtime-ready room tables and server-side `submit_answer` scoring RPC.
 - On-device ML Kit OCR adapter boundary.
 - Edge Function boundary for authenticated, rate-limited LLM generation.
 - Offline-first sync contract: local write, ordered push, cursor pull, server-time conflict resolution.
 - GitHub Actions, Fastlane and Docker web preview.
 
-## Quick start
+## Current baseline quick start
 
 ```bash
 flutter pub get
 dart run build_runner build --delete-conflicting-outputs
 flutter run
 ```
+
+The forward client architecture is documented in
+[React Native-first architecture](docs/architecture/react-native-first.md).
+New screens and feature code belong under `src/`; the Flutter command above is
+kept for the transitional baseline until the first Expo mobile shell is
+bootstrapped.
 
 Run with Supabase configuration only when a project is available:
 
@@ -38,7 +45,7 @@ The app intentionally runs with a seeded in-memory repository when those values 
 
 ## Docker
 
-The Docker image builds the Flutter web client and serves it through Nginx:
+The current Docker image builds the transitional Flutter web preview and serves it through Nginx. The React Native mobile target is delivered through Expo/EAS:
 
 ```bash
 docker compose up --build
@@ -52,20 +59,15 @@ Copy `android/key.properties.example` to `android/key.properties`, point `storeF
 ## Repository map
 
 ```text
-lib/
-├── app/                         # composition root, router, app shell
-├── core/                        # config, result/failure types, theme, Drift schema
-└── features/
-    ├── auth/                    # session boundary and user model
-    ├── home/                    # overview and quick actions
-    ├── scan_ocr/                # ML Kit adapter boundary
-    ├── quiz_generation/         # request model, stream parser, Edge Function client
-    ├── question_sets/           # local-first library and demo repository
-    ├── study/                   # offline attempt experience
-    ├── room_battle/             # room domain and lobby UI
-    ├── leaderboard/             # ranking UI boundary
-    ├── settings/                # preferences surface
-    └── sync/                    # outbox item, engine and conflict resolver
+src/                            # React Native + TypeScript target
+├── app/                         # Expo Router routes and root providers
+├── core/                        # config, database, network, theme and UI primitives
+├── features/                    # auth, home, OCR, generation, study, battle, sync
+└── shared/                      # typed hooks, constants, factories and utilities
+lib/                            # transitional Flutter/Dart baseline
+├── app/                         # current legacy composition root and router
+├── core/                        # legacy config, result/failure types, theme, Drift schema
+└── features/                    # legacy feature adapters and demo screens
 supabase/
 ├── migrations/                  # PostgreSQL schema, RLS, submit_answer RPC
 └── functions/                   # Deno Edge Functions
@@ -78,8 +80,8 @@ docker/                          # Nginx runtime configuration
 
 ## Engineering rules
 
-1. Domain code remains pure Dart: no Flutter, Drift, Supabase or ML Kit imports.
-2. Presentation talks to use cases/repositories through Riverpod providers; it does not reach into data sources.
+1. New domain and feature contracts are pure TypeScript; they do not import React Native, Expo or Supabase UI adapters.
+2. React Native presentation talks to use cases and query/state adapters; it does not reach into data sources.
 3. Every local write gets an outbox record. Retries are idempotent using client UUIDs.
 4. Room scoring is server-authoritative. The client never receives the answer key before a question closes.
 5. Secrets belong in local environment configuration or GitHub Secrets, never in source control.
@@ -88,12 +90,17 @@ docker/                          # Nginx runtime configuration
 ## Quality commands
 
 ```bash
+# Transitional Flutter baseline
 dart run build_runner build --delete-conflicting-outputs
 flutter analyze
 flutter test --coverage
 ./scripts/check_architecture.sh
 flutter build web --release
 ```
+
+The React Native quality lane will use `tsc --noEmit`, ESLint, Jest/React
+Native Testing Library and a device-flow runner once the Expo shell is
+bootstrapped.
 
 ## Supabase local development
 
