@@ -115,6 +115,7 @@ The base maps to the specification's first two milestones: repo conventions, arc
 
 - [Report 1 - Project Proposal](docs/reports/Capstone-Report-1-Proposal.md)
 - [Report 2 - Detailed Architecture](docs/reports/Capstone-Report-2-Architecture.md)
+- [Papyrus UI UX Prototype - Figma](https://www.figma.com/design/qdGvcsHXoTJcuq2NqsK9XS/Papyrus-UI-UX-Prototype?t=wiS4ZAcDfeWtDAkV-1)
 
 ## License
 

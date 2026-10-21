@@ -8,7 +8,7 @@
 **Team:** Dinh Tran Tien Minh, Le Tuan Khai, Du Thi Nhu Yen  
 **Academic term:** Semester 1, 2026-2027  
 **Target submission:** Week 4 proposal and prototype review  
-**Version:** 1.0 - 21 October 2026
+**Version:** 1.1 - 22 October 2026
 
 > **Slogan:** From Ancient Scroll to AI Power.
 
@@ -119,11 +119,30 @@ The Week 4 prototype should contain these ten screens:
 9. Results and leaderboard.
 10. Settings.
 
-The repository currently provides a clickable Flutter shell for Home, Library, Study, Battle, Leaderboard, Settings, Auth, Scan and Generate entry points. The visual design source should be linked here once the team publishes the Figma file:
+The repository currently provides a clickable Flutter shell for Home, Library, Study, Battle, Leaderboard, Settings, Auth, Scan and Generate entry points. The visual design and interaction source is the team Figma file:
 
-**Figma prototype URL:** To be added by the team before Week 4 submission.
+**Figma prototype URL:** [Papyrus UI UX Prototype](https://www.figma.com/design/qdGvcsHXoTJcuq2NqsK9XS/Papyrus-UI-UX-Prototype?t=wiS4ZAcDfeWtDAkV-1)
 
-### 4.2 Interaction principles
+### 4.2 Figma handoff and prototype coverage
+
+The Figma file is the design reference for the proposal review. The screen names below are the required handoff map between the prototype, the Flutter routes and the user story. The team should keep the Figma frame names aligned with this table so that reviewers can move from the report to the prototype without guessing.
+
+| Figma frame / flow | Flutter route or surface | Main interaction to demonstrate |
+|---|---|---|
+| Authentication and guest entry | `/auth` | Sign in, Google option and offline guest path |
+| Home and library | `/` and `/sets` | See recent sets, sync status and create-set action |
+| Scan and OCR correction | `/create/scan` | Camera/gallery/paste entry, editable extracted text and privacy note |
+| Generation setup and review | `/create/generate` | Count, difficulty, language and streaming review entry |
+| Question-set detail | `/study/:setId` entry | Inspect questions and choose study/battle action |
+| Offline study | `/study/:setId` | Select an answer, reveal explanation and advance progress |
+| Room lobby | `/battle` | Create/join room, six-character code and player list |
+| Live battle | Room battle state | Shared timer, answer submission and live scores |
+| Results and leaderboard | `/leaderboard` plus result state | Match summary, ranking and missed questions |
+| Settings and profile | `/settings` | Theme, language, sync and account controls |
+
+The current Figma URL is included as a team-owned artifact. Visual details should be updated in the Figma file first, then reflected in Flutter widgets and this report's traceability table.
+
+### 4.3 Interaction principles
 
 - The primary action is visible in the first viewport on mobile.
 - Offline state is visible rather than hidden; question sets show synced, pending or failed status.
@@ -204,9 +223,8 @@ All members review pull requests, contribute commits and understand the code the
 - Repository: [Minhwritecode/Quiz-Game-MultyPlatform](https://github.com/Minhwritecode/Quiz-Game-MultyPlatform)
 - Base commit: `ffa46aa` - `feat: scaffold Papyrus quiz platform base`
 - Local quality checks: `flutter analyze`, `flutter test`, `flutter build web --release` and architecture boundary check pass.
-- Current limitation: provider credentials, Figma URL and demo video are not embedded in the repository and must be added by the team.
+- Current limitation: provider credentials and demo video are not embedded in the repository. The team Figma prototype URL is now recorded above and should remain the single design reference for the submission.
 
 ## Conclusion
 
 Papyrus is feasible as a 13-week capstone because it has a narrow P0 loop, a clear privacy story and an architecture that allows native integrations to be replaced in tests. The proposal deliberately treats AI generation and realtime battle as controlled adapters rather than letting them leak into UI code. The next milestone is to turn the capture-to-generation path and local persistence contracts into a tested vertical slice.
-

@@ -7,13 +7,15 @@
 **Team:** Dinh Tran Tien Minh, Le Tuan Khai, Du Thi Nhu Yen  
 **Academic term:** Semester 1, 2026-2027  
 **Milestone:** Week 8 architecture and core-feature review  
-**Version:** 1.0 - 21 October 2026
+**Version:** 1.1 - 22 October 2026
 
 ## Executive summary
 
 This report describes the Papyrus architecture and records the implementation baseline for the Week 8 review. The design follows the Week 9 architecture lecture: Presentation calls Domain use cases, Domain defines pure entities and repository interfaces, and Data implements those interfaces using remote services and local cache. Dependency injection is performed in a composition root rather than in individual widgets.
 
 The current repository is an honest architecture baseline, not a claim that every production feature is finished. The Flutter shell, feature boundaries, theme, route map, seeded offline study flow, Drift schema, local repository adapter, generation parser, Supabase migration/RLS/RPC, sync contracts, CI and tests are present. Native camera UX, real provider streaming, full Supabase auth wiring and the complete multi-device battle are the next vertical slices.
+
+The companion UI/UX artifact is the team-owned [Papyrus UI UX Prototype in Figma](https://www.figma.com/design/qdGvcsHXoTJcuq2NqsK9XS/Papyrus-UI-UX-Prototype?t=wiS4ZAcDfeWtDAkV-1). This report treats that link as the visual source of truth while the route and architecture mapping below defines how each screen is implemented.
 
 ## 1. Clean Architecture implementation
 
@@ -134,7 +136,25 @@ The application starts in `lib/main.dart`, loads compile-time configuration and 
 
 Material 3 theme tokens are centralized in `AppTheme`. Light/dark behavior follows the system by default, while settings is reserved for persisting an explicit user preference.
 
-### 3.2 Local question-set flow
+### 3.2 Figma-to-architecture traceability
+
+The Figma prototype is not a separate product specification. Each frame maps to a presentation surface that calls a domain contract and receives data from a replaceable adapter.
+
+| Figma flow | Presentation surface | Domain contract | Data boundary |
+|---|---|---|---|
+| Auth and guest entry | Auth page and session gate | `AuthRepository` | Supabase Auth data source |
+| Home/library | Home page and question-set providers | `QuestionSetRepository`, `WatchQuestionSets` | In-memory demo or Drift repository |
+| Scan/OCR correction | Scan page and OCR controller | `OcrRepository` | ML Kit on-device data source |
+| Generate/review | Generation page and review state | `QuestionGenerationRepository`, `ValidateQuestion` | Supabase Edge Function client and stream parser |
+| Offline study | Study page | Attempt/start/submit use cases | Drift attempts and answers tables |
+| Room lobby | Room lobby page | Room creation/join contracts | Supabase rooms, players and Presence |
+| Live battle | Battle state surface | Submit-answer and score rules | Server-authoritative RPC and Realtime channel |
+| Results/leaderboard | Results and leaderboard surfaces | Result/history/leaderboard contracts | Supabase views plus local history |
+| Settings/profile | Settings page | Preference and auth contracts | SharedPreferences and Supabase profile |
+
+This mapping keeps prototype changes reviewable: a renamed Figma frame must correspond to a route or presentation component, and a new data requirement must be introduced through a domain contract rather than a direct widget call.
+
+### 3.3 Local question-set flow
 
 The implemented base path is:
 
@@ -148,17 +168,17 @@ Provider
 
 The study screen reads the same domain entity regardless of which repository is selected. That keeps the UI independent from database technology and makes the next provider override a composition change rather than a screen rewrite.
 
-### 3.3 OCR boundary
+### 3.4 OCR boundary
 
 `MlKitOcrDataSource` accepts an image path and returns a `SourceDocument`. The adapter keeps ML Kit isolated from the domain contract. The next implementation task is to connect camera/gallery selection, preprocessing and an editable text controller, then move recognition off the UI isolate if profiling shows a long frame.
 
-### 3.4 Streaming generation boundary
+### 3.5 Streaming generation boundary
 
 `GenerationRequest` contains source text, count, difficulty and language. `EdgeFunctionGenerationDataSource` sends that request to `generate-questions` through Supabase. `StreamingQuestionParser` accumulates partial JSON and rejects any object that does not contain exactly four non-empty distinct options and a valid `correct_index`.
 
 The Edge Function currently validates bearer presence and input length and returns a safe `501` provider-pending response. This is deliberate: no provider API key is placed in the client or committed to the repository.
 
-### 3.5 Offline synchronization
+### 3.6 Offline synchronization
 
 The intended sync contract is:
 
@@ -172,7 +192,7 @@ The intended sync contract is:
 
 `SyncEngine` and `ConflictResolver` capture this contract in pure Dart. The remaining work is the concrete Supabase push/pull adapter, connectivity listener and persisted cursor.
 
-### 3.6 Realtime battle state machine
+### 3.7 Realtime battle state machine
 
 ```text
 waiting → countdown → question_open → question_result
@@ -261,10 +281,11 @@ For the architecture review, the presenter should show:
 6. Run the quality commands and show the test output.
 7. Explain clearly which production integrations are pending and why they are isolated.
 
-**GitHub branch/commit for milestone review:** [main branch](https://github.com/Minhwritecode/Quiz-Game-MultyPlatform/tree/main) - commit `ffa46aa` is the initial base; the next architecture increment should be tagged by the team after review.  
+**Figma prototype:** [Papyrus UI UX Prototype](https://www.figma.com/design/qdGvcsHXoTJcuq2NqsK9XS/Papyrus-UI-UX-Prototype?t=wiS4ZAcDfeWtDAkV-1)
+
+**GitHub branch/commit for milestone review:** [main branch](https://github.com/Minhwritecode/Quiz-Game-MultyPlatform/tree/main) - commit `ffa46aa` is the initial base; the architecture/report increment is tracked in the subsequent commit history.
 **Milestone 2 video:** To be recorded by the team after the final demo script is rehearsed.
 
 ## Conclusion
 
 Papyrus now has a concrete architectural base that can grow feature by feature without coupling the UI to infrastructure. The most important capstone risks - scope, privacy, offline behavior, server-authoritative scoring and testability - are represented in code and documentation. The next milestone is vertical integration, not a structural rewrite.
-
