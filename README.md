@@ -2,9 +2,9 @@
 
 > From Ancient Scroll to AI Power.
 
-Papyrus is a React Native + TypeScript-first, offline-first learning quiz platform for turning personal study material into reviewable question sets and realtime 2–4 player quiz battles. OCR stays on-device; only user-confirmed text is sent to the protected generation endpoint.
+Papyrus is a React Native + TypeScript-first project base for an offline-first learning quiz platform that will turn personal study material into reviewable question sets and realtime 2–4 player quiz battles. OCR is designed to stay on-device; only user-confirmed text will be sent to the protected generation endpoint once the production vertical slice is implemented.
 
-This repository is the Capstone base for QuizClash. It contains the React Native production-shaped skeleton, architecture boundaries, local/cloud data contracts, CI/CD scaffolding and a runnable mobile/web demo slice. It does not claim that provider credentials, native OCR, LLM streaming or the realtime battle vertical slice are complete yet.
+This repository is the Capstone base for QuizClash. It contains the React Native project skeleton, architecture boundaries, local/cloud data contracts, CI/CD scaffolding and a runnable mobile/web scaffold. It is not a production release: provider credentials, native OCR, LLM streaming, sync, realtime battle, security hardening and store delivery remain implementation work.
 
 ## Product scope
 
@@ -108,6 +108,11 @@ The Edge Function is deliberately a safe `501` scaffold until the team selects a
 ## Milestone alignment
 
 The base maps to the specification's first two milestones: repo conventions, architecture skeleton, local schema, auth boundary, theme, CI and release lane. The next vertical slice is OCR → editable text → authenticated streaming generation → question review → local persistence → sync.
+
+## Project execution plan
+
+- [Project plan and completion checklist](docs/PROJECT-PLAN.md)
+- [Implementation status](docs/IMPLEMENTATION_STATUS.md)
 
 ## Capstone reports
 
