@@ -75,39 +75,63 @@ class AppShell extends StatelessWidget {
     final currentIndex = _locations.indexWhere(
       (item) => item == location || (item != '/' && location.startsWith(item)),
     );
+    final selectedIndex = currentIndex < 0 ? 0 : currentIndex;
+    const destinations = [
+      (Icons.home_outlined, Icons.home, 'Home'),
+      (Icons.library_books_outlined, Icons.library_books, 'Library'),
+      (Icons.sports_esports_outlined, Icons.sports_esports, 'Battle'),
+      (Icons.emoji_events_outlined, Icons.emoji_events, 'Rank'),
+      (Icons.settings_outlined, Icons.settings, 'Settings'),
+    ];
+    final isWide = MediaQuery.sizeOf(context).width >= 900;
+    final navigation = isWide
+        ? NavigationRail(
+            selectedIndex: selectedIndex,
+            onDestinationSelected: (index) => context.go(_locations[index]),
+            labelType: NavigationRailLabelType.all,
+            leading: Padding(
+              padding: const EdgeInsets.fromLTRB(0, 24, 0, 32),
+              child: Tooltip(
+                message: 'Papyrus',
+                child: Icon(
+                  Icons.auto_stories_rounded,
+                  color: Theme.of(context).colorScheme.primary,
+                  size: 30,
+                ),
+              ),
+            ),
+            destinations: [
+              for (final item in destinations)
+                NavigationRailDestination(
+                  icon: Icon(item.$1),
+                  selectedIcon: Icon(item.$2),
+                  label: Text(item.$3),
+                ),
+            ],
+          )
+        : NavigationBar(
+            selectedIndex: selectedIndex,
+            onDestinationSelected: (index) => context.go(_locations[index]),
+            destinations: [
+              for (final item in destinations)
+                NavigationDestination(
+                  icon: Icon(item.$1),
+                  selectedIcon: Icon(item.$2),
+                  label: item.$3,
+                ),
+            ],
+          );
     return Scaffold(
-      body: SafeArea(child: child),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: currentIndex < 0 ? 0 : currentIndex,
-        onDestinationSelected: (index) => context.go(_locations[index]),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: 'Home',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.library_books_outlined),
-            selectedIcon: Icon(Icons.library_books),
-            label: 'Library',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.sports_esports_outlined),
-            selectedIcon: Icon(Icons.sports_esports),
-            label: 'Battle',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.emoji_events_outlined),
-            selectedIcon: Icon(Icons.emoji_events),
-            label: 'Rank',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings),
-            label: 'Settings',
-          ),
-        ],
+      body: SafeArea(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (isWide) navigation,
+            Expanded(child: child),
+          ],
+        ),
       ),
+      bottomNavigationBar: isWide ? null : navigation,
     );
   }
 }
