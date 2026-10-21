@@ -52,7 +52,19 @@ Papyrus uses this flow:
 
 Lan has a Vietnamese lecture PDF for software engineering. On a bus, she opens Papyrus without a network, selects saved notes and practices a question set. Later, she corrects a new OCR capture while offline. When Wi-Fi returns, the question set enters the sync queue. Before an exam, she creates a speed room, sends the six-character code to three classmates and answers each question against the shared server timer. After the match, she sees her score and the questions she missed.
 
-## 2. Objectives, scope and boundaries
+## 2. SYSTEM SCOPE & FUNCTIONAL SPECIFICATIONS
+
+The following matrix mirrors the required proposal template and translates each
+category into a concrete Papyrus business capability. The detailed acceptance
+boundaries follow below so that the report is specific enough for implementation
+and milestone review.
+
+| # | Feature Category | Concrete Feature | Priority | Business Logic & Scope |
+|:---:|---|---|:---:|---|
+| 1 | Authentication & Profile | Google/Apple-ready OAuth boundary, email sign-in, guest mode, profile | Must-Have | Supabase Auth owns sessions; guest mode keeps local study available; user-owned records are isolated by `auth.uid()`. |
+| 2 | Core Business Logic | Personal material → OCR correction → AI quiz review → offline study → realtime battle | Must-Have | The learner must confirm source text and generated questions before saving; a saved set can be studied offline or used in a 2–4 player room. |
+| 3 | Artificial Intelligence (AI) | On-device OCR and protected streaming question generation | Must-Have | Google ML Kit processes images locally; only confirmed text is sent to an authenticated Edge Function; malformed question objects are rejected. |
+| 4 | Offline Resilience | Local caching, attempt persistence and background auto-sync | Should-Have | Drift is the local source of truth; writes enter an ordered outbox and sync when connectivity returns without losing the learner's work. |
 
 ### 2.1 Objectives
 
@@ -64,7 +76,7 @@ Lan has a Vietnamese lecture PDF for software engineering. On a bus, she opens P
 - Provide automated tests for domain logic and important UI surfaces.
 - Produce a signed Android release through a repeatable CI/Fastlane workflow.
 
-### 2.2 In scope for the capstone release
+### 2.2 Detailed functional scope for the capstone release
 
 | # | Feature category | Concrete feature | Priority | Acceptance boundary |
 |---:|---|---|:---:|---|
@@ -90,7 +102,29 @@ Lan has a Vietnamese lecture PDF for software engineering. On a bus, she opens P
 
 The first capstone release does not include global matchmaking, ELO ranking, chat in rooms, in-app purchases, training a private LLM, speech recognition, a web/desktop product experience, or advanced content moderation. These may be documented as future work but must not threaten the P0 learning loop.
 
-## 3. Non-functional requirements
+## 3. TECH STACK & INITIAL ARCHITECTURE
+
+* **Framework:** Flutter 3.x / Dart 3 • **State Management:** Riverpod 2 • **Navigation:** go_router
+* **Backend:** Supabase (Auth, PostgreSQL, RLS, Realtime, Edge Functions) • **AI Engine:** Google ML Kit Text Recognition
+* **Local persistence:** Drift over SQLite • **Preferences:** SharedPreferences • **Delivery:** Docker, GitHub Actions and Fastlane
+* **🔗 Figma Prototype URL:** [Papyrus UI UX Prototype](https://www.figma.com/design/qdGvcsHXoTJcuq2NqsK9XS/Papyrus-UI-UX-Prototype?t=wiS4ZAcDfeWtDAkV-1)
+
+```text
+Presentation: Flutter screens, widgets, Riverpod providers and go_router
+        │ calls use cases
+        ▼
+Domain: pure entities, validation, scoring rules and repository interfaces
+        ▲ implemented by
+        │
+Data: Drift/SQLite, Supabase, ML Kit adapter and Edge Function client
+```
+
+The initial architecture keeps framework dependencies at the edges. The
+complete implementation tree, data flow and dependency rules are described in
+the architecture report; this proposal uses the diagram above to keep the
+Week 4 scope understandable to reviewers.
+
+## 4. NON-FUNCTIONAL REQUIREMENTS
 
 | Quality attribute | Requirement | Verification |
 |---|---|---|
@@ -102,9 +136,9 @@ The first capstone release does not include global matchmaking, ELO ranking, cha
 | Accessibility | Material 3, large text support, readable contrast and explicit loading/error/empty states | Manual light/dark and text-scale checks |
 | Reliability | Realtime reconnect and sync retries do not silently discard data | Disconnect/reconnect scenarios |
 
-## 4. Prototype and user experience plan
+## 5. Prototype and user experience plan
 
-### 4.1 Prototype deliverables
+### 5.1 Prototype deliverables
 
 The Week 4 prototype should contain these ten screens:
 
@@ -123,7 +157,7 @@ The repository currently provides a clickable Flutter shell for Home, Library, S
 
 **Figma prototype URL:** [Papyrus UI UX Prototype](https://www.figma.com/design/qdGvcsHXoTJcuq2NqsK9XS/Papyrus-UI-UX-Prototype?t=wiS4ZAcDfeWtDAkV-1)
 
-### 4.2 Figma handoff and prototype coverage
+### 5.2 Figma handoff and prototype coverage
 
 The Figma file is the design reference for the proposal review. The screen names below are the required handoff map between the prototype, the Flutter routes and the user story. The team should keep the Figma frame names aligned with this table so that reviewers can move from the report to the prototype without guessing.
 
@@ -142,7 +176,7 @@ The Figma file is the design reference for the proposal review. The screen names
 
 The current Figma URL is included as a team-owned artifact. Visual details should be updated in the Figma file first, then reflected in Flutter widgets and this report's traceability table.
 
-### 4.3 Interaction principles
+### 5.3 Interaction principles
 
 - The primary action is visible in the first viewport on mobile.
 - Offline state is visible rather than hidden; question sets show synced, pending or failed status.
@@ -150,7 +184,7 @@ The current Figma URL is included as a team-owned artifact. Visual details shoul
 - OCR correction is a normal step, not an error path.
 - Battle screens show the same question state for all players while leaving the answer key server-side until the question closes.
 
-## 5. Proposed technology stack
+## 6. Detailed technology stack
 
 | Layer | Choice | Rationale |
 |---|---|---|
@@ -165,7 +199,7 @@ The current Figma URL is included as a team-owned artifact. Visual details shoul
 | Tests | flutter_test, mocktail and integration tooling | Domain, widget and device-flow coverage |
 | Delivery | GitHub Actions, Fastlane and Docker | Repeatable quality checks and release packaging |
 
-## 6. Initial architecture
+## 7. Initial architecture details
 
 ```text
 Presentation: screens, widgets, Riverpod notifiers, router
@@ -179,7 +213,7 @@ Data: Drift DAOs, Supabase data sources, ML Kit adapter, Edge Function client, s
 
 Dependencies are assembled in `lib/app/di`. Feature modules own their contracts. The domain layer does not import Flutter, Drift, Supabase or ML Kit.
 
-## 7. Privacy, security and data handling
+## 8. Privacy, security and data handling
 
 - The source image is processed on-device and is not uploaded by the OCR path.
 - Only text confirmed by the learner is sent to the generation Edge Function.
@@ -188,7 +222,7 @@ Dependencies are assembled in `lib/app/di`. Feature modules own their contracts.
 - Battle answer keys are kept in server-side snapshots and are not exposed before `closes_at`.
 - Local secrets and Android signing files are excluded from Git; CI consumes protected secrets.
 
-## 8. Four-week proposal plan
+## 9. Four-week proposal plan
 
 | Week | Goal | Evidence |
 |---:|---|---|
@@ -197,7 +231,7 @@ Dependencies are assembled in `lib/app/di`. Feature modules own their contracts.
 | 3 | Add local CRUD, auth boundary and first release lane | Offline library demo, CI run and Fastlane verification |
 | 4 | Milestone 1 review | Architecture report, clickable prototype, demo script and scope decision |
 
-## 9. Team responsibilities
+## 10. Team responsibilities
 
 | Member | Primary responsibility | Shared evidence |
 |---|---|---|
@@ -207,7 +241,7 @@ Dependencies are assembled in `lib/app/di`. Feature modules own their contracts.
 
 All members review pull requests, contribute commits and understand the code they present.
 
-## 10. Risks and mitigations
+## 11. Risks and mitigations
 
 | Risk | Impact | Mitigation |
 |---|---|---|
@@ -218,7 +252,7 @@ All members review pull requests, contribute commits and understand the code the
 | Signing delays | Medium | Run the lane early and keep secrets outside Git |
 | Architecture erosion | Medium | Import boundary check, review and pure-Dart domain tests |
 
-## 11. Current repository evidence
+## 12. Current repository evidence
 
 - Repository: [Minhwritecode/Quiz-Game-MultyPlatform](https://github.com/Minhwritecode/Quiz-Game-MultyPlatform)
 - Base commit: `ffa46aa` - `feat: scaffold Papyrus quiz platform base`

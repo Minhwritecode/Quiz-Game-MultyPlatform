@@ -128,7 +128,10 @@ rooms ──1:N── room_players
 rooms ──1:N── room_answers
 ```
 
-## 3. Core feature implementation
+## 3. CORE FEATURE IMPLEMENTATION PROGRESS
+
+* **🔗 GitHub Tag / Branch M2:** [main branch](https://github.com/Minhwritecode/Quiz-Game-MultyPlatform/tree/main) — architecture baseline and report increment are tracked in the commit history.
+* **🎥 Milestone 2 Video Demo (2–3 minutes):** To be recorded by the team after the final demo script is rehearsed; the exact script is included in Section 9.
 
 ### 3.1 App shell and navigation
 
