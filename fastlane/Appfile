@@ -1,2 +1,0 @@
-package_name(ENV.fetch("ANDROID_PACKAGE_NAME", "com.papyrus.papyrus"))
-

@@ -18,11 +18,9 @@ Papyrus is an offline-first, mobile-first learning application for students who 
 
 The proposal focuses on a realistic capstone scope. The first release prioritizes authentication, document capture, OCR correction, question generation and review, offline practice, basic history, synchronization and one realtime speed-battle mode. Global matchmaking, chat, purchases, a custom-trained model and web/desktop product support are explicitly outside the first release.
 
-The repository contains a runnable Flutter/Dart transition baseline, while the
-approved target architecture is React Native + TypeScript. New UI and feature
-slices will be implemented under `src/` with Expo; the existing Dart base is
-kept temporarily so the team can migrate vertical slices without losing the
-tested local contracts and backend scaffolding.
+The repository contains a runnable React Native + TypeScript client under
+`src/` with Expo. The client is the sole runtime architecture; backend
+contracts and local-first rules are implemented directly in TypeScript.
 
 ## 1. Project motivation and problem statement
 
@@ -68,7 +66,7 @@ and milestone review.
 | 1 | Authentication & Profile | Google/Apple-ready OAuth boundary, email sign-in, guest mode, profile | Must-Have | Supabase Auth owns sessions; guest mode keeps local study available; user-owned records are isolated by `auth.uid()`. |
 | 2 | Core Business Logic | Personal material → OCR correction → AI quiz review → offline study → realtime battle | Must-Have | The learner must confirm source text and generated questions before saving; a saved set can be studied offline or used in a 2–4 player room. |
 | 3 | Artificial Intelligence (AI) | On-device OCR and protected streaming question generation | Must-Have | Google ML Kit processes images locally; only confirmed text is sent to an authenticated Edge Function; malformed question objects are rejected. |
-| 4 | Offline Resilience | Local caching, attempt persistence and background auto-sync | Should-Have | SQLite is the React Native local source of truth; writes enter an ordered outbox and sync when connectivity returns without losing the learner's work. The existing Drift adapter is the transition baseline. |
+| 4 | Offline Resilience | Local caching, attempt persistence and background auto-sync | Should-Have | SQLite is the React Native local source of truth; writes enter an ordered outbox and sync when connectivity returns without losing the learner's work. |
 
 ### 2.1 Objectives
 
@@ -78,7 +76,7 @@ and milestone review.
 - Make generated questions editable and reviewable before persistence.
 - Demonstrate a fair realtime battle where the server owns timing and scoring.
 - Provide automated tests for domain logic and important UI surfaces.
-- Produce a signed Android release through a repeatable CI/Fastlane workflow.
+- Produce a signed Android release through a repeatable CI/EAS workflow.
 
 ### 2.2 Detailed functional scope for the capstone release
 
@@ -157,10 +155,9 @@ The Week 4 prototype should contain these ten screens:
 9. Results and leaderboard.
 10. Settings.
 
-The repository currently provides a clickable Flutter transition shell for Home,
-Library, Study, Battle, Leaderboard, Settings, Auth, Scan and Generate entry
-points. New visual implementation is React Native-first and uses the team
-Figma file as its source:
+The repository provides a clickable React Native shell for Home, Library, Study,
+Battle, Leaderboard, Settings, Auth, Scan and Generate entry points. It uses
+the team Figma file as its visual source:
 
 **Figma prototype URL:** [Papyrus UI UX Prototype](https://www.figma.com/design/qdGvcsHXoTJcuq2NqsK9XS/Papyrus-UI-UX-Prototype?t=wiS4ZAcDfeWtDAkV-1)
 
@@ -226,8 +223,8 @@ Data: SQLite repositories, Supabase data sources, ML Kit adapter, Edge Function 
 
 Dependencies are assembled in `src/app/_layout.tsx` and feature composition
 modules. Feature modules own their contracts. The TypeScript domain layer does
-not import React Native, Expo, SQLite, Supabase or ML Kit. The old Dart
-composition root remains only for the transition baseline.
+not import React Native, Expo, SQLite, Supabase or ML Kit. Platform integrations
+remain behind feature data adapters.
 
 ## 8. Privacy, security and data handling
 
@@ -244,7 +241,7 @@ composition root remains only for the transition baseline.
 |---:|---|---|
 | 1 | Confirm problem, test Vietnamese OCR and LLM request assumptions | Repository, experiment notes and risk register |
 | 2 | Create Clean Architecture skeleton, theme, local schema and route map | Running shell, schema draft and prototype frames |
-| 3 | Add local CRUD, auth boundary and first release lane | Offline library demo, CI run and Fastlane verification |
+| 3 | Add local CRUD, auth boundary and first release lane | Offline library demo, CI run and EAS preview verification |
 | 4 | Milestone 1 review | Architecture report, clickable prototype, demo script and scope decision |
 
 ## 10. Team responsibilities
@@ -253,7 +250,7 @@ composition root remains only for the transition baseline.
 |---|---|---|
 | Dinh Tran Tien Minh | UI/UX, React Native presentation and performance | Component tests and review participation |
 | Le Tuan Khai | AI/OCR, Domain, generation parser and domain tests | Use-case tests and experiment notes |
-| Du Thi Nhu Yen | Data, Supabase, synchronization, CI/Fastlane | Migration review, integration checklist and release evidence |
+| Du Thi Nhu Yen | Data, Supabase, synchronization, CI/EAS | Migration review, integration checklist and release evidence |
 
 All members review pull requests, contribute commits and understand the code they present.
 
@@ -272,7 +269,7 @@ All members review pull requests, contribute commits and understand the code the
 
 - Repository: [Minhwritecode/Quiz-Game-MultyPlatform](https://github.com/Minhwritecode/Quiz-Game-MultyPlatform)
 - Base commit: `ffa46aa` - `feat: scaffold Papyrus quiz platform base`
-- Local transition checks: `flutter analyze`, `flutter test`, `flutter build web --release` and architecture boundary check pass; the React Native quality lane is defined as `tsc --noEmit`, ESLint, Jest/RNTL and device-flow checks after Expo bootstrap.
+- Local checks: `npm run typecheck`, Jest, the TypeScript architecture boundary check and `npx expo export --platform web` pass. Native OCR and SQLite require an Expo development build for device verification.
 - Current limitation: provider credentials and demo video are not embedded in the repository. The team Figma prototype URL is now recorded above and should remain the single design reference for the submission.
 
 ## Conclusion

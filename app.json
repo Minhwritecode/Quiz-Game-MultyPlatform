@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "Papyrus",
+    "slug": "papyrus",
+    "version": "0.2.0",
+    "orientation": "default",
+    "scheme": "papyrus",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "plugins": [
+      "expo-router",
+      "expo-sqlite",
+      "expo-secure-store"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "web": {
+      "output": "single"
+    },
+    "android": {
+      "package": "com.papyrus.quizclash"
+    },
+    "ios": {
+      "bundleIdentifier": "com.papyrus.quizclash"
+    }
+  }
+}

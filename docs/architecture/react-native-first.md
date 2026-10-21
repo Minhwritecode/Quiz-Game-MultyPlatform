@@ -1,103 +1,82 @@
-# React Native-first architecture
+# React Native architecture
 
 ## Decision
 
-Papyrus will use React Native with TypeScript as the primary client stack. New
-screens, navigation, shared UI, feature contracts and application services are
-implemented under `src/`. The existing Flutter/Dart implementation under `lib/`
-is retained as a transitional baseline so the current demo and domain work are
-not discarded or rewritten without a vertical-slice plan.
-
-This is a migration boundary, not a second competing product. React Native is
-the source of truth for all new UI work; Dart is used only where an existing
-Flutter adapter is still the fastest safe bridge during migration.
+Papyrus uses React Native with TypeScript as its only client architecture.
+Expo and Expo Router provide the application shell, Zustand owns local UI
+state, TanStack Query owns server state, `expo-sqlite` provides native local
+persistence, and Supabase provides auth, PostgreSQL, RLS, Realtime and Edge
+Functions.
 
 ## Recommended stack
 
 | Concern | Choice | Reason |
 |---|---|---|
-| App runtime | Expo + React Native + TypeScript | Fast iteration, native build escape hatch, iOS/Android/web reach |
-| Routing | Expo Router | File-based routes, typed routes, deep links and responsive tab/stack layouts |
-| State | Zustand | Small, explicit client state without provider boilerplate |
-| Server state | TanStack Query | Cache, retries, invalidation and offline-aware request lifecycle |
-| Forms/validation | React Hook Form + Zod | Typed form state and shared validation contracts |
-| Backend | Supabase | Auth, PostgreSQL, RLS, Realtime, Storage and Edge Functions |
-| Local persistence | expo-sqlite; Drizzle when schema scale requires it | Typed local-first cache and transactional outbox |
-| OCR | ML Kit through an Expo development build/config plugin | On-device OCR without putting source images on the server |
-| UI | React Native primitives + Papyrus tokens/components | Accessible, responsive and Figma-aligned UI |
-| Testing | Jest, React Native Testing Library, Maestro/Detox | Unit, component and device-flow coverage |
-| Delivery | EAS Build/Submit/Update + GitHub Actions | Reproducible native builds and over-the-air JS updates |
+| App runtime | Expo + React Native + TypeScript | Shared native UI with web preview and a development-build escape hatch |
+| Routing | Expo Router | File-based routes, typed routes and deep links |
+| State | Zustand | Small explicit client state |
+| Server state | TanStack Query | Cache, retries, invalidation and request lifecycle |
+| Forms/validation | React Hook Form + Zod | Typed form state and reusable validation contracts |
+| Backend | Supabase | Auth, PostgreSQL, RLS, Realtime and Edge Functions |
+| Local persistence | `expo-sqlite` | Native persistent cache and transactional sync outbox |
+| OCR | ML Kit through an Expo development build | On-device processing and privacy-preserving capture |
+| UI | React Native primitives + Papyrus tokens | Accessible, responsive and Figma-aligned UI |
+| Testing | Jest, React Native Testing Library and Maestro/Detox | Domain, component and device-flow coverage |
+| Delivery | EAS Build/Submit/Update + GitHub Actions | Reproducible native builds and updates |
 
-Expo Go is useful for early UI work, but native OCR and other custom native
-modules should use a development build. This keeps the team productive without
-locking the production architecture to the playground client.
-
-## Target tree
+## Source tree
 
 ```text
 src/
 ├── app/
-│   ├── _layout.tsx                 # Root providers, theme and error boundary
-│   ├── (auth)/                     # Login, guest entry and recovery routes
-│   ├── (tabs)/                     # Home, Library, Battle, Rank, Settings
-│   ├── create/                     # OCR and generation flow
-│   ├── study/[setId].tsx           # Offline study
-│   └── battle/[roomId].tsx         # Realtime battle
+│   ├── _layout.tsx                 # Query client, safe-area and route shell
+│   ├── index.tsx                   # Home and learning pulse
+│   ├── auth.tsx                    # Auth and guest entry
+│   ├── sets.tsx                    # Offline question-set library
+│   ├── create/                     # Source capture and generation review
+│   ├── study/[setId].tsx           # Offline study loop
+│   ├── battle.tsx                  # Room create/join flow
+│   ├── leaderboard.tsx             # Results and rank surface
+│   └── settings.tsx                # Preferences and local data
 ├── core/
-│   ├── config/                     # Runtime env and feature flags
-│   ├── database/                   # SQLite schema, migrations and outbox
-│   ├── errors/                     # AppError and typed failure mapping
-│   ├── navigation/                 # Typed route contracts and deep links
-│   ├── network/                    # Supabase client and query defaults
-│   ├── theme/                      # Papyrus tokens and light/dark themes
-│   └── ui/                         # Accessible primitives and layout helpers
+│   ├── config/                     # Runtime environment and feature flags
+│   ├── database/                   # SQLite native/web adapters
+│   ├── domain/                     # Framework-free entities and rules
+│   ├── network/                    # Supabase client boundary
+│   ├── state/                      # Zustand stores
+│   └── theme/                      # Papyrus tokens and palettes
 ├── features/
 │   ├── auth/
-│   ├── home/
-│   ├── scan-ocr/
-│   ├── quiz-generation/
 │   ├── question-sets/
-│   ├── study/
+│   ├── quiz-generation/
+│   ├── scan-ocr/
 │   ├── room-battle/
-│   ├── leaderboard/
-│   ├── settings/
 │   └── sync/
-├── shared/
-│   ├── constants/
-│   ├── hooks/
-│   ├── types/
-│   └── utils/
-└── test/
-    ├── factories/
-    ├── mocks/
-    └── setup.ts
+├── shared/                         # Reusable accessible UI primitives
+└── test/                           # Future component test setup
 
-lib/                                # Transitional Flutter/Dart baseline
-supabase/                            # Shared backend contracts and migrations
-docs/                                # Reports, ADRs and architecture decisions
+supabase/                           # Shared backend schema and Edge Functions
 ```
 
-## Rules for the transition
+## Dependency rules
 
-1. New UI is React Native/TypeScript. Do not add new Flutter screens unless a
-   migration blocker is documented in an ADR.
-2. Domain models shared with the RN client live in TypeScript first. The Dart
-   model remains only until its corresponding feature slice is migrated and
-   tested.
-3. Figma screens map to `src/app` routes and reusable components map to
-   `src/core/ui` or the owning feature.
-4. Supabase remains the backend contract for both clients during migration;
-   RLS, Edge Functions and server-authoritative battle scoring do not change.
-5. Avoid a big-bang rewrite. Migrate vertical slices in this order:
-   authentication → home/library → OCR/generation → offline study → battle.
-6. A feature is considered migrated only when its screen, state, data adapter,
-   tests and route are TypeScript-based.
+1. Domain code does not import React Native, Expo, Supabase or SQLite.
+2. Screens call feature services and state/query adapters; they do not query
+   infrastructure directly.
+3. Data adapters implement domain contracts and own platform integrations.
+4. Every local write is paired with an outbox record in the same transaction.
+5. Battle timing, answer validation and scoring remain server-authoritative.
+6. Web-only builds must not import native SQLite or ML Kit modules.
 
-## Why React Native is the best fit here
+## Migration result
 
-Papyrus is interaction-heavy and UI-led: forms, cards, gestures, camera/OCR,
-realtime battle states and responsive foldable layouts all benefit from a
-shared React component model. TypeScript keeps domain contracts explicit while
-Expo lets the team start quickly and still move to development builds when
-native modules are required. React Native is therefore the primary choice;
-Dart is a temporary compatibility tool, not the future architecture.
+The former Flutter client and its native projects were removed from the main
+checkout after conversion. The previous implementation remains recoverable
+from Git history, while the current branch has one React Native runtime and one
+TypeScript source of truth.
+
+## Vertical slices
+
+```text
+Auth → Home/Library → OCR/Generation → Offline Study → Realtime Battle
+```

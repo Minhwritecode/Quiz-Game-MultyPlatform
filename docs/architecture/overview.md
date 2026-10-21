@@ -1,7 +1,7 @@
 # Papyrus architecture
 
-Papyrus is React Native + TypeScript-first. The current Flutter/Dart tree is a
-transitional baseline; new screens and feature slices belong under `src/`.
+Papyrus is a React Native + TypeScript application. The main checkout contains
+one client runtime; new screens and feature slices belong under `src/`.
 
 ## Client dependency direction
 
@@ -25,7 +25,7 @@ Presentation (RN screens/hooks) ─────▶ Domain ◀───── Dat
              └── Zustand + Query ─────────┴── composition ┘
 ```
 
-Each feature owns its domain entities, repository contracts and presentation surface. Data adapters implement those contracts. The React Native app composition root is the only place that assembles concrete dependencies; the Riverpod/go_router wiring in `lib/` is transition-only.
+Each feature owns its domain entities, repository contracts and presentation surface. Data adapters implement those contracts. The React Native app composition root is the only place that assembles concrete dependencies.
 
 ## Offline-first write path
 
@@ -43,9 +43,9 @@ Presence is used for membership; database changes or broadcast events update
 the UI. The `submit_answer` RPC rejects late or duplicate answers and returns
 the awarded score.
 
-## Transitional Flutter boundary
+## Platform boundary
 
-`lib/` remains available for the existing demo and Dart adapters. It is not the
-target location for new UI. A feature may be removed from the transitional
-tree only after the equivalent React Native screen, state, data adapter and
-tests have passed review.
+Native-only integrations are isolated behind feature data adapters. SQLite is
+selected through `sqlite.native.ts` while the web export uses `sqlite.web.ts`;
+this keeps one React Native source tree without pulling native-only modules into
+the browser bundle.

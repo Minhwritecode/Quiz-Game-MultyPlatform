@@ -4,76 +4,69 @@
 
 Papyrus is a React Native + TypeScript-first, offline-first learning quiz platform for turning personal study material into reviewable question sets and realtime 2–4 player quiz battles. OCR stays on-device; only user-confirmed text is sent to the protected generation endpoint.
 
-This repository is the Capstone base for QuizClash. It contains the production-shaped skeleton, architecture boundaries, local/cloud data contracts, CI/CD scaffolding and a small runnable demo slice. It does not claim that provider credentials, native OCR, LLM streaming or the realtime battle vertical slice are complete yet.
+This repository is the Capstone base for QuizClash. It contains the React Native production-shaped skeleton, architecture boundaries, local/cloud data contracts, CI/CD scaffolding and a runnable mobile/web demo slice. It does not claim that provider credentials, native OCR, LLM streaming or the realtime battle vertical slice are complete yet.
 
 ## Product scope
 
-- React Native + TypeScript client target with Expo, responsive navigation and Papyrus design tokens.
-- Transitional Flutter/Dart baseline under `lib/` kept runnable while vertical slices migrate to React Native.
+- Expo Router mobile/web client with responsive Papyrus UI and typed feature boundaries.
 - Clean Architecture by feature: `Presentation → Domain ← Data`.
-- Existing Flutter transition baseline uses Riverpod, `go_router` and Drift.
-- React Native target uses Expo Router, Zustand, TanStack Query and `expo-sqlite` for the same local-first contracts.
+- Zustand and TanStack Query for local UI state and server state.
+- `expo-sqlite` native adapter for the local-first cache and sync outbox.
 - Supabase migration with RLS, Realtime-ready room tables and server-side `submit_answer` scoring RPC.
 - On-device ML Kit OCR adapter boundary.
 - Edge Function boundary for authenticated, rate-limited LLM generation.
 - Offline-first sync contract: local write, ordered push, cursor pull, server-time conflict resolution.
-- GitHub Actions, Fastlane and Docker web preview.
+- GitHub Actions, EAS build profiles and Docker web preview.
 
-## Current baseline quick start
+## Quick start
 
 ```bash
-flutter pub get
-dart run build_runner build --delete-conflicting-outputs
-flutter run
+npm install
+npm start
 ```
 
-The forward client architecture is documented in
-[React Native-first architecture](docs/architecture/react-native-first.md).
-New screens and feature code belong under `src/`; the Flutter command above is
-kept for the transitional baseline until the first Expo mobile shell is
-bootstrapped.
+Press `w` for the web preview, or use `npm run android` / `npm run ios` with an
+Expo development environment. New screens and feature code belong under `src/`.
 
 Run with Supabase configuration only when a project is available:
 
 ```bash
-flutter run \
-  --dart-define=SUPABASE_URL=https://your-project.supabase.co \
-  --dart-define=SUPABASE_ANON_KEY=your-anon-key
+EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co \
+EXPO_PUBLIC_SUPABASE_ANON_KEY=your-publishable-key \
+npm start
 ```
 
 The app intentionally runs with a seeded in-memory repository when those values are absent, so the navigation, library and study-mode demo are usable without secrets.
 
 ## Docker
 
-The current Docker image builds the transitional Flutter web preview and serves it through Nginx. The React Native mobile target is delivered through Expo/EAS:
+The Docker image builds the React Native web export and serves it through Nginx. Native mobile builds are delivered through Expo/EAS:
 
 ```bash
 docker compose up --build
 # open http://localhost:8080
 ```
 
-## Android signing
+## Native release
 
-Copy `android/key.properties.example` to `android/key.properties`, point `storeFile` at a local keystore, and keep both the properties file and keystore out of Git. CI expects the keystore as `ANDROID_KEYSTORE_BASE64` plus the matching Gradle properties supplied by the protected release environment.
+Native signing and credentials are managed by EAS. Link the app once with
+`npx eas-cli@latest init`, set `EXPO_TOKEN` in CI, and use the `development`,
+`preview` or `production` profiles in `eas.json`.
 
 ## Repository map
 
 ```text
-src/                            # React Native + TypeScript target
+src/                            # React Native + TypeScript source of truth
 ├── app/                         # Expo Router routes and root providers
 ├── core/                        # config, database, network, theme and UI primitives
-├── features/                    # auth, home, OCR, generation, study, battle, sync
+├── features/                    # auth, question-sets, OCR, generation, battle, sync
 └── shared/                      # typed hooks, constants, factories and utilities
-lib/                            # transitional Flutter/Dart baseline
-├── app/                         # current legacy composition root and router
-├── core/                        # legacy config, result/failure types, theme, Drift schema
-└── features/                    # legacy feature adapters and demo screens
 supabase/
 ├── migrations/                  # PostgreSQL schema, RLS, submit_answer RPC
 └── functions/                   # Deno Edge Functions
 docs/                            # architecture notes and decisions
 docs/reports/                     # Capstone proposal and architecture reports
-fastlane/                        # Android build lanes
+eas.json                         # EAS development, preview and production profiles
 docker/                          # Nginx runtime configuration
 .github/workflows/               # CI and manual Android release
 ```
@@ -90,17 +83,15 @@ docker/                          # Nginx runtime configuration
 ## Quality commands
 
 ```bash
-# Transitional Flutter baseline
-dart run build_runner build --delete-conflicting-outputs
-flutter analyze
-flutter test --coverage
+# React Native quality lane
+npm run typecheck
+npm test
 ./scripts/check_architecture.sh
-flutter build web --release
+npx expo export --platform web
 ```
 
-The React Native quality lane will use `tsc --noEmit`, ESLint, Jest/React
-Native Testing Library and a device-flow runner once the Expo shell is
-bootstrapped.
+Native OCR and platform-specific SQLite are verified in an Expo development
+build; the web export uses platform-safe adapters.
 
 ## Supabase local development
 

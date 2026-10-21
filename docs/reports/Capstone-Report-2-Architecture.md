@@ -13,7 +13,12 @@
 
 This report describes the Papyrus architecture and records the implementation baseline for the Week 8 review. The design follows the Week 9 architecture lecture: Presentation calls Domain use cases, Domain defines pure entities and repository interfaces, and Data implements those interfaces using remote services and local cache. Dependency injection is performed in a composition root rather than inside individual screens.
 
-The current repository is an honest transition baseline, not a claim that every production feature is finished. The existing Flutter shell, feature boundaries, seeded offline study flow, Drift schema, local repository adapter, generation parser, Supabase migration/RLS/RPC, sync contracts, CI and tests are present. The approved target architecture is React Native + TypeScript under `src/`; new UI and feature slices must be built there. Native camera UX, real provider streaming, full Supabase auth wiring and the complete multi-device battle are the next vertical slices after the React Native shell is bootstrapped.
+The current repository is an honest React Native baseline, not a claim that
+every production feature is finished. The Expo Router shell, feature
+boundaries, seeded offline study flow, SQLite adapter, generation parser,
+Supabase migration/RLS/RPC, sync contracts, CI and tests are present. Native
+camera UX, real provider streaming, full Supabase auth wiring and the complete
+multi-device battle are the next vertical slices.
 
 The companion UI/UX artifact is the team-owned [Papyrus UI UX Prototype in Figma](https://www.figma.com/design/qdGvcsHXoTJcuq2NqsK9XS/Papyrus-UI-UX-Prototype?t=wiS4ZAcDfeWtDAkV-1). This report treats that link as the visual source of truth while the route and architecture mapping below defines how each screen is implemented.
 
@@ -40,7 +45,7 @@ The companion UI/UX artifact is the team-owned [Papyrus UI UX Prototype in Figma
                  └────────────────────────────┘
 ```
 
-The arrow points from a caller to an abstraction. Data depends on Domain to implement contracts; Domain depends on no UI or platform framework. The React Native composition root under `src/app/` creates concrete implementations and connects them to Zustand stores and TanStack Query. The existing Dart composition root remains a transition-only implementation under `lib/`.
+The arrow points from a caller to an abstraction. Data depends on Domain to implement contracts; Domain depends on no UI or platform framework. The React Native composition root under `src/app/` creates concrete implementations and connects them to Zustand stores and TanStack Query.
 
 ### 1.2 Layer responsibilities
 
@@ -54,7 +59,7 @@ The arrow points from a caller to an abstraction. Data depends on Domain to impl
 ### 1.3 Project tree
 
 ```text
-src/                                  # React Native + TypeScript target
+src/                                  # React Native + TypeScript source of truth
 ├── app/
 │   ├── _layout.tsx
 │   ├── (auth)/
@@ -83,41 +88,20 @@ src/                                  # React Native + TypeScript target
 │   └── utils/
 └── test/
 
-lib/                                  # transitional Flutter/Dart baseline
-├── app/
-│   ├── app.dart
-│   ├── di/providers.dart
-│   └── router/app_router.dart
-├── core/
-│   ├── config/app_config.dart
-│   ├── constants/app_constants.dart
-│   ├── database/app_database.dart
-│   ├── error/failures.dart
-│   ├── result/result.dart
-│   └── theme/app_theme.dart
-└── features/
-    ├── auth/
-    ├── home/
-    ├── scan_ocr/
-    ├── quiz_generation/
-    ├── question_sets/
-    ├── study/
-    ├── room_battle/
-    ├── leaderboard/
-    ├── settings/
-    └── sync/
+supabase/                             # PostgreSQL migrations and Edge Functions
 ```
 
-Important transition anchors currently in the repository:
+Important React Native implementation anchors:
 
-- `lib/core/database/app_database.dart`: typed local schema and default platform database connection.
-- `lib/features/question_sets/domain/repositories/question_set_repository.dart`: domain port.
-- `lib/features/question_sets/data/repositories/drift_question_set_repository.dart`: local adapter with transaction and outbox write.
-- `lib/features/quiz_generation/data/parsers/streaming_question_parser.dart`: incremental JSON validation boundary.
-- `lib/features/room_battle/domain/scoring/speed_score_calculator.dart`: pure speed-mode scoring rule.
-- `lib/app/di/providers.dart`: legacy composition root using a seeded repository for deterministic demo mode. The React Native replacement belongs under `src/app/`.
+- `src/core/database/sqlite.native.ts`: typed local schema and transactional persistence.
+- `src/core/domain/models.ts`: framework-free entities and scoring rules.
+- `src/features/question-sets/data/persistence.ts`: local repository boundary.
+- `src/features/quiz-generation/domain/streamingQuestionParser.ts`: incremental JSON validation boundary.
+- `src/features/room-battle/domain/speedScore.ts`: speed-mode scoring rule.
+- `src/app/_layout.tsx`: Expo composition root with Query Client and safe area.
 
-The target folder structure is intentionally shown before `lib/`: all new architecture core, source, feature and UI work is React Native + TypeScript. Existing Dart files are retained only to protect the current baseline while vertical slices migrate.
+The folder structure has one client source of truth: all architecture core,
+source, feature and UI work is React Native + TypeScript.
 
 ## 2. Database schema and security policies
 
@@ -129,7 +113,10 @@ The target folder structure is intentionally shown before `lib/`: all new archit
 | `questions` | `id`, `set_id`, `content`, `options_json`, `correct_index`, `position` | Four-option questions and explanations |
 | `sync_queue` | `id`, `entity`, `entity_id`, `operation`, `payload`, `retry_count`, `created_at` | Ordered outbox for offline changes |
 
-The current Dart adapter uses Drift to express this schema. The React Native target will use `expo-sqlite` with the same logical tables and transaction rules; Drizzle may be added when the schema needs typed query composition. The migration must preserve the local-first contract: saving a set replaces its question rows and appends an outbox entry in one transaction, while deletion is soft-delete plus a queued delete operation.
+The React Native adapter uses `expo-sqlite` with typed repository boundaries and
+the same logical tables and transaction rules. Saving a set replaces its
+question rows and appends an outbox entry in one transaction; deletion is
+soft-delete plus a queued delete operation.
 
 ### 2.2 Supabase/PostgreSQL schema
 
@@ -166,9 +153,15 @@ rooms ──1:N── room_answers
 
 ### 3.1 App shell and navigation
 
-The target application starts in `src/app/_layout.tsx`, loads Expo configuration and initializes Supabase only when URL and publishable key are supplied. Without credentials, the app uses a deterministic seeded repository so the UI can be demonstrated offline. Expo Router provides the shell routes for Home, Library, Battle, Rank, Settings, Auth, Scan, Generate and Study. `lib/main.dart` and `go_router` remain available only for the transitional baseline.
+The application starts in `src/app/_layout.tsx`, loads Expo configuration and
+initializes Supabase only when URL and publishable key are supplied. Without
+credentials, the app uses a deterministic seeded repository so the UI can be
+demonstrated offline. Expo Router provides the shell routes for Home, Library,
+Battle, Rank, Settings, Auth, Scan, Generate and Study.
 
-Papyrus theme tokens are centralized in `src/core/theme/` and shared by React Native components. Light/dark behavior follows the system by default, while Settings persists an explicit user preference. The current Flutter `AppTheme` is retained only until the corresponding React Native token layer is wired.
+Papyrus theme tokens are centralized in `src/core/theme/` and shared by React
+Native components. Light/dark behavior follows the system by default, while
+Settings exposes haptic and motion preferences.
 
 ### 3.2 Figma-to-architecture traceability
 
@@ -177,10 +170,10 @@ The Figma prototype is not a separate product specification. Each frame maps to 
 | Figma flow | Presentation surface | Domain contract | Data boundary |
 |---|---|---|---|
 | Auth and guest entry | Auth page and session gate | `AuthRepository` | Supabase Auth data source |
-| Home/library | Home page and question-set providers | `QuestionSetRepository`, `WatchQuestionSets` | In-memory demo or Drift repository |
+| Home/library | Home page and question-set providers | `QuestionSetRepository`, Zustand store | Seeded demo or SQLite repository |
 | Scan/OCR correction | Scan page and OCR controller | `OcrRepository` | ML Kit on-device data source |
 | Generate/review | Generation page and review state | `QuestionGenerationRepository`, `ValidateQuestion` | Supabase Edge Function client and stream parser |
-| Offline study | Study page | Attempt/start/submit use cases | Drift attempts and answers tables |
+| Offline study | Study page | Attempt/start/submit use cases | SQLite attempts and answers tables |
 | Room lobby | Room lobby page | Room creation/join contracts | Supabase rooms, players and Presence |
 | Live battle | Battle state surface | Submit-answer and score rules | Server-authoritative RPC and Realtime channel |
 | Results/leaderboard | Results and leaderboard surfaces | Result/history/leaderboard contracts | Supabase views plus local history |
@@ -224,7 +217,9 @@ The intended sync contract is:
 6. Resolve editable set conflicts using server `updated_at`; treat attempts as append-only.
 7. Show synced, pending or failed state at set level.
 
-`SyncEngine` and `ConflictResolver` capture this contract in the transition baseline. The React Native implementation will keep the same rules in pure TypeScript; the remaining work is the concrete Supabase push/pull adapter, connectivity listener and persisted cursor.
+The React Native sync contract keeps these rules in pure TypeScript; the
+remaining work is the concrete Supabase push/pull adapter, connectivity
+listener and persisted cursor.
 
 ### 3.7 Realtime battle state machine
 
@@ -238,7 +233,11 @@ Server responsibilities include question snapshots, `opens_at`, `closes_at`, hos
 
 ## 4. Dependency injection and testability
 
-The transition composition root is `lib/app/di/providers.dart`. The React Native composition root will be `src/app/_layout.tsx` plus feature-level stores and query clients. The demo provider uses `InMemoryQuestionSetRepository.seeded()` because it makes tests and screenshots deterministic. Production wiring will provide one SQLite database instance, a SQLite question-set repository, Supabase data sources and the sync coordinator.
+The composition root is `src/app/_layout.tsx` plus feature-level stores and
+query clients. The demo provider uses the seeded Zustand store because it makes
+tests and screenshots deterministic. Production wiring provides one SQLite
+database instance, a SQLite question-set repository, Supabase data sources and
+the sync coordinator.
 
 This arrangement follows inversion of control: screens receive behavior through a repository/use-case abstraction and do not construct platform services themselves.
 
@@ -248,38 +247,36 @@ The Week 9 lecture recommends a testing pyramid of approximately 70% unit, 20% w
 
 | Level | Planned share | Current evidence | Next cases |
 |---|---:|---|---|
-| Unit | 70% | Question validation, streaming parser, speed score calculator | Use cases, conflict resolver, sync retry policy and Drift repository with in-memory executor |
+| Unit | 70% | Question validation, streaming parser, speed score calculator | Use cases, conflict resolver, sync retry policy and SQLite repository tests |
 | Widget | 20% | Home shell and seeded library smoke test | OCR correction, question review, study answers, lobby and leaderboard states |
 | Integration/E2E | 10% | Manual scenario documented in the proposal | Auth, offline study, reconnecting battle and two-device room flow using Patrol/Maestro |
 
-Transition-baseline quality commands:
+React Native quality commands:
 
 ```bash
-dart run build_runner build --delete-conflicting-outputs
-flutter analyze
-flutter test --coverage
+npm run typecheck
+npm test
 ./scripts/check_architecture.sh
-flutter build web --release
+npx expo export --platform web
 ```
 
-The transition baseline passes analysis, unit/widget tests, web build and the import-boundary check. The React Native target adds `tsc --noEmit`, ESLint, Jest/React Native Testing Library and Maestro or Detox device flows. Neither test lane claims real Supabase or device-plugin coverage until those integrations are connected.
+The current baseline passes TypeScript analysis, domain tests, the import-boundary check and web export. Native OCR, native SQLite and device flows require an Expo development build.
 
 ## 6. Milestone 2 progress
 
 | Requirement | Status | Evidence |
 |---|---|---|
-| React Native target architecture | Defined | `src/` tree, Expo Router boundary and migration rules |
-| Flutter transition shell and navigation | Implemented baseline | `lib/app`, route map and existing theme |
-| Clean Architecture boundary | Implemented transition baseline | Domain interfaces, data adapters and boundary script |
-| Local schema | Implemented transition baseline | Drift tables, generated code and default database connection; SQLite parity specified |
-| Local repository | Implemented transition baseline | CRUD mapping, soft-delete and outbox transaction |
+| React Native shell and navigation | Implemented baseline | `src/app`, Expo Router and responsive Papyrus UI |
+| Clean Architecture boundary | Implemented baseline | TypeScript domain, feature adapters and boundary script |
+| Local schema | Implemented baseline | `expo-sqlite` native schema and transactional outbox |
+| Local repository | Implemented baseline | Seeded store and SQLite persistence boundary |
 | Auth boundary | Adapter/UI scaffold | Supabase data source and Auth page; provider wiring pending |
 | OCR | Adapter/UI scaffold | ML Kit data source and Scan page; device flow pending |
 | LLM streaming | Parser/Edge boundary | Validating parser and authenticated function scaffold; provider pending |
 | Offline study | Demo vertical slice | Seeded set, answer reveal and progress; persisted attempts pending |
 | Sync | Contract baseline | Sync item, engine and conflict resolver; cloud adapter pending |
 | Realtime battle | Server schema baseline | Room tables, RLS and score RPC; full client lifecycle pending |
-| CI/CD | Implemented scaffold | GitHub Actions, Fastlane, Docker and signing templates; EAS is the React Native target |
+| CI/CD | Implemented scaffold | GitHub Actions, EAS release workflow and Docker web export |
 
 ## 7. Security and privacy review
 
@@ -309,10 +306,10 @@ Before release, the team must add rate limiting, JWT subject validation, provide
 
 For the architecture review, the presenter should show:
 
-1. Launch the current transition baseline without secrets and explain deterministic local demo mode.
+1. Launch the React Native app without secrets and explain deterministic local demo mode.
 2. Open Library and Study, answer a seeded question and show progress.
 3. Navigate through Scan and Generate entry points and explain the adapter boundaries.
-4. Show the target React Native dependency direction and the SQLite parity schema.
+4. Show the React Native dependency direction and SQLite schema.
 5. Show the SQL migration, RLS policies and `submit_answer` RPC.
 6. Run the quality commands and show the test output.
 7. Explain clearly which production integrations are pending and why they are isolated.

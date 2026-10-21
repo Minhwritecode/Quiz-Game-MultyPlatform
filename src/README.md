@@ -14,10 +14,8 @@ src/
 ```
 
 Keep domain contracts framework-free. Screens call use cases and state/query
-adapters; they do not access Supabase or SQLite directly. The existing
-Flutter/Dart implementation under `../lib/` is transitional and must not be
-expanded with new product screens unless an architecture decision records the
-reason.
+adapters; they do not access Supabase or SQLite directly. Native-only modules
+must stay behind feature data adapters and platform-specific files.
 
 The first real React Native vertical slice is planned as:
 
@@ -25,6 +23,5 @@ The first real React Native vertical slice is planned as:
 Auth → Home/Library → OCR/Generation → Offline Study → Realtime Battle
 ```
 
-This boundary is intentionally committed before the Expo shell so the team can
-migrate feature-by-feature without pretending that the Dart baseline has
-already been rewritten.
+This boundary is committed alongside the Expo shell so the team has one
+React Native source of truth for every future feature.
