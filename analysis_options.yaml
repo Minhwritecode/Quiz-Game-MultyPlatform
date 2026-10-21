@@ -1,0 +1,26 @@
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  exclude:
+    - build/**
+    - lib/core/database/app_database.g.dart
+    - android/**
+    - ios/**
+    - web/**
+    - windows/**
+    - macos/**
+    - linux/**
+  errors:
+    invalid_annotation_target: ignore
+
+linter:
+  rules:
+    always_use_package_imports: true
+    avoid_print: true
+    directives_ordering: true
+    prefer_const_constructors: true
+    prefer_const_declarations: true
+    prefer_final_locals: true
+    sort_constructors_first: true
+    sort_pub_dependencies: true
+
