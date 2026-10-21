@@ -1,0 +1,35 @@
+{
+  "runId": "papyrus-ui-2026-10-22",
+  "scope": "Papyrus design system and responsive screen set",
+  "step": "foundations-created",
+  "fileKey": "qdGvcsHXoTJcuq2NqsK9XS",
+  "pageIds": {"source": "0:1"},
+  "entities": {
+    "collections": {"primitives": "VariableCollectionId:11:80", "color": "VariableCollectionId:11:81", "spacing": "VariableCollectionId:11:82"},
+    "variables": {"primitiveCount": 19, "semanticCount": 13, "spacingCount": 10},
+    "styles": ["Papyrus/Display", "Papyrus/Heading", "Papyrus/Title", "Papyrus/Body", "Papyrus/Label", "Papyrus/Caption"],
+    "components": {
+      "buttonPrimary": "11:157",
+      "buttonSecondary": "11:159",
+      "tagIndigo": "11:161",
+      "tagGold": "11:163",
+      "statCompact": "11:165",
+      "navActive": "11:168",
+      "navInactive": "11:171"
+    },
+    "screens": {
+      "welcome": "14:2",
+      "home": "14:20",
+      "library": "14:57",
+      "scan": "14:98",
+      "generate": "14:120",
+      "battle": "14:148",
+      "quiz": "14:166",
+      "leaderboard": "14:187",
+      "settings": "14:227"
+    },
+    "frames": {"foundations": "11:131", "components": "11:155", "screens": "11:156"}
+  },
+  "completedSteps": ["source-code-review", "file-structure-review", "library-discovery", "component-gap-analysis", "foundations-created", "components-created", "mobile-screens-created"],
+  "pendingValidations": ["desktop-home", "visual-review"]
+}
