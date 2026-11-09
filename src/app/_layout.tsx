@@ -7,15 +7,18 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useEffect } from 'react';
 import { dependencies } from '@/app/composition/dependencies';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
+import { useAuthStore } from '@/core/state/useAuthStore';
 
 export default function RootLayout() {
   const scheme = useColorScheme();
   const queryClient = useMemo(() => new QueryClient({ defaultOptions: { queries: { staleTime: 30_000, retry: 1 } } }), []);
   const hydrateQuestionSets = usePapyrusStore((state) => state.hydrateQuestionSets);
+  const bootstrapAuth = useAuthStore((state) => state.bootstrap);
 
   useEffect(() => {
     void hydrateQuestionSets(dependencies.questionSets.list);
-  }, [hydrateQuestionSets]);
+    void bootstrapAuth(dependencies.auth);
+  }, [bootstrapAuth, hydrateQuestionSets]);
 
   return (
     <SafeAreaProvider>

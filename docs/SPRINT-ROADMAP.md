@@ -47,8 +47,8 @@
 
 ### Week 3 — Auth, profile and sync outbox
 
-- [ ] Add session bootstrap and guest/authenticated route policy.
-- [ ] Add email/password plus Google/Apple provider ports; keep OAuth configuration external.
+- [x] Add session bootstrap and guest fallback policy.
+- [x] Add email/password plus Google provider port; keep OAuth configuration external.
 - [ ] Persist source documents and attempts with owner IDs in Supabase.
 - [x] Implement local outbox read/ack/retry contract with coalesced entity writes.
 - [ ] Implement pull cursor and conflict resolution for question sets.

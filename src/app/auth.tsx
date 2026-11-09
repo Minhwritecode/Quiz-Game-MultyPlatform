@@ -1,10 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Linking, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { BrandMark, Button, Card, Screen, usePalette } from '@/shared/ui';
 import { colors, radii, spacing, typography } from '@/core/theme/tokens';
-import { signInWithPassword } from '@/features/auth/data/authRepository';
+import { dependencies } from '@/app/composition/dependencies';
 
 export default function AuthScreen() {
   const router = useRouter();
@@ -16,7 +16,7 @@ export default function AuthScreen() {
   const signIn = async () => {
     setBusy(true);
     if (email.trim() && password) {
-      const error = await signInWithPassword(email.trim(), password);
+      const error = await dependencies.auth.signInWithPassword(email.trim(), password);
       if (error) Alert.alert('Could not sign in', error);
       else router.replace('/');
     } else {
@@ -24,11 +24,16 @@ export default function AuthScreen() {
     }
     setBusy(false);
   };
+  const startGoogle = async () => {
+    const result = await dependencies.auth.startOAuth('google');
+    if (result.error) Alert.alert('Google sign-in', result.error);
+    else if (result.url) await Linking.openURL(result.url);
+  };
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen>
         <View style={styles.brand}><BrandMark size={68} /><Text style={[typography.display, { color: palette.ink, marginTop: spacing.lg }]}>Papyrus</Text><Text style={[typography.body, { color: palette.inkMuted, marginTop: 4 }]}>From Ancient Scroll to AI Power.</Text></View>
-        <Card style={styles.formCard}><Text style={[typography.heading, { color: palette.ink }]}>Welcome back, learner.</Text><Text style={[typography.body, { color: palette.inkMuted, marginTop: spacing.sm }]}>Sync your library and pick up where your memory left off.</Text><TextInput value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" placeholder="Email address" placeholderTextColor={palette.inkMuted} style={[styles.input, { color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paper }]} /><View style={styles.passwordRow}><TextInput value={password} onChangeText={setPassword} secureTextEntry={!visible} placeholder="Password" placeholderTextColor={palette.inkMuted} style={[styles.passwordInput, { color: palette.ink }]} /><Pressable onPress={() => setVisible((value) => !value)}><Ionicons name={visible ? 'eye-off-outline' : 'eye-outline'} size={22} color={palette.inkMuted} /></Pressable></View><Button icon="arrow-forward" onPress={signIn} disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</Button><Button variant="secondary" icon="logo-google" onPress={() => Alert.alert('Google sign-in', 'OAuth is ready for the Supabase auth vertical slice.')}>Continue with Google</Button><View style={styles.divider}><View style={[styles.line, { backgroundColor: palette.paperMuted }]} /><Text style={[typography.caption, { color: palette.inkMuted }]}>or</Text><View style={[styles.line, { backgroundColor: palette.paperMuted }]} /></View><Pressable onPress={() => router.replace('/')} style={styles.guest}><Ionicons name="wifi-outline" size={18} color={palette.indigo} /><Text style={[typography.body, { color: palette.indigo, fontWeight: '800' }]}>Continue as guest</Text></Pressable></Card><Card color={palette.indigoTint} style={styles.privacy}><Ionicons name="shield-checkmark-outline" size={22} color={palette.indigo} /><Text style={[typography.caption, { color: palette.indigoDeep, flex: 1 }]}>Your source images stay on-device. Only text you confirm is sent for question generation.</Text></Card><Pressable onPress={() => router.back()} style={styles.back}><Text style={[typography.caption, { color: palette.inkMuted }]}>Back to demo</Text></Pressable>
+        <Card style={styles.formCard}><Text style={[typography.heading, { color: palette.ink }]}>Welcome back, learner.</Text><Text style={[typography.body, { color: palette.inkMuted, marginTop: spacing.sm }]}>Sync your library and pick up where your memory left off.</Text><TextInput value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" placeholder="Email address" placeholderTextColor={palette.inkMuted} style={[styles.input, { color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paper }]} /><View style={styles.passwordRow}><TextInput value={password} onChangeText={setPassword} secureTextEntry={!visible} placeholder="Password" placeholderTextColor={palette.inkMuted} style={[styles.passwordInput, { color: palette.ink }]} /><Pressable onPress={() => setVisible((value) => !value)}><Ionicons name={visible ? 'eye-off-outline' : 'eye-outline'} size={22} color={palette.inkMuted} /></Pressable></View><Button icon="arrow-forward" onPress={() => void signIn()} disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</Button><Button variant="secondary" icon="logo-google" onPress={() => void startGoogle()}>Continue with Google</Button><View style={styles.divider}><View style={[styles.line, { backgroundColor: palette.paperMuted }]} /><Text style={[typography.caption, { color: palette.inkMuted }]}>or</Text><View style={[styles.line, { backgroundColor: palette.paperMuted }]} /></View><Pressable onPress={() => router.replace('/')} style={styles.guest}><Ionicons name="wifi-outline" size={18} color={palette.indigo} /><Text style={[typography.body, { color: palette.indigo, fontWeight: '800' }]}>Continue as guest</Text></Pressable></Card><Card color={palette.indigoTint} style={styles.privacy}><Ionicons name="shield-checkmark-outline" size={22} color={palette.indigo} /><Text style={[typography.caption, { color: palette.indigoDeep, flex: 1 }]}>Your source images stay on-device. Only text you confirm is sent for question generation.</Text></Card><Pressable onPress={() => router.back()} style={styles.back}><Text style={[typography.caption, { color: palette.inkMuted }]}>Back to demo</Text></Pressable>
       </Screen>
     </KeyboardAvoidingView>
   );

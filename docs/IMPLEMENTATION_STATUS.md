@@ -2,7 +2,7 @@
 
 | Area | Base status | Next vertical slice |
 | --- | --- | --- |
-| React Native shell | Runnable | Add auth gate and native development-build verification |
+| React Native shell | Runnable with guest/auth session bootstrap | Add native development-build verification and route policy |
 | Clean Architecture | TypeScript boundaries and domain entities present | Complete use cases and adapters feature by feature |
 | Local data | SQLite native + web AsyncStorage persistence baseline for question sets and attempts | Add versioned migrations, resume state and sync queue hydration tests |
 | OCR | ML Kit adapter boundary present | Add camera/gallery UI, preprocessing and Vietnamese QA |
