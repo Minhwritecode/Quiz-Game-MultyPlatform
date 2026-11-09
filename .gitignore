@@ -33,6 +33,13 @@ web-build/
 /android/
 /ios/
 
+# Local reference repositories used during the Papyrus integration audit.
+# They are intentionally not part of the Papyrus source tree or release.
+/QuizPulse-main/
+/StudyWars-master/
+/buzrr-main/
+/dev-quiz-battle-main/
+
 # Symbolication related
 app.*.symbols
 
