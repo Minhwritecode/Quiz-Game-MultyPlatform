@@ -28,9 +28,19 @@ export type Attempt = {
   id: string;
   questionSetId: string;
   score: number;
+  correctCount: number;
   total: number;
   startedAt: string;
-  finishedAt?: string;
+  finishedAt: string;
+  status: 'completed';
+  answers: AttemptAnswer[];
+};
+
+export type AttemptAnswer = {
+  questionId: string;
+  chosenIndex: number | null;
+  isCorrect: boolean;
+  timeMs: number;
 };
 
 export type SyncOperation = 'insert' | 'update' | 'delete';
