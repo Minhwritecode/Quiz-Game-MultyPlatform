@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { Attempt, QuestionSet } from '@/core/domain/models';
+import type { Attempt, QuestionSet, SyncItem } from '@/core/domain/models';
 
 let database: SQLite.SQLiteDatabase | null = null;
 
@@ -81,6 +81,8 @@ export async function loadQuestionSets(): Promise<QuestionSet[]> {
 export async function persistQuestionSet(questionSet: QuestionSet): Promise<void> {
   const db = getLocalDatabase();
   db.withTransactionSync(() => {
+    const existing = db.getFirstSync<{ id: string }>('SELECT id FROM question_sets WHERE id = ? LIMIT 1', questionSet.id);
+    const operation = existing ? 'update' : 'insert';
     db.runSync(
       'INSERT OR REPLACE INTO question_sets (id, title, subject, updated_at, sync_status, is_deleted) VALUES (?, ?, ?, ?, ?, 0)',
       questionSet.id, questionSet.title, questionSet.subject, questionSet.updatedAt, questionSet.syncStatus,
@@ -92,9 +94,10 @@ export async function persistQuestionSet(questionSet: QuestionSet): Promise<void
         question.id, questionSet.id, question.content, JSON.stringify(question.options), question.correctIndex, question.explanation, question.position,
       );
     }
+    db.runSync('DELETE FROM sync_queue WHERE entity = ? AND entity_id = ?', 'question_sets', questionSet.id);
     db.runSync(
       'INSERT INTO sync_queue (entity, entity_id, operation, payload, created_at) VALUES (?, ?, ?, ?, ?)',
-      'question_sets', questionSet.id, 'insert', JSON.stringify({ id: questionSet.id }), new Date().toISOString(),
+      'question_sets', questionSet.id, operation, JSON.stringify(questionSet), new Date().toISOString(),
     );
   });
 }
@@ -113,6 +116,11 @@ export async function saveAttempt(attempt: Attempt): Promise<void> {
         attempt.id, answer.questionId, answer.chosenIndex, answer.isCorrect ? 1 : 0, answer.timeMs,
       );
     }
+    db.runSync('DELETE FROM sync_queue WHERE entity = ? AND entity_id = ?', 'attempts', attempt.id);
+    db.runSync(
+      'INSERT INTO sync_queue (entity, entity_id, operation, payload, created_at) VALUES (?, ?, ?, ?, ?)',
+      'attempts', attempt.id, 'insert', JSON.stringify(attempt), new Date().toISOString(),
+    );
   });
 }
 
@@ -139,4 +147,27 @@ export async function getLatestAttempt(questionSetId: string): Promise<Attempt |
     status: row.status,
     answers: answers.map((answer) => ({ questionId: answer.question_id, chosenIndex: answer.chosen_index, isCorrect: answer.is_correct === 1, timeMs: answer.time_ms })),
   };
+}
+
+type SyncItemRow = { id: number; entity: string; entity_id: string; operation: SyncItem['operation']; payload: string; created_at: string; retry_count: number };
+
+export async function loadSyncItems(): Promise<SyncItem[]> {
+  const db = getLocalDatabase();
+  return db.getAllSync<SyncItemRow>('SELECT id, entity, entity_id, operation, payload, created_at, retry_count FROM sync_queue ORDER BY created_at ASC, id ASC').map((item) => ({
+    id: item.id,
+    entity: item.entity,
+    entityId: item.entity_id,
+    operation: item.operation,
+    payload: JSON.parse(item.payload) as Record<string, unknown>,
+    createdAt: item.created_at,
+    retryCount: item.retry_count,
+  }));
+}
+
+export async function acknowledgeSyncItem(id: number): Promise<void> {
+  getLocalDatabase().runSync('DELETE FROM sync_queue WHERE id = ?', id);
+}
+
+export async function markSyncItemRetry(id: number): Promise<void> {
+  getLocalDatabase().runSync('UPDATE sync_queue SET retry_count = retry_count + 1 WHERE id = ?', id);
 }

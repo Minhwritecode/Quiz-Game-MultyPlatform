@@ -9,5 +9,5 @@
 | LLM generation | Server-side Gemini-compatible adapter, structured JSON validation and client parser baseline | Add streaming, provider retries/rate limits and citation-aware review |
 | Study mode | Offline study persists completed attempts and renders a result screen | Persist resume checkpoints, attempt history and interruption recovery |
 | Realtime battle | Room state reducer, Supabase room repository/Realtime adapter and server-authoritative RPC migration baseline | Seed room questions, wire lifecycle UI, Presence and reconnect state machine |
-| Sync | Queue model, engine contract and LWW resolver | Wire SQLite + Supabase push/pull and retry backoff |
+| Sync | SQLite/web outbox persistence, coalesced writes and tested drain contract | Wire authenticated Supabase push/pull, cursor and retry backoff |
 | CI/CD | GitHub Actions, EAS profile scaffold, manual release workflow and Docker | Link EAS project, signing configuration and protected release environment |

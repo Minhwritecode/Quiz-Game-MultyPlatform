@@ -50,7 +50,7 @@
 - [ ] Add session bootstrap and guest/authenticated route policy.
 - [ ] Add email/password plus Google/Apple provider ports; keep OAuth configuration external.
 - [ ] Persist source documents and attempts with owner IDs in Supabase.
-- [ ] Implement local outbox read/ack/retry with exponential backoff and idempotency keys.
+- [x] Implement local outbox read/ack/retry contract with coalesced entity writes.
 - [ ] Implement pull cursor and conflict resolution for question sets.
 - [ ] Add RLS tests for owner-only documents, sets, attempts and sync rows.
 - [ ] Acceptance: offline writes survive restart and converge after sign-in without duplicating entities.
