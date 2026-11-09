@@ -1,4 +1,6 @@
 import { corsHeaders } from "../_shared/cors.ts";
+import { generateWithGemini } from "../_shared/gemini.ts";
+import { normaliseQuestions, parseModelJson } from "../_shared/question-schema.ts";
 
 type RequestBody = {
   source_text: string;
@@ -28,19 +30,47 @@ Deno.serve(async (request) => {
     });
   }
 
-  // Keep provider keys server-side. Replace this scaffold with the selected
-  // Gemini streaming client and emit one JSON object per SSE data event.
-  const payload = {
-    message: "LLM provider adapter pending",
-    requested: {
-      question_count: body.question_count,
+  const questionCount = Math.max(1, Math.min(30, Math.floor(body.question_count)));
+  if (!Number.isFinite(questionCount) || !["easy", "medium", "hard"].includes(body.difficulty)) {
+    return new Response(JSON.stringify({ error: "Invalid generation settings" }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const apiKey = Deno.env.get("GEMINI_API_KEY");
+  const model = Deno.env.get("GEMINI_MODEL");
+  if (!apiKey || !model) {
+    return new Response(JSON.stringify({ error: "AI provider is not configured" }), {
+      status: 503,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  try {
+    const raw = await generateWithGemini({
+      sourceText: body.source_text.trim(),
+      questionCount,
       difficulty: body.difficulty,
-      language: body.language,
-    },
-  };
-  return new Response(JSON.stringify(payload), {
-    status: 501,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
+      language: body.language || "en",
+      apiKey,
+      model,
+    });
+    const questions = normaliseQuestions(parseModelJson(raw), questionCount).map((question, position) => ({
+      id: crypto.randomUUID(),
+      ...question,
+      position,
+    }));
+    return new Response(JSON.stringify({ questions }), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (error) {
+    console.error("generate-questions failed", error instanceof Error ? error.message : "unknown error");
+    return new Response(JSON.stringify({ error: "AI generation failed validation or timed out" }), {
+      status: 502,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
 });
 

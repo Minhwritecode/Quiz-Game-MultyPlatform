@@ -35,14 +35,14 @@
 - [x] Connect paste/gallery OCR intake to the generation flow.
 - [x] Verify TypeScript, Jest, architecture boundary and Expo web export.
 
-### Week 2 — Protected AI generation and review
+### Week 2 — Protected AI generation and review — in progress
 
-- [ ] Implement a server-side Gemini-compatible provider adapter in the Edge Function.
-- [ ] Validate generated questions against one shared contract before returning them.
-- [ ] Add retry, timeout, request-size and question-count limits.
-- [ ] Replace the hardcoded generation preview with source-backed generated state.
+- [x] Implement a server-side Gemini-compatible provider adapter in the Edge Function.
+- [x] Validate generated questions against a server contract before returning them.
+- [x] Add timeout, request-size and question-count limits.
+- [x] Replace the hardcoded generation preview with source-backed generated state when Supabase is configured.
 - [ ] Add editable review actions: edit question, edit option, change answer, remove question.
-- [ ] Add parser/provider tests with malformed JSON, code fences, duplicate questions and short responses.
+- [x] Add client parser tests with malformed questions, code fences and duplicate questions.
 - [ ] Acceptance: a signed-in user can submit confirmed text and save only schema-valid questions; no provider key reaches the app.
 
 ### Week 3 — Auth, profile and sync outbox
