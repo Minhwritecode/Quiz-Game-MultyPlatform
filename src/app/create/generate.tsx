@@ -3,7 +3,8 @@ import { useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 import { Button, Card, PageHeader, Screen, TopBar, usePalette } from '@/shared/ui';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
-import { saveQuestionSetOffline } from '@/features/question-sets/data/persistence';
+import { dependencies } from '@/app/composition/dependencies';
+import { saveQuestionSet } from '@/features/question-sets/domain/saveQuestionSet';
 import type { Question } from '@/core/domain/models';
 import { spacing, typography } from '@/core/theme/tokens';
 
@@ -16,7 +17,8 @@ const generated: Question[] = [
 export default function GenerateScreen() {
   const router = useRouter();
   const palette = usePalette();
-  const saveQuestionSet = usePapyrusStore((state) => state.saveQuestionSet);
+  const saveToStore = usePapyrusStore((state) => state.saveQuestionSet);
+  const sourceDocument = usePapyrusStore((state) => state.sourceDocument);
   const [count, setCount] = useState(10);
   const [difficulty, setDifficulty] = useState<'Easy' | 'Balanced' | 'Challenge'>('Balanced');
   const [busy, setBusy] = useState(false);
@@ -25,13 +27,20 @@ export default function GenerateScreen() {
     await new Promise((resolve) => setTimeout(resolve, 450));
     setBusy(false);
   };
-  const save = () => {
-    const questionSet = { id: `generated-${Date.now()}`, title: 'My generated study set', subject: 'From scanned material', updatedAt: new Date().toISOString(), syncStatus: 'pending' as const, questions: generated };
-    saveQuestionSet(questionSet);
-    saveQuestionSetOffline(questionSet);
-    Alert.alert('Saved locally', 'Your question set is ready for offline study.', [{ text: 'Open library', onPress: () => router.replace('/sets') }]);
+  const save = async () => {
+    setBusy(true);
+    const questionSet = { id: `generated-${Date.now()}`, title: sourceDocument?.title ?? 'My generated study set', subject: 'From scanned material', updatedAt: new Date().toISOString(), syncStatus: 'pending' as const, questions: generated };
+    try {
+      await saveQuestionSet(dependencies.questionSets, questionSet);
+      saveToStore(questionSet);
+      Alert.alert('Saved locally', 'Your question set is ready for offline study.', [{ text: 'Open library', onPress: () => router.replace('/sets') }]);
+    } catch (error) {
+      Alert.alert('Could not save', error instanceof Error ? error.message : 'Please try again.');
+    } finally {
+      setBusy(false);
+    }
   };
-  return <Screen><TopBar title="Shape your quiz" /><PageHeader eyebrow="STEP 2 OF 3 · SHAPE" title="Make the generation yours" subtitle="Choose the output before the protected generation request begins." /><Card style={styles.controls}><Text style={[typography.title, { color: palette.ink }]}>Question count</Text><View style={styles.choiceRow}>{[5, 10, 15].map((value) => <Button key={value} variant={count === value ? 'primary' : 'secondary'} onPress={() => setCount(value)}>{String(value)}</Button>)}</View><Text style={[typography.title, { color: palette.ink, marginTop: spacing.xl }]}>Difficulty</Text><View style={styles.choiceRow}>{(['Easy', 'Balanced', 'Challenge'] as const).map((value) => <Button key={value} variant={difficulty === value ? 'primary' : 'secondary'} onPress={() => setDifficulty(value)}>{value}</Button>)}</View><Text style={[typography.caption, { color: palette.inkMuted, marginTop: spacing.lg }]}>{count} questions · {difficulty} · English</Text></Card><Text style={[typography.title, { color: palette.ink, marginTop: spacing.xl, marginBottom: spacing.md }]}>Review preview</Text>{generated.slice(0, 2).map((question, index) => <Card key={question.id} style={styles.question}><Text style={[typography.label, { color: palette.indigo }]}>QUESTION {index + 1}</Text><Text style={[typography.title, { color: palette.ink, marginTop: spacing.sm }]}>{question.content}</Text><Text style={[typography.caption, { color: palette.inkMuted, marginTop: spacing.sm }]}>{question.options.join('  ·  ')}</Text></Card>)}<View style={styles.actions}><Button variant="secondary" onPress={generate} disabled={busy}>{busy ? 'Generating…' : 'Regenerate preview'}</Button><Button icon="checkmark" onPress={save}>Save question set</Button></View></Screen>;
+  return <Screen><TopBar title="Shape your quiz" /><PageHeader eyebrow="STEP 2 OF 3 · SHAPE" title="Make the generation yours" subtitle="Choose the output before the protected generation request begins." /><Card style={styles.controls}><Text style={[typography.title, { color: palette.ink }]}>Question count</Text><View style={styles.choiceRow}>{[5, 10, 15].map((value) => <Button key={value} variant={count === value ? 'primary' : 'secondary'} onPress={() => setCount(value)}>{String(value)}</Button>)}</View><Text style={[typography.title, { color: palette.ink, marginTop: spacing.xl }]}>Difficulty</Text><View style={styles.choiceRow}>{(['Easy', 'Balanced', 'Challenge'] as const).map((value) => <Button key={value} variant={difficulty === value ? 'primary' : 'secondary'} onPress={() => setDifficulty(value)}>{value}</Button>)}</View><Text style={[typography.caption, { color: palette.inkMuted, marginTop: spacing.lg }]}>{count} questions · {difficulty} · English</Text></Card><Text style={[typography.title, { color: palette.ink, marginTop: spacing.xl, marginBottom: spacing.md }]}>Review preview</Text>{generated.slice(0, 2).map((question, index) => <Card key={question.id} style={styles.question}><Text style={[typography.label, { color: palette.indigo }]}>QUESTION {index + 1}</Text><Text style={[typography.title, { color: palette.ink, marginTop: spacing.sm }]}>{question.content}</Text><Text style={[typography.caption, { color: palette.inkMuted, marginTop: spacing.sm }]}>{question.options.join('  ·  ')}</Text></Card>)}<View style={styles.actions}><Button variant="secondary" onPress={generate} disabled={busy}>{busy ? 'Generating…' : 'Regenerate preview'}</Button><Button icon="checkmark" onPress={save} disabled={busy}>{busy ? 'Saving…' : 'Save question set'}</Button></View></Screen>;
 }
 
 const styles = StyleSheet.create({
