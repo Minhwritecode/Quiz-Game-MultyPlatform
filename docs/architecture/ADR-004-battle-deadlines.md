@@ -1,6 +1,6 @@
 # ADR 004: Fixed server deadlines for speed battles
 
-Date: 2026-11-10. Status: implemented locally, verification in progress.
+Date: 2026-11-10. Status: verified by local SQL and four-client API/Realtime tests.
 
 Each match snapshots its questions in a database transaction. Server timestamps
 schedule a three-second countdown, an answer window per question, and a

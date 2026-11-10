@@ -408,13 +408,13 @@ close the app, reopen it and resume or inspect the result.
 - [ ] Finalize rooms, room players, room questions and room answers migrations.
 - [ ] Add RLS policies and test cross-user access denial.
 - [ ] Implement room creation with a six-character code and a 2-4 player cap.
-- [ ] Implement join, leave, Presence and lobby state.
+- [ ] Implement join, leave, Presence and lobby state. RPCs, heartbeat and UI are implemented; browser/device acceptance remains pending (see `integration/DELIVERY-CHECKLIST.md`).
 - [ ] Implement the server room state machine: waiting, countdown,
   question-open, question-result and finished.
-- [ ] Snapshot questions at match start.
-- [ ] Keep answer keys off the client until the question closes.
-- [ ] Implement `submit_answer` as a server-side idempotent operation.
-- [ ] Calculate speed-mode score on the server.
+- [x] Snapshot questions at match start. Verified by local lifecycle SQL/API tests.
+- [x] Keep answer keys off the client until the question closes. Verified by local RLS/API tests, including explanation privacy.
+- [x] Implement `submit_answer` as a server-side idempotent operation. Verified with concurrent retries from independent API clients.
+- [x] Calculate speed-mode score on the server. Verified by SQL and API smoke tests.
 - [ ] Implement reconnect with a 30-second seat hold.
 - [ ] Transfer host or end the room according to the specification.
 - [ ] Add live scoreboard and final ranking.
