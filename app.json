@@ -9,6 +9,7 @@
     "newArchEnabled": true,
     "plugins": [
       "expo-router",
+      ["expo-image-picker", {"cameraPermission": "Allow Papyrus to scan your study notes on this device.", "photosPermission": "Allow Papyrus to read selected study material.", "microphonePermission": false}],
       "expo-sqlite",
       "expo-secure-store"
     ],
