@@ -20,8 +20,7 @@ try {
     check(await client.auth.signInWithPassword({email,password}));clients.push(client);
   }
   const setId=randomUUID();
-  check(await clients[0].from('question_sets').insert({id:setId,owner_id:ids[0],title:'Local battle smoke'}));
-  check(await clients[0].from('questions').insert({id:randomUUID(),set_id:setId,content:'One plus one?',options:['2','3','4','5'],correct_index:0,explanation:'Two',position:0}));
+  check(await clients[0].rpc('sync_push_set',{mutation_id:randomUUID(),base_revision:'0',document:{id:setId,title:'Local battle smoke',subject:'Math',questions:[{id:randomUUID(),content:'One plus one?',options:['2','3','4','5'],correctIndex:0,explanation:'Two',position:0}]}}));
   const [room]=check(await clients[0].rpc('create_room',{p_set_id:setId,p_question_count:1,p_seconds_per_question:5,p_mode:'speed'}));roomId=room.id;
   for(let i=1;i<4;i++)check(await clients[i].rpc('join_room',{p_code:room.code}));
   assert.ok((await clients[4].rpc('join_room',{p_code:room.code})).error,'fifth player must be denied');
