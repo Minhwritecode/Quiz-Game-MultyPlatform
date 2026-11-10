@@ -1,5 +1,6 @@
 import { supabase } from '@/core/network/supabase';
 import type { RoomRecord, RoomRepository } from '../domain/repository';
+import { battleSchema } from '../domain/battle';
 
 type RoomRow = {
   id: string;
@@ -36,6 +37,37 @@ function firstRow(data: unknown): RoomRow {
 }
 
 export const isRoomBackendConfigured = Boolean(supabase);
+
+async function rpc(name: string, args: Record<string, unknown>) {
+  if (!supabase) throw new Error('Sign in to a configured server first.');
+  const {data,error}=await supabase.rpc(name,args);
+  if(error) throw new Error(error.message);
+  return data as unknown;
+}
+
+export const battleRepository = {
+  async sets() {
+    if(!supabase) throw new Error('Server is not configured.');
+    const {data:user,error:authError}=await supabase.auth.getUser();
+    if(authError || !user.user) throw new Error('Sign in to play online.');
+    const {data,error}=await supabase.from('question_sets').select('id,title').eq('owner_id',user.user.id).eq('is_deleted',false);
+    if(error) throw new Error(error.message);
+    return (data ?? []) as {id:string;title:string}[];
+  },
+  async snapshot(id:string) {return battleSchema.parse(await rpc('battle_snapshot',{target:id}));},
+  async start(id:string) {await rpc('battle_start',{target:id});},
+  async heartbeat(id:string,ready?:boolean) {await rpc('battle_heartbeat',{target:id,p_ready:ready??null});},
+  async leave(id:string) {await rpc('battle_leave',{target:id});},
+  async answer(id:string,position:number,index:number) {await rpc('submit_answer',{p_room_id:id,p_position:position,p_chosen_index:index});},
+  subscribe(id:string,onChange:()=>void) {
+    const client=supabase;
+    if(!client) return ()=>undefined;
+    const channel=client.channel(`battle-events:${id}`)
+      .on('postgres_changes',{event:'*',schema:'public',table:'room_players',filter:`room_id=eq.${id}`},onChange)
+      .on('postgres_changes',{event:'UPDATE',schema:'public',table:'rooms',filter:`id=eq.${id}`},onChange).subscribe();
+    return ()=>{void client.removeChannel(channel);};
+  },
+};
 
 export const roomRepository: RoomRepository = {
   async create(input) {

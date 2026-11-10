@@ -1,24 +1,89 @@
-import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
-import { Alert, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Badge, BottomNav, Button, Card, PageHeader, Screen, usePalette } from '@/shared/ui';
-import { colors, radii, spacing, typography } from '@/core/theme/tokens';
+import { useEffect, useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
+import { AppState, Share, Text, TextInput, View } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Button, Card, PageHeader, Screen, usePalette } from '@/shared/ui';
+import { dependencies } from './composition/dependencies';
+import { useAuthStore } from '@/core/state/useAuthStore';
+import type { Battle } from '@/features/room-battle/domain/battle';
 
 export default function BattleScreen() {
-  const palette = usePalette();
-  const [code, setCode] = useState('');
-  const [roomCode, setRoomCode] = useState<string | null>(null);
-  const createRoom = () => setRoomCode(Math.random().toString(36).slice(2, 8).toUpperCase());
-  const joinRoom = () => code.trim().length === 6 ? setRoomCode(code.trim().toUpperCase()) : Alert.alert('Enter a room code', 'Room codes contain six characters.');
-  return <Screen bottomNav><PageHeader eyebrow="STUDY CIRCLE" title="A little friendly pressure" subtitle="Battle fairly with server time, duplicate-answer protection and reconnect support." />{roomCode ? <Card color={palette.indigoTint} style={styles.room}><Badge tone="primary">WAITING ROOM</Badge><Text style={[typography.heading, { color: palette.indigo, marginTop: spacing.lg, letterSpacing: 5 }]}>{roomCode}</Text><Text style={[typography.body, { color: palette.indigoDeep, marginTop: spacing.sm }]}>Share this code with 1–3 classmates.</Text><View style={styles.players}><Ionicons name="people" size={20} color={palette.mint} /><Text style={[typography.body, { color: palette.mint, fontWeight: '800' }]}>You · waiting for players</Text></View><Button variant="secondary" onPress={() => setRoomCode(null)}>Leave room</Button></Card> : <View style={styles.columns}><Card style={styles.battleCard}><Ionicons name="add-circle" size={30} color={palette.indigo} /><Text style={[typography.title, { color: palette.ink, marginTop: spacing.md }]}>Create a room</Text><Text style={[typography.caption, { color: palette.inkMuted, marginTop: 4 }]}>Choose a set and invite your study circle.</Text><Button icon="add" onPress={createRoom}>Create room</Button></Card><Card style={styles.battleCard}><Ionicons name="keypad" size={30} color={palette.gold} /><Text style={[typography.title, { color: palette.ink, marginTop: spacing.md }]}>Join a room</Text><Text style={[typography.caption, { color: palette.inkMuted, marginTop: 4 }]}>Enter the six-character code from your host.</Text><TextInput autoCapitalize="characters" value={code} onChangeText={setCode} maxLength={6} placeholder="ABC123" placeholderTextColor={palette.inkMuted} style={[styles.codeInput, { color: palette.ink, borderColor: palette.paperMuted }]} /><Button variant="secondary" icon="arrow-forward" onPress={joinRoom}>Join battle</Button></Card></View>}<Card style={styles.contract}><Text style={[typography.title, { color: palette.ink }]}>Battle contract</Text>{[['people-outline', '2–4 players per room'], ['timer-outline', 'Server time controls the window'], ['shield-checkmark-outline', 'RPC owns scoring and duplicates'], ['wifi-outline', 'Reconnect hold keeps the room fair']].map(([icon, label]) => <View key={label} style={styles.contractRow}><Ionicons name={icon as keyof typeof Ionicons.glyphMap} size={20} color={palette.indigo} /><Text style={[typography.body, { color: palette.ink }]}>{label}</Text></View>)}</Card></Screen>;
-}
+  const palette=usePalette();
+  const user=useAuthStore(s=>s.user);
+  const params=useLocalSearchParams<{code?:string}>();
+  const [code,setCode]=useState(params.code??'');
+  const [roomId,setRoomId]=useState<string|null>(null);
+  const [battle,setBattle]=useState<Battle|null>(null);
+  const [sets,setSets]=useState<{id:string;title:string}[]>([]);
+  const [error,setError]=useState('');
+  const [busy,setBusy]=useState(false);
+  const roomKey=`papyrus.battle.${user?.id??'guest'}`;
 
-const styles = StyleSheet.create({
-  columns: { gap: spacing.md },
-  battleCard: { gap: spacing.sm },
-  codeInput: { minHeight: 54, borderWidth: 1, borderRadius: radii.sm, paddingHorizontal: spacing.md, fontSize: 22, fontWeight: '800', letterSpacing: 4, marginVertical: spacing.md },
-  room: { alignItems: 'center', paddingVertical: spacing.xxxl, marginBottom: spacing.xl },
-  players: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center', marginVertical: spacing.xl },
-  contract: { marginTop: spacing.xl },
-  contractRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: spacing.md },
-});
+  useEffect(()=>{
+    let active=true;
+    setRoomId(null); setBattle(null); setSets([]);
+    if(user) {
+      void AsyncStorage.getItem(roomKey).then(id=>{if(active)setRoomId(id);});
+      void dependencies.battle.sets().then(value=>{if(active)setSets(value);}).catch(e=>{if(active)setError(String(e.message));});
+    }
+    return ()=>{active=false;};
+  },[user?.id,roomKey]);
+
+  useEffect(()=>{
+    if(!roomId) return;
+    let active=true, fetching=false;
+    const refresh=async()=>{
+      if(fetching || AppState.currentState==='background')return;
+      fetching=true;
+      try {const next=await dependencies.battle.snapshot(roomId); if(active){setBattle(next);setError('');}}
+      catch(e){if(active)setError(e instanceof Error?e.message:'Connection interrupted. Reconnecting…');}
+      finally {fetching=false;}
+    };
+    const heartbeat=()=>{void dependencies.battle.heartbeat(roomId).then(refresh).catch(()=>{if(active)setError('Connection interrupted. Reconnecting…');});};
+    heartbeat();
+    const unsubscribe=dependencies.battle.subscribe(roomId,()=>void refresh());
+    const poll=setInterval(()=>void refresh(),1500);
+    const lease=setInterval(heartbeat,10000);
+    const appState=AppState.addEventListener('change',state=>{if(state==='active')heartbeat();});
+    return ()=>{active=false;clearInterval(poll);clearInterval(lease);unsubscribe();appState.remove();};
+  },[roomId]);
+
+  const run=async(action:()=>Promise<void>)=>{
+    if(busy)return;setBusy(true);setError('');
+    try {await action();}catch(e){setError(e instanceof Error?e.message:'Please retry.');}finally{setBusy(false);}
+  };
+  const enter=async(id:string)=>{await AsyncStorage.setItem(roomKey,id);setRoomId(id);};
+  const leave=async()=>{if(roomId)await dependencies.battle.leave(roomId);await AsyncStorage.removeItem(roomKey);setRoomId(null);setBattle(null);};
+  const me=battle?.players.find(p=>p.userId===user?.id);
+  const question=battle?.question;
+  return <Screen bottomNav><PageHeader title="Study circle" subtitle="Invite classmates for a 2–4 player quiz." />
+    {!!error&&<Text accessibilityRole="alert" style={{color:palette.danger,marginBottom:16}}>{error}</Text>}
+    {!user&&<Card><Text style={{color:palette.ink}}>Sign in to create or join an online room. Offline study remains available in your library.</Text></Card>}
+    {user&&!roomId&&<View style={{gap:16}}>
+      <Card><Text style={{color:palette.ink}}>Create from a synced question set</Text>
+        {sets.length===0&&<Text style={{color:palette.inkMuted}}>No cloud question sets yet. Sync a set before hosting.</Text>}
+        {sets.map(set=><Button key={set.id} disabled={busy} onPress={()=>void run(async()=>{const room=await dependencies.rooms.create({setId:set.id,questionCount:10,secondsPerQuestion:15,mode:'speed'});await enter(room.id);})}>{set.title}</Button>)}
+      </Card>
+      <Card><TextInput accessibilityLabel="Room code" value={code} onChangeText={setCode} autoCapitalize="characters" maxLength={6} placeholder="ABC123" style={{color:palette.ink,minHeight:48}} />
+        <Button disabled={busy||!/^[a-z0-9]{6}$/i.test(code.trim())} onPress={()=>void run(async()=>{await enter((await dependencies.rooms.join(code.trim().toUpperCase())).id);})}>Join room</Button></Card>
+    </View>}
+    {roomId&&!battle&&<Text style={{color:palette.ink}}>Restoring your room…</Text>}
+    {battle&&<View style={{gap:16}}>
+      <Card><Text style={{color:palette.ink,fontSize:24}}>{battle.code}</Text><Text style={{color:palette.inkMuted}}>{battle.phase.replaceAll('_',' ')}</Text>
+        <Button variant="secondary" onPress={()=>void Share.share({message:`Join Papyrus: papyrus://battle?code=${battle.code}\nRoom code: ${battle.code}`})}>Share invitation</Button>
+        {battle.phase==='waiting'&&<Button disabled={busy} onPress={()=>void run(()=>dependencies.battle.heartbeat(roomId!,!me?.ready))}>{me?.ready?'Not ready':'Ready'}</Button>}
+        {battle.phase==='waiting'&&battle.hostId===user?.id&&<Button disabled={busy||battle.players.length<2||battle.players.some(p=>!p.ready||!p.connected)} onPress={()=>void run(()=>dependencies.battle.start(roomId!))}>Start quiz</Button>}
+      </Card>
+      {question&&battle.phase!=='finished'&&<Card>
+        <Text style={{color:palette.ink,fontSize:20}}>{question.position+1}. {question.content}</Text>
+        {question.options.map((option,index)=><Button key={index} variant={question.correctIndex===index?'primary':'secondary'} disabled={busy||battle.answered||battle.phase!=='question_open'} onPress={()=>void run(async()=>{await dependencies.battle.answer(roomId!,question.position,index);setBattle(await dependencies.battle.snapshot(roomId!));})}>{option}</Button>)}
+        {battle.answered&&<Text style={{color:palette.inkMuted}}>Answer received.</Text>}
+        {question.explanation&&<Text style={{color:palette.ink}}>{question.explanation}</Text>}
+      </Card>}
+      <Card><Text style={{color:palette.ink,fontSize:20}}>{battle.phase==='finished'?'Final ranking':'Live scores'}</Text>
+        {battle.players.map((p,i)=><Text key={p.userId} style={{color:palette.ink,marginVertical:8}}>{i+1}. {p.name} · {p.score} points · {p.connected?(p.ready?'ready':'online'):'reconnecting'}{p.userId===battle.hostId?' · host':''}</Text>)}
+      </Card>
+    </View>}
+    {roomId&&<Button disabled={busy} variant="secondary" onPress={()=>void run(leave)}>Leave room</Button>}
+  </Screen>;
+}
