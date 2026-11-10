@@ -1,4 +1,4 @@
-# Papyrus delivery checklist — 10 November 2026
+# Papyrus delivery checklist — 11 November 2026
 
 This file tracks user-requested completion work against PROJECT-PLAN.md and the
 four source snapshots. A source file or passing typecheck alone does not satisfy
@@ -16,7 +16,7 @@ an end-to-end acceptance gate. Checkboxes require the evidence stated below.
 | Reconnect/host transfer | Refresh restores room; 30-second hold; host transfer; offline recovery | Implemented heartbeat/restore/transfer; strict eviction pending |
 | QR/link join | Shared link, cold/warm start, locally generated QR and scanner | Link payload implemented; QR/scanner pending |
 | Leaderboard | Persisted match ranking and live global/friends leaderboard | In-room ranking implemented; global screen still demo |
-| Cloud sync | Account-scoped UUID writes, atomic outbox, cursor pull, retry/conflict tests | Pending; local queue baseline only |
+| Cloud sync | Account-scoped UUID writes, atomic outbox, cursor pull, retry/conflict tests | Question-set RPC and explicit account import UI implemented; local API/domain tests pass. Attempt sync, auto sync and device E2E pending |
 | Local library | CRUD/duplicate/tombstone, source persistence | Save/list/search only |
 | Study | Sequential/random/timed/incorrect-only, checkpoint resume, history | Sequential/result only; remaining modes pending |
 | Auth | Registration/login/logout/session, guest merge, OAuth callbacks | Partial; OAuth callback and guest merge pending |
@@ -75,3 +75,26 @@ No hosted migrations or paid provider requests are part of local verification.
    and final report/plan reconciliation.
 
 This delivery does not mark the complete project or full four-repository parity done.
+
+## Follow-up: account question-set sync (11 November)
+
+- [x] Push the five previously queued commits to origin/main after credit reset.
+- [x] Atomic question-set RPC with owner checks, revision cursor and retry receipts.
+- [x] Local integration checks: owner/anonymous isolation, duplicate mutation,
+  stale/concurrent edits, invalid payload rollback and deletion tombstones.
+- [x] Concurrent different owners cannot claim one set or overwrite another set's question.
+- [x] Account-scoped persisted document/outbox envelope (SQLite native; AsyncStorage web).
+- [x] Explicit device-library import remaps legacy IDs to stable account UUIDs.
+- [x] Settings → Account library: import/update, manual sync, conflict choices,
+  confirmed deletion and pending/error status. Guest data is not auto-uploaded.
+- [x] Domain tests cover account isolation, restart/backoff retry and conflict rebasing.
+- [x] Typecheck, architecture check, 8 Jest suites / 16 tests and Expo web export pass.
+- [x] Four-client battle/Realtime integration still passes with RPC-only set writes.
+- [ ] Browser UI integration and native SQLite/device persistence verification.
+- [ ] Automatic/background sync, attempt/history sync and legacy queue migration.
+- [ ] Cloud project schema/auth configuration and multi-device cloud verification.
+
+The user has created a hosted project. No hosted migration or settings change has
+been made. Project URL and a publishable key configure the client; deployment
+also requires authenticated management/CLI access. Keep local tests independent
+of hosted data. The sync test harness refuses non-loopback API URLs.
