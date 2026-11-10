@@ -32,6 +32,11 @@ web-build/
 /coverage/
 /android/
 /ios/
+.env
+.env.*
+!.env.example
+supabase/.temp/
+supabase/.branches/
 
 # Local reference repositories used during the Papyrus integration audit.
 # They are intentionally not part of the Papyrus source tree or release.

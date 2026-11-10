@@ -51,7 +51,7 @@ begin
   end if;
 
   for attempt in 1..5 loop
-    candidate_code := upper(substr(replace(public.gen_random_uuid()::text, '-', ''), 1, 6));
+    candidate_code := upper(substr(replace(pg_catalog.gen_random_uuid()::text, '-', ''), 1, 6));
     begin
       insert into public.rooms(code, host_id, set_id, mode, question_count, seconds_per_question)
       values (candidate_code, current_user_id, p_set_id, p_mode, p_question_count, p_seconds_per_question)
@@ -139,7 +139,7 @@ drop policy if exists "users join rooms" on public.room_players;
 
 create or replace function public.get_room_question(p_room_id uuid, p_position integer)
 returns table (
-  position integer,
+  "position" integer,
   question_snapshot jsonb,
   opens_at timestamptz,
   closes_at timestamptz
