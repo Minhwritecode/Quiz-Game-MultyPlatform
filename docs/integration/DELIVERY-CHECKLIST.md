@@ -63,9 +63,9 @@ No hosted migrations or paid provider requests are part of local verification.
 
 ## Remaining, in execution order
 
-1. Account-scoped cloud sync (UUID migration for legacy local IDs, atomic outbox,
-   guest merge, cursor/conflict/backoff tests). Hosting currently requires a cloud
-   question set; newly generated local sets are not yet synchronized.
+1. Verify account-scoped question-set sync through browser/native UI on cloud.
+   Explicit import, UUID mapping, outbox and cursor/conflict/backoff logic now exist;
+   automatic/background and attempt/history sync remain pending.
 2. Browser component/E2E checks for battle, explicit reconnect within/beyond the
    30-second lease, vacant-seat cleanup and four-device UI checks.
 3. QR renderer/scanner and native/web link acceptance; global/friends leaderboard.
@@ -92,9 +92,40 @@ This delivery does not mark the complete project or full four-repository parity 
 - [x] Four-client battle/Realtime integration still passes with RPC-only set writes.
 - [ ] Browser UI integration and native SQLite/device persistence verification.
 - [ ] Automatic/background sync, attempt/history sync and legacy queue migration.
-- [ ] Cloud project schema/auth configuration and multi-device cloud verification.
+- [x] Deploy cloud database schema and verify RLS/RPC grants and Realtime publication.
+- [ ] Complete app auth flows and authenticated multi-device cloud verification.
 
-The user has created a hosted project. No hosted migration or settings change has
-been made. Project URL and a publishable key configure the client; deployment
-also requires authenticated management/CLI access. Keep local tests independent
-of hosted data. The sync test harness refuses non-loopback API URLs.
+Keep local tests independent of hosted data. The sync and battle smoke harnesses
+remain local-only; do not substitute cloud credentials into them.
+
+## Cloud deployment — 11 November 2026
+
+Target: `Quiz-Game-MultyPlatform` / `rqfolapnysclnmolrsva` (Singapore).
+The Supabase dashboard labels its main database production; Papyrus itself is
+still under development and has not passed release acceptance.
+
+- CLI account access and exact project ref verified; local repo linked.
+- Read-only preflight confirmed no existing public application tables.
+- Applied all five repository migrations with `--skip-vault`; no seed data or
+  provider secrets deployed. A subsequent dry run reports `upToDate: true`.
+- All 11 public application tables have RLS enabled.
+- All 10 battle/sync RPCs deny `anon` execute and allow `authenticated` execute.
+- Raw room question snapshots remain unreadable to authenticated clients;
+  direct question-set and battle writes remain revoked.
+- `rooms` and `room_players` are in the `supabase_realtime` publication.
+- Cloud SDK probes: question_sets/rooms/room_players with limit 0 return HTTP 200;
+  anonymous sync_pull_sets and battle_snapshot return HTTP 401 / SQLSTATE 42501.
+- Security Advisor reports WARN findings for authenticated SECURITY DEFINER
+  RPCs. These are intentional controlled entry points with owner/member checks;
+  local regression evidence is above. This is not a claim of zero findings.
+- Advisor also flags existing `public.rls_auto_enable()` for anon/authenticated
+  execute. Inspection confirms it returns `event_trigger` and enables RLS on new
+  public tables; it is platform-created, outside Papyrus migrations, and was not
+  changed. Review its default grants during release hardening.
+- `.env.local` contains the supplied client configuration and remains gitignored.
+  The existing `EXPO_PUBLIC_SUPABASE_ANON_KEY` variable accepts the publishable key.
+
+Still unverified on cloud: authenticated sync/battle end-to-end, multiple devices,
+OAuth callbacks, camera/native persistence and AI provider requests. No cloud test
+users were created in this deployment. Supabase dashboard login is separate from
+the end-user accounts used to sign into the Papyrus app.
