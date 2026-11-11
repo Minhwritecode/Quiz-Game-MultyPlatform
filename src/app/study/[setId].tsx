@@ -23,6 +23,7 @@ export default function StudyScreen() {
   const [sessionStartedAt] = useState(() => new Date().toISOString());
   const [questionStartedAt, setQuestionStartedAt] = useState(() => Date.now());
   const [saving, setSaving] = useState(false);
+  const [saveError,setSaveError]=useState('');
   const question = useMemo(() => questionSet?.questions[index], [index, questionSet]);
 
   if (!questionSet || !question) {
@@ -64,8 +65,13 @@ export default function StudyScreen() {
       startedAt: sessionStartedAt,
       answers: finalAnswers,
     });
-    await dependencies.study.saveAttempt(attempt);
-    router.replace({ pathname: '/study/result', params: { setId: questionSet.id, attemptId: attempt.id } });
+    try {
+      setSaveError('');
+      await dependencies.study.saveAttempt(attempt);
+      router.replace({ pathname: '/study/result', params: { setId: questionSet.id, attemptId: attempt.id } });
+    } catch {
+      setSaveError('Không lưu được kết quả. Câu trả lời vẫn được giữ trên màn hình; hãy thử lại.');
+    } finally {setSaving(false);}
   };
 
   const next = async () => {
@@ -90,6 +96,7 @@ export default function StudyScreen() {
   return (
     <Screen>
       <TopBar title={questionSet.title} action={<Badge tone="success">{t.study.offlineModeBadge}</Badge>} />
+      {saveError ? <Text accessibilityRole="alert" style={{color:palette.danger}}>{saveError}</Text> : null}
 
       {/* Progress Section */}
       <View style={styles.progressContainer}>

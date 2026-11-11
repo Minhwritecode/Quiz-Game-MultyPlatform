@@ -141,6 +141,10 @@ export default function SettingsScreen() {
       </Card>
 
       {/* About Box */}
+      <Card style={{marginTop:spacing.lg}} onPress={()=>router.push('/privacy')}>
+        <Text style={[typography.title,{color:palette.ink}]}>Quyền riêng tư & dữ liệu</Text>
+        <Text style={[typography.caption,{color:palette.inkMuted}]}>Chính sách, hỗ trợ và xóa tài khoản</Text>
+      </Card>
       <Card color={palette.indigoTint} style={styles.about}>
         <Text style={[typography.title, { color: palette.indigo }]}>{t.settings.aboutTitle}</Text>
         <Text style={[typography.caption, { color: palette.indigoDeep, marginTop: 4, lineHeight: 20 }]}>

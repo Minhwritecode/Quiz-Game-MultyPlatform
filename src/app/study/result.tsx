@@ -17,7 +17,10 @@ export default function StudyResultScreen() {
   useEffect(() => {
     let active = true;
     void dependencies.study.getLatestAttempt(setId ?? '').then((value: Attempt | null) => {
-      if (active) setAttempt(value);
+      if (active) {
+        setAttempt(value);
+        if(value)void dependencies.release.recordStudyCompletion(value.id).catch(()=>undefined);
+      }
     });
     return () => {
       active = false;

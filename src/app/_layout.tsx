@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Stack } from 'expo-router';
+import { Stack, type ErrorBoundaryProps } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { Animated, Platform, StyleSheet, Text, View, useColorScheme } from 'react-native';
@@ -8,6 +8,17 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { dependencies } from '@/composition/dependencies';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { useAuthStore } from '@/core/state/useAuthStore';
+import { wrapRoot, reportFailure } from '@/core/observability/monitoring';
+import { ReleaseGate } from '@/shared/ReleaseGate';
+import { Button, Card, Screen } from '@/shared/ui';
+
+export function ErrorBoundary({error,retry}:ErrorBoundaryProps) {
+  useEffect(()=>{reportFailure(error,'startup');},[error]);
+  return <SafeAreaProvider><Screen><Card>
+    <Text>Không mở được màn hình này. Dữ liệu đã lưu vẫn được giữ lại.</Text>
+    <Button onPress={()=>void retry()}>Thử lại / Retry</Button>
+  </Card></Screen></SafeAreaProvider>;
+}
 
 function SplashScreenOverlay({ onFinished }: { onFinished: () => void }) {
   const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -84,13 +95,13 @@ function SplashScreenOverlay({ onFinished }: { onFinished: () => void }) {
       </View>
 
       <View style={styles.splashFooter}>
-        <Text style={styles.footerText}>v1.0.0 • Offline-First Cross-Platform</Text>
+        <Text style={styles.footerText}>v{dependencies.release.version} • Offline-First Cross-Platform</Text>
       </View>
     </Animated.View>
   );
 }
 
-export default function RootLayout() {
+function RootLayout() {
   const scheme = useColorScheme();
   const queryClient = useMemo(() => new QueryClient({ defaultOptions: { queries: { staleTime: 30_000, retry: 1 } } }), []);
   const hydrateQuestionSets = usePapyrusStore((state) => state.hydrateQuestionSets);
@@ -98,8 +109,8 @@ export default function RootLayout() {
   const [showSplash, setShowSplash] = useState(true);
 
   useEffect(() => {
-    void hydrateQuestionSets(dependencies.questionSets.list);
-    void bootstrapAuth(dependencies.auth);
+    void hydrateQuestionSets(dependencies.questionSets.list).catch(error=>reportFailure(error,'startup'));
+    void bootstrapAuth(dependencies.auth).catch(error=>reportFailure(error,'startup'));
   }, [bootstrapAuth, hydrateQuestionSets]);
 
   return (
@@ -107,13 +118,15 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
         <View style={styles.rootContainer}>
-          <Stack screenOptions={{ headerShown: false, animation: 'fade' }} />
+          <ReleaseGate><Stack screenOptions={{ headerShown: false, animation: 'fade' }} /></ReleaseGate>
           {showSplash && <SplashScreenOverlay onFinished={() => setShowSplash(false)} />}
         </View>
       </QueryClientProvider>
     </SafeAreaProvider>
   );
 }
+
+export default wrapRoot(RootLayout);
 
 const styles = StyleSheet.create({
   rootContainer: {

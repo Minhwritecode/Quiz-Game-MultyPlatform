@@ -5,8 +5,9 @@ import { Button, Card, IconTile, PageHeader, Screen, TopBar, usePalette } from '
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { createSourceDocument } from '@/features/scan-ocr/domain/sourceDocument';
-import { pickSourceImages, captureSourceImage } from '@/features/scan-ocr/data/imageSource';
-import { recognizeLocalImage } from '@/features/scan-ocr/data/ocr';
+import { dependencies } from '@/composition/dependencies';
+
+const { pickSourceImages, captureSourceImage, recognizeLocalImage } = dependencies.intake;
 
 export default function ScanScreen() {
   const router = useRouter();
