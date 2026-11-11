@@ -26,9 +26,9 @@
 
 | Thành viên | MSSV | Phân công dự kiến theo Report 1 | Đóng góp thực tế |
 | --- | --- | --- | --- |
-| Đinh Trần Tiến Minh | [Nhóm bổ sung] | UI/UX, React Native Presentation, state và hiệu năng | [Nhóm xác nhận %] |
-| Lê Tuấn Khải | [Nhóm bổ sung] | Domain, AI/OCR, parser và kiểm thử nghiệp vụ | [Nhóm xác nhận %] |
-| Dư Thị Như Yến | [Nhóm bổ sung] | Data, Supabase, sync, CI/EAS | [Nhóm xác nhận %] |
+| Đinh Trần Tiến Minh | 23IT162 | UI/UX Design, React Native Presentation Layer, Điều hướng và State Management | 33.33% |
+| Lê Tuấn Khải | 23IT119 | Domain Layer, nghiệp vụ câu hỏi và ôn tập, tích hợp AI/OCR, kiểm tra dữ liệu sinh bởi LLM và Unit Tests | 33.33% |
+| Dư Thị Như Yến | 23IT328 | Data Layer, Supabase/PostgreSQL, RLS, Offline Sync, tích hợp backend và CI/CD | 33.33% |
 
 Phân công không thay thế bằng chứng đóng góp. Nhóm cần xác nhận MSSV, vai trò và
 tỷ lệ thực tế trước khi xuất PDF; tổng tỷ lệ phải bằng 100%.
