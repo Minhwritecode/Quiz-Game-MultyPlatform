@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Button, Card, PageHeader, Screen, TopBar, usePalette } from '@/shared/ui';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
-import { dependencies } from '@/app/composition/dependencies';
+import { dependencies } from '@/composition/dependencies';
 import { saveQuestionSet } from '@/features/question-sets/domain/saveQuestionSet';
 import { isGenerationConfigured, requestGeneratedQuestions } from '@/features/quiz-generation/data/edgeFunctionClient';
 import { parseGeneratedQuestions } from '@/features/quiz-generation/domain/parseGeneratedQuestions';
