@@ -7,4 +7,22 @@ coverage
 .env*
 android/.gradle
 ios/Pods
+node_modules
+.expo
+dist
+android
+ios
+agentic-awesome-skills
+src/skills
+QuizPulse-main
+StudyWars-master
+buzrr-main
+dev-quiz-battle-main
+*.jks
+*.keystore
+*.p12
+*.p8
+*.pem
+credentials.json
+play-service-account.json
 

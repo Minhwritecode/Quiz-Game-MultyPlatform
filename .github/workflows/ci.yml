@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_call:
   pull_request:
   push:
     branches: [main]
@@ -21,9 +22,19 @@ jobs:
         run: npm ci
       - name: TypeScript check
         run: npm run typecheck
+      - name: Lint
+        run: npm run lint
       - name: Unit tests
-        run: npm test -- --passWithNoTests
+        run: npm test -- --ci --coverage
+      - name: Release guard tests
+        run: node --test scripts/release.test.cjs
       - name: Architecture boundary check
         run: ./scripts/check_architecture.sh
       - name: Web build smoke test
-        run: npx expo export --platform web
+        run: npx --no-install expo export --platform web
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: quality-evidence
+          path: coverage/
+          retention-days: 14

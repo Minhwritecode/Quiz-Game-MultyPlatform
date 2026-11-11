@@ -1,0 +1,46 @@
+# EAS is the signing vault and native builder for this Expo/CNG project.
+# Do not maintain a second Gradle/Xcode signing configuration alongside EAS.
+def quality_gate
+  sh('npm', 'run', 'typecheck')
+  sh('npm', 'run', 'lint')
+  sh('npm', 'test', '--', '--ci')
+  sh('node', '--test', 'scripts/release.test.cjs')
+  sh('bash', 'scripts/check_architecture.sh')
+end
+
+lane :verify do
+  Dir.chdir('..') { quality_gate }
+end
+
+[:android, :ios].each do |target|
+  platform target do
+    desc 'Build a signed internal candidate. No store submission.'
+    lane :preview do
+      Dir.chdir('..') do
+        quality_gate
+        ENV['APP_VARIANT'] = 'preview'
+        sh('node', 'scripts/check-release.cjs')
+        sh('npx', '--no-install', 'eas', 'build', '--platform', target.to_s, '--profile', 'preview', '--non-interactive', '--wait')
+      end
+    end
+
+    desc 'Build a store candidate with remote auto-incremented build numbers.'
+    lane :release do
+      Dir.chdir('..') do
+        quality_gate
+        ENV['APP_VARIANT'] = 'production'
+        sh('node', 'scripts/check-release.cjs')
+        sh('npx', '--no-install', 'eas', 'build', '--platform', target.to_s, '--profile', 'production', '--non-interactive', '--wait')
+      end
+    end
+
+    desc 'Explicitly submit one reviewed EAS build to internal testing / TestFlight.'
+    lane :submit do |options|
+      build_id = options[:build_id].to_s
+      UI.user_error!('Pass the exact reviewed build_id UUID; never use --latest') unless build_id.match?(/\A[0-9a-f-]{36}\z/i)
+      Dir.chdir('..') do
+        sh('npx', '--no-install', 'eas', 'submit', '--platform', target.to_s, '--profile', 'production', '--id', build_id, '--non-interactive')
+      end
+    end
+  end
+end
