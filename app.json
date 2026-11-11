@@ -6,6 +6,12 @@
     "orientation": "default",
     "scheme": "papyrus",
     "userInterfaceStyle": "automatic",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0F172A"
+    },
     "newArchEnabled": true,
     "plugins": [
       "expo-router",
