@@ -4,7 +4,7 @@
 
 Papyrus is a React Native + TypeScript-first project base for an offline-first learning quiz platform that will turn personal study material into reviewable question sets and realtime 2–4 player quiz battles. OCR is designed to stay on-device; only user-confirmed text will be sent to the protected generation endpoint once the production vertical slice is implemented.
 
-This repository is the Capstone base for QuizClash. It contains the React Native project skeleton, architecture boundaries, local/cloud data contracts, CI/CD scaffolding and a runnable mobile/web scaffold. It is not a production release: provider credentials, native OCR, LLM streaming, sync, realtime battle, security hardening and store delivery remain implementation work.
+This repository is the Capstone project for QuizClash, currently under active implementation. Local study, editable question review, manual account-set sync and server-controlled battle slices exist; five Supabase migrations are deployed. It is not feature-complete or a production release: live AI, full sync/auth/library flows, QR/rankings, native/device acceptance and release hardening remain. See the [current requirement and four-reference audit](docs/integration/STATUS-AUDIT-2026-11-11.md) for verified evidence and missing work.
 
 ## Product scope
 

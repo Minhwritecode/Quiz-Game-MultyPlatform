@@ -5,10 +5,33 @@
 **Project:** Papyrus - AI-powered realtime study quiz battle from personal learning materials  
 **Repository:** `Quiz-Game-MultyPlatform`  
 **Document type:** Project execution plan and completion checklist  
-**Plan status:** Base-project planning baseline  
-**Version:** 1.0  
-**Updated:** 22 October 2026  
+**Plan status:** Active implementation; acceptance gates incomplete
+
+**Version:** 1.1
+
+**Updated:** 11 November 2026
+
 **Primary client:** React Native + TypeScript + Expo
+
+## Current implementation checkpoint
+
+The base is runnable and several feature slices now exist. This plan is not a
+claim of full reference parity or production readiness. See the
+[17-requirement and four-reference audit](integration/STATUS-AUDIT-2026-11-11.md)
+for code evidence, differences from the supplied specification and the A1–A9 /
+X1–X6 remaining-work checklists. The X backlog records the later broader reference
+request without silently removing the original Capstone exclusions.
+
+Verified: local study/result persistence, editable question review, camera
+permission/cancel handling, local four-client battle API/Realtime tests, account
+question-set sync tests, and deployment of five cloud migrations. Not yet
+verified: the complete app journeys on real devices or authenticated cloud UI.
+
+Checkboxes below describe their full stated scope. Partial implementations do
+not close a combined requirement. In particular, manual account import/conflict
+resolution differs from the original automatic sync/server-timestamp LWW design.
+Strict Clean Architecture remains open because Presentation still imports some
+Data adapters; the current import checker does not detect every such dependency.
 
 ---
 
@@ -57,8 +80,8 @@ not part of the implementation contract for this repository.
 | Feature-complete demo | P0 user journeys work on real devices and have evidence | Not a security-certified or scale-tested service |
 | Production candidate | Release signing, security review, performance, recovery, privacy and operational checks pass | Still requires actual deployment approval and monitoring ownership |
 
-**Current target:** complete and keep the Base stage clean before implementing
-production vertical slices.
+**Current target:** finish and verify the P0 feature slices on the existing base;
+do not treat cloud schema deployment as completion of the Capstone or release.
 
 ---
 
@@ -268,9 +291,9 @@ failed gate; create a task or ADR for the exception.
 
 ### Phase 0 - Scope and repository control
 
-- [ ] Confirm project name: **Papyrus**.
-- [ ] Confirm slogan: **From Ancient Scroll to AI Power.**
-- [ ] Confirm the repository and default branch are `main`.
+- [x] Confirm project name: **Papyrus**.
+- [x] Confirm slogan: **From Ancient Scroll to AI Power.**
+- [x] Confirm the repository and default branch are `main`.
 - [ ] Add the three-person team, roles and instructor details to the reports.
 - [ ] Freeze P0/P1/P2 scope and write down deferred features.
 - [ ] Confirm Figma ownership, edit access and the 10 required screen frames.
@@ -287,14 +310,14 @@ base technology choices are visible in the repository.
 ### Phase 1 - Base bootstrap and developer experience
 
 - [ ] Install the pinned Node/npm toolchain and document it.
-- [ ] Create the Expo React Native TypeScript app shell.
-- [ ] Configure Expo Router and a small route map.
-- [ ] Configure strict TypeScript, Jest and import-boundary checks.
-- [ ] Add environment example files without real credentials.
-- [ ] Add Docker web preview and Nginx configuration.
-- [ ] Add GitHub Actions for install, typecheck, tests, architecture checks and
+- [x] Create the Expo React Native TypeScript app shell.
+- [x] Configure Expo Router and a small route map.
+- [x] Configure strict TypeScript, Jest and initial import-boundary checks (strict coverage still needs improvement).
+- [x] Add environment example files without real credentials.
+- [x] Add Docker web preview and Nginx configuration (runtime/reproducibility gate remains open).
+- [x] Add GitHub Actions for install, typecheck, tests, architecture checks and
   web export.
-- [ ] Add EAS development, preview and production profiles without committing
+- [x] Add EAS development, preview and production profiles without committing
   signing material.
 - [ ] Add a standard error format and a typed `Result`/failure strategy.
 - [ ] Add a base theme, spacing, typography and motion token set.
@@ -393,7 +416,7 @@ tests independent of the provider.
 - [ ] Implement list, search, rename, duplicate and soft-delete question sets.
 - [ ] Add question-set detail and question review screens.
 - [ ] Add study modes: sequential, random, timed and incorrect-only.
-- [ ] Save attempts and per-question answers locally.
+- [x] Save completed attempts and per-question answers locally; native restart evidence remains a separate gate.
 - [ ] Support resume after an interrupted attempt.
 - [ ] Display explanations and final result offline.
 - [ ] Add attempt history and basic statistics as P1.
@@ -407,9 +430,9 @@ close the app, reopen it and resume or inspect the result.
 
 - [ ] Finalize rooms, room players, room questions and room answers migrations.
 - [ ] Add RLS policies and test cross-user access denial.
-- [ ] Implement room creation with a six-character code and a 2-4 player cap.
+- [x] Implement room creation with a six-character code and a 2-4 player cap. Local API smoke rejects a fifth player.
 - [ ] Implement join, leave, Presence and lobby state. RPCs, heartbeat and UI are implemented; browser/device acceptance remains pending (see `integration/DELIVERY-CHECKLIST.md`).
-- [ ] Implement the server room state machine: waiting, countdown,
+- [x] Implement the server room state machine: waiting, countdown,
   question-open, question-result and finished.
 - [x] Snapshot questions at match start. Verified by local lifecycle SQL/API tests.
 - [x] Keep answer keys off the client until the question closes. Verified by local RLS/API tests, including explanation privacy.
@@ -467,7 +490,7 @@ device matrix without clipped content or invisible state changes.
 - [ ] Add a small E2E suite for login/local study and room battle smoke flow.
 - [ ] Keep the target test balance near 70% Unit, 20% Component and 10% E2E.
 - [ ] Test every RLS policy with owner, member and unauthorized users.
-- [ ] Verify no API key or signing key is bundled in the client or repository.
+- [ ] Verify no privileged API/provider key or signing key is bundled in the client or repository. A Supabase publishable key is intended for the client.
 - [ ] Run dependency audit and document accepted findings or fixes.
 - [ ] Test cold start, offline launch, crash recovery and session expiry.
 - [ ] Profile 60fps targets on representative real devices.
@@ -499,8 +522,9 @@ run the demo and distinguish implemented behavior from planned behavior.
 
 ## 6. Thirteen-week execution schedule
 
-This schedule follows the supplied 13-week plan while keeping the current
-repository work explicitly at the base stage until the vertical slices begin.
+This schedule follows the supplied 13-week plan. Feature slices are now in
+progress; week numbers are planning milestones, not a claim of elapsed delivery
+or completed acceptance. The audit checkpoint above records current evidence.
 
 | Week | Focus | Required evidence |
 | ---: | --- | --- |
@@ -556,10 +580,10 @@ The Week 09 slide deck sets the target distribution:
 
 ### 7.3 Base-stage quality gate
 
-- [ ] `npm run typecheck` passes.
-- [ ] `npm test -- --passWithNoTests` passes.
-- [ ] `./scripts/check_architecture.sh` passes.
-- [ ] `npx expo export --platform web` passes.
+- [x] `npm run typecheck` passes (11 November audit).
+- [x] `npm test -- --watch=false` passes: 8 suites / 16 tests (11 November audit).
+- [x] `bash scripts/check_architecture.sh` passes; this limited regex check is not a full dependency audit.
+- [x] `npx expo export --platform web` passes (previous sync delivery evidence).
 - [ ] Docker image builds and serves the web preview.
 - [ ] No secrets are required for the base demo.
 - [ ] A clean checkout can reproduce the above checks.

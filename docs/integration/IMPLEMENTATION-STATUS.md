@@ -1,26 +1,22 @@
 # Integration Implementation Status
 
-**Status date:** 10 November 2026
+Status date: 11 November 2026. Papyrus is under active implementation, not feature-complete.
 
-| Milestone | Status | Evidence | Remaining work |
-| --- | --- | --- | --- |
-| M0 audit and compatibility | Implemented | `SOURCE-AUDIT.md`, `FEATURE-MATRIX.md`, `REUSE-DECISIONS.md` | Confirm remote source SHAs only if source reuse is ever proposed |
-| M1 local library → study → persisted result | Implemented baseline | `src/features/study/domain/completeAttempt.ts`, `src/app/study/result.tsx`, native SQLite and web AsyncStorage adapters; 5 passing tests | Resume interrupted sessions, attempt history, migration tests and device restart evidence |
-| M2 auth → Supabase → sync | Auth/session and local outbox baseline | Auth repository/session bootstrap, guest fallback, OAuth URL boundary, native SQLite/web queue adapters and 2 drain tests | Native redirect completion, owner-bound cloud push/pull, cursor sync, retry backoff and RLS tests |
-| M3 intake → OCR → AI → review | AI generation baseline | Native intake feeds confirmed text; `supabase/functions/generate-questions` now uses a server-side Gemini-compatible provider adapter and strict question validation; client parser has 2 tests | Camera/permissions, true streaming, citations, editable review and source persistence |
-| M4 battle → authoritative score → reconnect | Battle contract baseline | `roomState` reducer/tests, room repository/Realtime adapter and additive server-authoritative create/join/question/answer RPC migration | Seed room questions, wire lobby UI, presence lifecycle, reconnect and two-client evidence |
-| M5 responsive web/release hardening | Base only | Expo web export, Docker and EAS profiles | Accessibility, device matrix, signed build and security evidence |
+| Milestone | Current state | Remaining acceptance |
+| --- | --- | --- |
+| M0 reference audit | Four local snapshots inventoried; behavior matrix and independent implementation decisions recorded | Full product parity is not achieved; reference expansion backlog X1–X6 remains |
+| M1 local study | Local set persistence, sequential study, completed attempt and latest-result screen | Full library CRUD/manual authoring, resume, history, modes and native restart tests |
+| M2 auth/sync | Auth/session baseline; explicit account set import, UUID outbox, cursor, retries/conflicts; five cloud migrations deployed | Registration/profile/OAuth completion, automatic/attempt/source sync, account-to-study bridge and authenticated cloud UI proof |
+| M3 intake/AI | Camera/gallery/paste, native ML Kit adapter, editable source/question review, Gemini JSON adapter | Hardware OCR QA, PDF/documents, actual provider requests, streaming/cancel/rate limiting and source persistence |
+| M4 battle | RPC lifecycle, fixed server deadlines, question privacy, Realtime score, room restore/host lease; local four-client smoke passes | Visible timer, host settings, strict 30-second forfeiture/idle expiry, QR and browser/native/cloud E2E |
+| M5 release | CI/Docker/EAS configuration and prior web export | Component/E2E/native suite, accessibility/foldable QA, signed builds and release hardening |
 
-## Evidence labels
+See [the requirement audit](STATUS-AUDIT-2026-11-11.md) for all 17 original
+requirements and four-reference gaps, and [delivery evidence](DELIVERY-CHECKLIST.md)
+for test/deployment details. Current checks: TypeScript passes, 8 Jest suites /
+16 tests pass. The architecture script passes but misses known Presentation-to-Data
+imports; strict Clean Architecture is still incomplete.
 
-- **Implemented:** code path exists and has a passing automated or repeatable
-  verification.
-- **Base only:** contract/scaffold exists; production behavior is not complete.
-- **Mock/demo:** deterministic sample data or UI behavior; not a provider-backed
-  production path.
-- **Unverified:** code exists but requires credentials, native build or real
-  devices to confirm.
-- **Not started:** no implementation exists yet.
-
-No reference repository code has been merged into Papyrus. The four local
-reference folders are ignored by Git and remain outside the release source tree.
+No reference source has been merged. The four reference snapshots stay gitignored
+and outside the released client source. Reference README claims are not proof of
+Papyrus behavior.

@@ -3,6 +3,14 @@
 This matrix separates observed reference behavior from Papyrus acceptance scope.
 It is not permission to copy implementation code.
 
+**Status checkpoint: 11 November 2026.** The decision column below is intended
+scope, not implementation status. For current coverage, all FR-01–FR-17, code
+anchors and missing reference-specific features, see
+[the implementation audit](STATUS-AUDIT-2026-11-11.md). None of the four products
+has full parity. In particular the original table omitted Buzrr duels/bots,
+moderation/media/billing, StudyWars host-paced and guest flows, and Dev Quiz
+Battle language-specific stats; these are now tracked in that audit's X backlog.
+
 | Capability | QuizPulse | StudyWars | Buzrr | Dev Quiz Battle | Papyrus decision |
 | --- | --- | --- | --- | --- | --- |
 | Paste notes | Observed | Observed | Observed | Topic-oriented | P0: implement in RN intake |
