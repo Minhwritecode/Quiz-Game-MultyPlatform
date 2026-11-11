@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { dependencies } from '@/app/composition/dependencies';
+import { dependencies } from '@/composition/dependencies';
 import { useAuthStore } from '@/core/state/useAuthStore';
 import type { QuestionSet } from '@/core/domain/models';
 import { emptyCloudState, type CloudState } from '@/features/sync/domain/cloudSets';
