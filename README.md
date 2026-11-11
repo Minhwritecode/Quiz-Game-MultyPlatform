@@ -9,13 +9,13 @@ This repository is the Capstone project for QuizClash, currently under active im
 ## Product scope
 
 - Expo Router mobile/web client with responsive Papyrus UI and typed feature boundaries.
-- Clean Architecture by feature: `Presentation → Domain ← Data`.
+- Clean Architecture target by feature: `Presentation → Domain ← Data`; remaining dependency violations are recorded in the audit.
 - Zustand and TanStack Query for local UI state and server state.
 - `expo-sqlite` native adapter for the local-first cache and sync outbox.
 - Supabase migration with RLS, Realtime-ready room tables and server-side `submit_answer` scoring RPC.
 - On-device ML Kit OCR adapter boundary.
-- Edge Function boundary for authenticated, rate-limited LLM generation.
-- Offline-first sync contract: local write, ordered push, cursor pull, server-time conflict resolution.
+- Gemini Edge Function adapter with structured JSON validation and provider timeout; live provider verification, streaming and rate limiting remain pending.
+- Account-set sync: explicit local import, ordered push, revision cursor pull, idempotent receipts and user-selected conflict resolution. Background/attempt sync remains pending.
 - GitHub Actions, EAS build profiles and Docker web preview.
 
 ## Quick start
@@ -36,7 +36,11 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=your-publishable-key \
 npm start
 ```
 
-The app intentionally runs with a seeded in-memory repository when those values are absent, so the navigation, library and study-mode demo are usable without secrets.
+The app can preview local study with seed data without Supabase configuration.
+Native SQLite and web AsyncStorage persist local sets/results independently of
+the cloud connection. The supplied URL/publishable key can also be placed in a
+gitignored `.env.local`; the existing `EXPO_PUBLIC_SUPABASE_ANON_KEY` variable
+accepts a publishable key. Restart Expo after changing environment configuration.
 
 ## Docker
 
@@ -65,7 +69,8 @@ supabase/
 ├── migrations/                  # PostgreSQL schema, RLS, submit_answer RPC
 └── functions/                   # Deno Edge Functions
 docs/                            # architecture notes and decisions
-docs/reports/                     # Capstone proposal and architecture reports
+docs/reports/                     # Capstone proposal, architecture and AI/testing reports
+docs/reports/evidence/            # compact, reproducible report evidence
 eas.json                         # EAS development, preview and production profiles
 docker/                          # Nginx runtime configuration
 .github/workflows/               # CI and manual Android release
@@ -75,7 +80,7 @@ docker/                          # Nginx runtime configuration
 
 1. New domain and feature contracts are pure TypeScript; they do not import React Native, Expo or Supabase UI adapters.
 2. React Native presentation talks to use cases and query/state adapters; it does not reach into data sources.
-3. Every local write gets an outbox record. Retries are idempotent using client UUIDs.
+3. Syncable writes should persist an outbox record atomically. Account-set mutations use UUIDs and retry receipts; not all local entity types are synchronized yet.
 4. Room scoring is server-authoritative. The client never receives the answer key before a question closes.
 5. Secrets belong in local environment configuration or GitHub Secrets, never in source control.
 6. Prefer small feature slices with tests over large cross-cutting rewrites.
@@ -90,8 +95,22 @@ npm test
 npx expo export --platform web
 ```
 
-Native OCR and platform-specific SQLite are verified in an Expo development
-build; the web export uses platform-safe adapters.
+Native OCR and platform-specific SQLite require verification in an Expo
+development build; hardware/crash-recovery evidence is still pending. The web
+export uses platform-safe adapters and does not prove native OCR works.
+
+Latest Report 3 measurement (11 November 2026): **8 Jest suites / 16 tests pass**.
+Line coverage is **23.56%** for the configured source scope and **69.92%** for
+the Domain subset. Collection excludes `src/app/**` and does not include SQL or
+Edge Functions. These figures are not full-application coverage; component and
+device E2E tests remain pending. See [Report 3](docs/reports/Capstone-Report-3-AI-Testing.md)
+and its [evidence JSON](docs/reports/evidence/report-3-checks.json).
+
+```bash
+npm test -- --watch=false --coverage \
+  --coverageDirectory=coverage/report-3 \
+  --coverageReporters=text --coverageReporters=json-summary
+```
 
 ## Supabase local development
 
@@ -99,15 +118,24 @@ Install the Supabase CLI, then:
 
 ```bash
 supabase start
-supabase db reset
-supabase functions serve generate-questions --no-verify-jwt
 ```
 
-The Edge Function is deliberately a safe `501` scaffold until the team selects and configures the LLM provider. Provider keys must be stored as Supabase secrets and generation must validate JWT, input length, timeout and rate limits before production use.
+The `generate-questions` Edge Function has a Gemini provider adapter; it returns
+`503` when `GEMINI_API_KEY` or `GEMINI_MODEL` is missing. It currently returns
+one validated JSON response, not an SSE stream. Keep provider credentials in
+server-side secrets and preserve JWT verification. Provider-backed tests, robust
+request validation, cancellation and rate limits remain release requirements.
+Local API smoke scripts deliberately target the local stack, not the shared
+cloud project. See the [delivery checklist](docs/integration/DELIVERY-CHECKLIST.md)
+for migration and test evidence.
 
 ## Milestone alignment
 
-The base maps to the specification's first two milestones: repo conventions, architecture skeleton, local schema, auth boundary, theme, CI and release lane. The next vertical slice is OCR → editable text → authenticated streaming generation → question review → local persistence → sync.
+Reports 1 and 2 describe the proposal and architecture baseline. Report 3 records
+the current AI/sync implementation, measured test coverage and remaining M3
+acceptance gates. Writing a report or deploying the database does not close those
+gates: live AI, native benchmarks, full sync, UI/device tests and verified builds
+remain required.
 
 ## Project execution plan
 
@@ -118,6 +146,8 @@ The base maps to the specification's first two milestones: repo conventions, arc
 
 - [Report 1 - Project Proposal](docs/reports/Capstone-Report-1-Proposal.md)
 - [Report 2 - Detailed Architecture](docs/reports/Capstone-Report-2-Architecture.md)
+- [Report 3 - AI Integration, Offline Sync & Test Report](docs/reports/Capstone-Report-3-AI-Testing.md)
+- [Report 3 - Test and coverage evidence](docs/reports/evidence/report-3-checks.json)
 - [Papyrus UI UX Prototype - Figma](https://www.figma.com/design/qdGvcsHXoTJcuq2NqsK9XS/Papyrus-UI-UX-Prototype?t=wiS4ZAcDfeWtDAkV-1)
 
 ## License
