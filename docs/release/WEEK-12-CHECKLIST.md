@@ -8,9 +8,9 @@ Nhóm đã tạo Expo project `f4872061-8848-48a7-9d26-a1dbec552c6b`, liên kế
 xác nhận EAS CLI là `michaelminh03` và quyền Owner trên project. Local Android
 Release build và APK preview ký bằng khóa QA riêng đã pass kiểm tra chữ ký/checksum.
 EAS Android preview build đã upload (ID `f9528839-100e-4441-9e55-b4cda46b18bc`);
-chưa xác nhận trạng thái cloud hoàn tất do API EAS bị lỗi DNS khi truy vấn. iOS
-Simulator cloud build chưa upload được vì cùng lỗi DNS. Chưa có Sentry/store account,
-thiết bị thật hoặc store approval. Không đổi gameplay của nhóm.
+iOS Simulator build cũng đã upload (ID `3f1b276d-b189-4c33-b4a8-afd755400708`).
+Trạng thái mới nhất lúc rà soát: Android `IN_QUEUE`, iOS `IN_PROGRESS`. Chưa có
+Sentry/store account, thiết bị thật hoặc store approval. Không đổi gameplay của nhóm.
 
 ## 1. Phạm vi bản đầu tiên
 
@@ -138,7 +138,7 @@ Chuẩn bị cấu hình không đồng nghĩa dịch vụ đã hoạt động.
 | SQL | battle_security, battle_lifecycle, account_cleanup pass, fixture rollback |
 | API local | 2 tài khoản, subject isolation, deleted JWT, invalid AI JSON/types pass; không gọi Gemini |
 | Advisor local | Không trả finding; chỉ cho stack local tại checkpoint này |
-| Expo | Web export pass; Android prebuild/release compile pass; APK local preview ký và xác minh pass; EAS Android build đã upload, cloud status chưa xác minh; iOS EAS submit đang bị DNS chặn |
+| Expo | Web export pass; Android prebuild/release compile pass; APK local preview ký và xác minh pass; EAS Android `IN_QUEUE`, iOS Simulator `IN_PROGRESS` |
 | Fastlane / workflows | Ruby syntax và YAML parse pass, chưa chạy dịch vụ ngoài |
 | Browser review | Không chạy được vì local browser use bị tắt trong Work settings |
 | Native E2E | `e2e/maestro/core-study.yaml` đã chuẩn bị, chưa chạy; không phải bằng chứng pass |

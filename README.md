@@ -83,8 +83,9 @@ signing are configured. An Android cloud preview build was submitted; check its
 [EAS build page](https://expo.dev/accounts/michaelminhs-team/projects/papyrus/builds/f9528839-100e-4441-9e55-b4cda46b18bc)
 for completion and download. A local signed QA APK is generated at
 `artifacts/android/papyrus-0.2.0-preview.apk`; that ignored file and its private QA
-keystore are not committed. iOS Simulator cloud build is still pending EAS API
-connectivity. Sentry/store setup and real-device acceptance remain open; see the
+keystore are not committed. The iOS Simulator build was also submitted:
+[EAS build page](https://expo.dev/accounts/michaelminhs-team/projects/papyrus/builds/3f1b276d-b189-4c33-b4a8-afd755400708).
+Sentry/store setup and real-device acceptance remain open; see the
 phone guide above and `.env.example`.
 
 ```bash
