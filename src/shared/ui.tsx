@@ -2,7 +2,7 @@ import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, usePathname } from 'expo-router';
 import type { PropsWithChildren, ReactNode } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View, useColorScheme, useWindowDimensions } from 'react-native';
+import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, View, useColorScheme, useWindowDimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, palettes, radii, shadows, spacing, typography } from '@/core/theme/tokens';
 import { useI18n } from '@/core/i18n';
@@ -19,11 +19,13 @@ export function Screen({ children, scroll = true, bottomNav = false, contentStyl
   const palette = usePalette();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
+  const desktopWeb = Platform.OS === 'web' && width >= 900;
   const inner = <View style={[styles.content, { maxWidth: width >= 900 ? 1180 : 760 }, contentStyle]}>{children}</View>;
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: palette.paper }]} edges={['top', 'left', 'right']}>
-      {scroll ? <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={[styles.scroll, { paddingBottom: bottomNav ? 96 + insets.bottom : spacing.xxxl }]} showsVerticalScrollIndicator={false}>{inner}</ScrollView> : inner}
-      {bottomNav && <BottomNav />}
+      {bottomNav && desktopWeb && <DesktopNav />}
+      {scroll ? <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={[styles.scroll, { paddingBottom: bottomNav && !desktopWeb ? 96 + insets.bottom : spacing.xxxl }]} showsVerticalScrollIndicator={false}>{inner}</ScrollView> : inner}
+      {bottomNav && !desktopWeb && <BottomNav />}
     </SafeAreaView>
   );
 }
@@ -251,6 +253,58 @@ export function BottomNav() {
   );
 }
 
+export function DesktopNav() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const palette = usePalette();
+  const { t } = useI18n();
+  const items: Array<{ route: '/' | '/sets' | '/battle' | '/leaderboard'; label: string }> = [
+    { route: '/', label: t.nav.home },
+    { route: '/sets', label: t.nav.library },
+    { route: '/battle', label: t.nav.battle },
+    { route: '/leaderboard', label: t.nav.rank },
+  ];
+
+  return (
+    <View style={[styles.desktopNavShell, { borderBottomColor: palette.paperMuted, backgroundColor: palette.paper }]}>
+      <View style={styles.desktopNav}>
+        <Pressable accessibilityRole="link" accessibilityLabel="Papyrus home" onPress={() => router.replace('/')} style={styles.desktopBrand}>
+          <BrandMark size={38} />
+          <View>
+            <Text style={[typography.title, { color: palette.ink }]}>Papyrus</Text>
+            <Text style={[typography.caption, { color: palette.inkMuted, fontSize: 11 }]}>From Ancient Scroll to AI Power</Text>
+          </View>
+        </Pressable>
+        <View style={styles.desktopNavLinks}>
+          {items.map((item) => {
+            const active = item.route === '/' ? pathname === '/' : pathname.startsWith(item.route);
+            return (
+              <Pressable
+                key={item.route}
+                accessibilityRole="link"
+                accessibilityState={{ selected: active }}
+                onPress={() => router.replace(item.route)}
+                style={[styles.desktopNavLink, active && { backgroundColor: palette.indigoTint }]}
+              >
+                <Text style={[typography.caption, { color: active ? palette.indigoDeep : palette.inkMuted, fontWeight: active ? '800' : '700' }]}>{item.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <View style={styles.desktopNavActions}>
+          <Pressable accessibilityRole="link" accessibilityLabel={t.nav.settings} onPress={() => router.replace('/settings')} style={[styles.desktopSettings, { borderColor: palette.paperMuted }]}>
+            <Ionicons name="settings-outline" size={19} color={palette.inkMuted} />
+          </Pressable>
+          <Pressable accessibilityRole="link" onPress={() => router.push('/create/scan')} style={[styles.desktopCta, { backgroundColor: palette.indigo }]}>
+            <Ionicons name="sparkles-outline" size={17} color={palette.white} />
+            <Text style={[typography.caption, { color: palette.white, fontWeight: '800' }]}>{t.home.createAiBtn}</Text>
+          </Pressable>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 export function IconTile({ icon, tint = 'primary' }: { icon: IconName; tint?: 'primary' | 'success' | 'reward' | 'danger' | 'fire' }) {
   const palette = usePalette();
   const bg = { primary: palette.indigoTint, success: palette.mintTint, reward: palette.goldTint, danger: palette.dangerTint, fire: palette.fireTint }[tint];
@@ -275,6 +329,14 @@ const styles = StyleSheet.create({
   statCard: { flex: 1, minWidth: 150, padding: spacing.md },
   emptyState: { alignItems: 'center', paddingVertical: spacing.xxxl },
   bottomNav: { position: 'absolute', left: spacing.md, right: spacing.md, bottom: spacing.md, minHeight: 72, borderRadius: radii.lg, borderWidth: 1, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', paddingHorizontal: spacing.sm, ...shadows.card },
+  desktopNavShell: { width: '100%', alignItems: 'center', borderBottomWidth: 1 },
+  desktopNav: { width: '100%', maxWidth: 1180, minHeight: 76, paddingHorizontal: spacing.lg, flexDirection: 'row', alignItems: 'center', gap: spacing.lg },
+  desktopBrand: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minWidth: 230 },
+  desktopNavLinks: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs },
+  desktopNavLink: { minHeight: 44, paddingHorizontal: spacing.md, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center' },
+  desktopNavActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minWidth: 230, justifyContent: 'flex-end' },
+  desktopSettings: { width: 44, height: 44, borderWidth: 1, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center' },
+  desktopCta: { minHeight: 46, paddingHorizontal: spacing.lg, borderRadius: radii.pill, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   navItem: { minWidth: 54, alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.sm },
   iconTile: { width: 46, height: 46, alignItems: 'center', justifyContent: 'center', borderRadius: 14 },
   progressTrack: { height: 12, borderRadius: radii.pill, overflow: 'hidden', width: '100%' },

@@ -74,6 +74,7 @@ this is **not a production-approved release** and has not passed device acceptan
 - [Cài APK Android và chạy iOS bằng Expo development build](docs/release/RUN-ON-PHONE.md)
 - [Store metadata, privacy inventory and reviewer preparation](docs/release/STORE-READINESS.md)
 - [Final defense deliverables and presentation outline](docs/release/DEFENSE-PACK.md)
+- [Client reference feature mapping and integration decisions](docs/integration/CLIENT-REFERENCE-MAP.md)
 
 Development, preview and production have distinct app IDs and update channels.
 Preview produces an APK; production produces an AAB. EAS CLI is pinned in the
