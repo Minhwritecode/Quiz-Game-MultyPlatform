@@ -7,6 +7,8 @@
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
+    "preios": "node scripts/check-ios-toolchain.cjs",
+    "ios:check": "node scripts/check-ios-toolchain.cjs",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",

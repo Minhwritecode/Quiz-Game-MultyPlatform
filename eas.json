@@ -9,6 +9,8 @@
       "distribution": "internal",
       "environment": "development",
       "channel": "development",
+      "android": { "image": "ubuntu-26.04-jdk-17-ndk-r27b-sdk-58" },
+      "ios": { "image": "macos-tahoe-26.6-xcode-27.2" },
       "env": {
         "APP_VARIANT": "development"
       }
@@ -21,8 +23,10 @@
         "APP_VARIANT": "preview"
       },
       "android": {
+        "image": "ubuntu-26.04-jdk-17-ndk-r27b-sdk-58",
         "buildType": "apk"
-      }
+      },
+      "ios": { "image": "macos-tahoe-26.6-xcode-27.2" }
     },
     "development-simulator": {
       "extends": "development",
@@ -40,8 +44,10 @@
         "APP_VARIANT": "production"
       },
       "android": {
+        "image": "ubuntu-26.04-jdk-17-ndk-r27b-sdk-58",
         "buildType": "app-bundle"
-      }
+      },
+      "ios": { "image": "macos-tahoe-26.6-xcode-27.2" }
     }
   },
   "submit": {

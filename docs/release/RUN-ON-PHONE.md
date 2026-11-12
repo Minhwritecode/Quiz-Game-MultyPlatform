@@ -103,10 +103,20 @@ khóa khác sẽ không cập nhật được bản đã cài. Khóa QA không p
 
 ## iOS Simulator trên Mac
 
-Mở Xcode để hoàn thành thiết lập và cài iOS runtime, rồi chạy:
+Build thực ngày 12/11/2026 đã dừng ở ExpoModulesJSI: **Swift tools 6.2 required,
+installed 6.1** (Xcode 16.3). CocoaPods đã cài thành công nhưng chưa có `.app`/IPA.
+Không sửa version trong dependency để lách lỗi. Máy này cần toolchain Xcode mới
+tương thích với toàn bộ Expo SDK, hoặc build EAS trên image đã pin trong `eas.json`.
+Kiểm tra trước khi build local:
 
 ```bash
-APP_VARIANT=development npx --no-install expo run:ios
+npm run ios:check
+```
+
+Sau khi kiểm tra pass, mở Xcode hoàn thành thiết lập và cài iOS runtime, rồi chạy:
+
+```bash
+APP_VARIANT=development npm run ios
 ```
 
 Lệnh build native, cài **Papyrus Dev**, khởi động Metro. Lần sau nếu chỉ sửa JS/TS:
@@ -131,7 +141,7 @@ Chọn artifact của đúng build để cài vào Simulator trên Mac. Profile
 Xcode Settings → Accounts, tự đăng nhập Apple ID. Chạy:
 
 ```bash
-APP_VARIANT=development npx --no-install expo run:ios --device
+APP_VARIANT=development npm run ios -- --device
 ```
 
 Chọn iPhone và Signing Team. Nếu cần, mở workspace trong `ios/` bằng Xcode và chọn
@@ -170,3 +180,5 @@ Nguồn: [Expo native builds](https://docs.expo.dev/guides/local-app-development
 [APK](https://docs.expo.dev/build-reference/apk/),
 [iOS Simulator](https://docs.expo.dev/build-reference/simulators/),
 [Internal distribution](https://docs.expo.dev/build/internal-distribution/).
+Image build đã đối chiếu với [Expo infrastructure](https://docs.expo.dev/build-reference/infrastructure/);
+chọn Xcode local theo [yêu cầu hệ thống của Apple](https://developer.apple.com/xcode/system-requirements).
