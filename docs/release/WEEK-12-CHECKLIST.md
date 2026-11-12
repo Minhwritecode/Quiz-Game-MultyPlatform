@@ -7,10 +7,12 @@ Nguyen Thanh Tuan, VKU. Baseline: `8b0b8aa` (đã merge game của nhóm).
 Nhóm đã tạo Expo project `f4872061-8848-48a7-9d26-a1dbec552c6b`, liên kết GitHub,
 xác nhận EAS CLI là `michaelminh03` và quyền Owner trên project. Local Android
 Release build và APK preview ký bằng khóa QA riêng đã pass kiểm tra chữ ký/checksum.
-EAS Android preview build đã upload (ID `f9528839-100e-4441-9e55-b4cda46b18bc`);
-iOS Simulator build cũng đã upload (ID `3f1b276d-b189-4c33-b4a8-afd755400708`).
-Trạng thái mới nhất lúc rà soát: Android `IN_QUEUE`, iOS `IN_PROGRESS`. Chưa có
-Sentry/store account, thiết bị thật hoặc store approval. Không đổi gameplay của nhóm.
+EAS Android preview build đã upload (ID `f9528839-100e-4441-9e55-b4cda46b18bc`)
+và đang `IN_QUEUE`; iOS Simulator build (ID `3f1b276d-b189-4c33-b4a8-afd755400708`)
+đã `FINISHED`, cài và mở được trên iPhone 16 Pro Simulator iOS 18.4. Đây mới là
+kiểm tra cài/mở lần đầu; chưa nghiệm thu luồng sử dụng, camera, auth, offline hay
+thông báo. Chưa có Sentry/store account, thiết bị thật hoặc store approval. Không
+đổi gameplay của nhóm.
 
 ## 1. Phạm vi bản đầu tiên
 
@@ -138,7 +140,7 @@ Chuẩn bị cấu hình không đồng nghĩa dịch vụ đã hoạt động.
 | SQL | battle_security, battle_lifecycle, account_cleanup pass, fixture rollback |
 | API local | 2 tài khoản, subject isolation, deleted JWT, invalid AI JSON/types pass; không gọi Gemini |
 | Advisor local | Không trả finding; chỉ cho stack local tại checkpoint này |
-| Expo | Web export pass; Android prebuild/release compile pass; APK local preview ký và xác minh pass; EAS Android `IN_QUEUE`, iOS Simulator `IN_PROGRESS` |
+| Expo | Web export pass; Android prebuild/release compile pass; APK local preview ký/xác minh pass; EAS Android `IN_QUEUE`; iOS Simulator `FINISHED`, installed/launched on iPhone 16 Pro iOS 18.4 |
 | Fastlane / workflows | Ruby syntax và YAML parse pass, chưa chạy dịch vụ ngoài |
 | Browser review | Không chạy được vì local browser use bị tắt trong Work settings |
 | Native E2E | `e2e/maestro/core-study.yaml` đã chuẩn bị, chưa chạy; không phải bằng chứng pass |

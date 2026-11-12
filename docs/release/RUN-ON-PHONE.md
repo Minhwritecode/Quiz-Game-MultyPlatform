@@ -113,8 +113,12 @@ Build local ngày 12/11/2026 đã dừng ở ExpoModulesJSI: **Swift tools 6.2 r
 installed 6.1** (Xcode 16.3). CocoaPods đã cài thành công nhưng chưa có `.app`/IPA.
 Không sửa version trong dependency để lách lỗi. Máy này cần toolchain Xcode mới
 tương thích với toàn bộ Expo SDK, hoặc build EAS trên image đã pin trong `eas.json`.
-EAS Simulator build đã gửi (lần kiểm tra gần nhất: `IN_PROGRESS`):
+EAS Simulator build `3f1b276d-b189-4c33-b4a8-afd755400708` đã `FINISHED` và đã cài,
+mở trên iPhone 16 Pro / iOS 18.4 Simulator:
 [mở trang build iOS Simulator](https://expo.dev/accounts/michaelminhs-team/projects/papyrus/builds/3f1b276d-b189-4c33-b4a8-afd755400708).
+Đã xác nhận first launch và màn leaderboard hiện ra. Dữ liệu leaderboard đang là
+demo/mock; đây không phải kiểm thử auth, camera/OCR, offline, notification hay các
+luồng học. Cần nghiệm thu các luồng đó trên bản preview và thiết bị thật.
 Kiểm tra trước khi build local:
 
 ```bash
