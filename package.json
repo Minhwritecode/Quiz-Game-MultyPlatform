@@ -9,9 +9,10 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src --ignore-pattern src/skills/**",
+    "lint": "eslint src",
     "test": "jest --runInBand",
     "test:release": "node --test scripts/release.test.cjs",
+    "apk:package": "node scripts/package-preview-apk.mjs",
     "release:check": "node scripts/check-release.cjs",
     "eas-build-post-install": "node scripts/check-release.cjs"
   },

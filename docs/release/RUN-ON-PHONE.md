@@ -84,6 +84,23 @@ mặc định dùng debug keystore dù build mode là Release**. Phải cấu h�
 và kiểm tra certificate trước khi gọi nó là APK phát hành. EAS xử lý phần signing
 cho build cloud; không tự đưa APK raw lên Play Store.
 
+Để ký bản **local preview** bằng khóa QA riêng và tạo checksum:
+
+```bash
+npm run apk:package
+```
+
+Script kiểm tra đúng preview package/version, không debuggable, ZIP alignment 16 KB,
+rồi ký và xác minh bằng `apksigner`. Kết quả nằm ở `artifacts/android/`, gồm APK,
+`SHA256SUMS`, certificate fingerprint và build metadata. ZIP alignment không chứng
+minh ELF/native libraries tương thích 16 KB; vẫn cần kiểm thử thiết bị.
+
+Khóa/mật khẩu nằm trong `.local-signing/`, quyền 700/600, không vào Git/EAS/Docker.
+Sao lưu **cả folder** vào nơi quản lý bí mật của nhóm trước khi xóa checkout. Giữ cùng
+khóa cho lần cập nhật sau; không gửi khóa cùng APK. Nếu chuyển sang EAS cho **cùng**
+package preview, phải nhập đúng khóa này vào EAS hoặc dùng package khác; ký bằng
+khóa khác sẽ không cập nhật được bản đã cài. Khóa QA không phải khóa Play production.
+
 ## iOS Simulator trên Mac
 
 Mở Xcode để hoàn thành thiết lập và cài iOS runtime, rồi chạy:
