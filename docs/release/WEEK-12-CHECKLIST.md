@@ -4,9 +4,10 @@ Ngày rà soát: 12/11/2026. Nguồn yêu cầu: `Week-12-Release-Ops.pdf`, 61 t
 Nguyen Thanh Tuan, VKU. Baseline: `8b0b8aa` (đã merge game của nhóm).
 
 **Kết luận: đã có code/cấu hình chuẩn bị release, chưa đủ điều kiện công bố production.**
-Nhóm xác nhận chưa có Expo/EAS, Sentry, Google Play/Apple Developer và chọn chuẩn bị
-code trước. Không có binary ký số, số crash-free, video điện thoại hay store approval
-nào được giả định là đã hoàn thành. Không đổi code Memory Match/Survival của nhóm.
+Nhóm đã tạo Expo project `f4872061-8848-48a7-9d26-a1dbec552c6b` và liên kết GitHub;
+source release đã lưu UUID và có profile Simulator riêng. Chưa xác nhận signing,
+Sentry hoặc store accounts. Không có binary ký số, số crash-free, video điện thoại
+hay store approval nào được giả định là đã hoàn thành. Không đổi gameplay của nhóm.
 
 ## 1. Phạm vi bản đầu tiên
 
@@ -53,7 +54,8 @@ Chuẩn bị cấu hình không đồng nghĩa dịch vụ đã hoạt động.
 - [x] Preview APK, production AAB được cấu hình rõ.
 - [x] Loại keystore, private key, credentials khỏi Git/EAS/Docker context.
 - [x] Workflow giữ đúng EAS build ID; tải artifact và SHA256, tạo GitHub Release **draft** trên tag.
-- [ ] Tạo Expo project, upload keystore, vault backup, Play App Signing.
+- [x] Nhóm tạo Expo project và cung cấp UUID; source release đã liên kết UUID.
+- [ ] Xác thực EAS CLI/account, upload keystore, vault backup, Play App Signing.
 - [ ] Build APK/AAB thật và kiểm tra chữ ký/cài đặt/nâng cấp cùng certificate.
 - [ ] Tạo app Play Console, khai Data Safety, reviewer account, internal testing.
 - [ ] Kiểm tra target API/tester requirements hiện hành trong Console; không sao chép mốc API/chi phí của slide thành cam kết 2026.
@@ -124,7 +126,7 @@ Chuẩn bị cấu hình không đồng nghĩa dịch vụ đã hoạt động.
 | Kiểm tra | Kết quả |
 | --- | --- |
 | TypeScript | Pass |
-| Jest | 13 suites / 25 tests pass; gồm 4 component assertions trong 2 suites |
+| Jest | 14 suites / 28 tests pass sau khi hợp nhất cập nhật của nhóm; thêm 3 tests local reminders |
 | Node release guards | 3 tests pass |
 | SQL | battle_security, battle_lifecycle, account_cleanup pass, fixture rollback |
 | API local | 2 tài khoản, subject isolation, deleted JWT, invalid AI JSON/types pass; không gọi Gemini |

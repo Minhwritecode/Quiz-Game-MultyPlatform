@@ -70,13 +70,16 @@ unchanged. This is **not yet a signed or production-approved release**.
 
 - [Week 12 requirements, verified checks and remaining gates](docs/release/WEEK-12-CHECKLIST.md)
 - [Build, signing, OTA rollback and operations runbook](docs/release/RUNBOOK.md)
+- [Cài APK Android và chạy iOS bằng Expo development build](docs/release/RUN-ON-PHONE.md)
 - [Store metadata, privacy inventory and reviewer preparation](docs/release/STORE-READINESS.md)
 - [Final defense deliverables and presentation outline](docs/release/DEFENSE-PACK.md)
 
 Development, preview and production have distinct app IDs and update channels.
 Preview produces an APK; production produces an AAB. EAS CLI is pinned in the
-lockfile. Configure the real EAS project and environment values before building;
-see `.env.example`. No EAS/Sentry/store accounts have been provisioned in this task.
+lockfile. The group's Expo project `f4872061-8848-48a7-9d26-a1dbec552c6b` is now
+linked in source. EAS CLI login, cloud environment values and signing still need
+verification; see the phone guide above and `.env.example`. Sentry/store account
+setup remains separate.
 
 ```bash
 npm ci
@@ -88,12 +91,12 @@ npx --no-install eas build --platform android --profile preview
 CI checks source/tests and disposable local backend fixtures. The release workflow
 builds after CI, retains an exact build ID and checksum, and creates a **draft**
 GitHub Release on a version tag. Store submission remains explicit. OTA uses native
-runtime fingerprints; it is disabled until an EAS project ID is configured.
+runtime fingerprints and the linked Expo project. Publishing updates remains explicit.
 
-Current local checks: **13 Jest suites / 25 tests**, plus **3 release guard tests**.
+Current local checks: **14 Jest suites / 28 tests**, plus **3 release guard tests**.
 SQL account cleanup and battle regression tests, local Auth/Function isolation,
 TypeScript, web export and Android prebuild passed. Prebuild is not a signed APK.
-Lint has 36 inherited warnings; native/device tests, provider-backed AI, service
+Lint still has inherited warnings; native/device tests, provider-backed AI, service
 activation and public policy/support links remain open. The Maestro core-study
 flow is prepared but has not been executed. Report 3 coverage below is a historical
 measurement, not coverage for this newer code.

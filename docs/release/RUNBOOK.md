@@ -1,7 +1,8 @@
 # Papyrus release / operations runbook
 
-Run from the repository root. This is an executable preparation guide; credentials,
-native builds and store accounts have **not** been provisioned by this task.
+Run from the release checkout root. The team's Expo project is linked in source;
+signing credentials, native acceptance and store accounts remain separate gates.
+See [RUN-ON-PHONE](RUN-ON-PHONE.md) for APK installation and iOS development builds.
 
 ## 1. Install and verify
 
@@ -23,9 +24,10 @@ four reference repos, skills, credentials, local env and generated native folder
 
 ## 2. Accounts and environment setup (when available)
 
-1. Create an Expo organization/project for the group and run `npx --no-install eas init`.
-2. Put the real project UUID in `EAS_PROJECT_ID`; dynamic config reads this value.
-   Do not depend on `eas init` writing a static ID that this config may replace.
+1. Run `npx --no-install eas login`, then `eas project:info` for the group's existing
+   project `f4872061-8848-48a7-9d26-a1dbec552c6b`. Do not create a second starter/project.
+2. Dynamic config and preflight use the committed UUID in `app.json`. Set
+   `EAS_PROJECT_ID` only to intentionally select another authorized project.
 3. Configure `development`, `preview`, `production` EAS environments. Use a separate
    Supabase dev/preview project instead of testing against real student data.
 4. Create matching GitHub environments. Protect production with required reviewers
