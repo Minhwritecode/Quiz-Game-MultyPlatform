@@ -141,6 +141,7 @@ Chuẩn bị cấu hình không đồng nghĩa dịch vụ đã hoạt động.
 | API local | 2 tài khoản, subject isolation, deleted JWT, invalid AI JSON/types pass; không gọi Gemini |
 | Advisor local | Không trả finding; chỉ cho stack local tại checkpoint này |
 | Expo | Web export pass; Android prebuild/release compile pass; APK local preview ký/xác minh pass; EAS Android `IN_QUEUE`; iOS Simulator `FINISHED`, installed/launched on iPhone 16 Pro iOS 18.4 |
+| Local Android APK | `artifacts/android/papyrus-0.2.0-preview.apk`, 146.4 MiB; SHA-256 `65d0a29ff85a4cac6b47133b427903730ec1e4df6599d927ce51ef621ba67582`; no Android device/AVD connected for install test |
 | Fastlane / workflows | Ruby syntax và YAML parse pass, chưa chạy dịch vụ ngoài |
 | Browser review | Không chạy được vì local browser use bị tắt trong Work settings |
 | Native E2E | `e2e/maestro/core-study.yaml` đã chuẩn bị, chưa chạy; không phải bằng chứng pass |
