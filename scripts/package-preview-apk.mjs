@@ -57,7 +57,7 @@ run(tool('apksigner'), ['sign', '--ks', key, '--ks-key-alias', alias,
   '--out', output, input], { ...process.env, PAPYRUS_APK_PASSWORD: password });
 const verification = run(tool('apksigner'), ['verify', '--verbose', '--print-certs', output]);
 const sha256 = createHash('sha256').update(readFileSync(output)).digest('hex');
-const certificate = verification.match(/Signer #1 certificate SHA-256 digest: (\S+)/)?.[1];
+const certificate = verification.match(/(?:Signer #\d+|V\d+(?:\.\d+)? Signer): certificate SHA-256 digest: (\S+)/)?.[1];
 if (!certificate) throw new Error('Signature verification did not return the signing certificate.');
 writeFileSync(join(outputDir, 'SHA256SUMS'), `${sha256}  ${filename}\n`);
 writeFileSync(join(outputDir, 'signature.txt'), verification);
