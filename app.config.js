@@ -4,7 +4,7 @@ const { resolveVariant } = require('./config/release');
 
 module.exports = () => {
   const variant = resolveVariant(process.env.APP_VARIANT);
-  const projectId = process.env.EAS_PROJECT_ID;
+  const projectId = process.env.EAS_PROJECT_ID || expo.extra?.eas?.projectId;
   const sentry = process.env.SENTRY_ORG && process.env.SENTRY_PROJECT;
   return {
     ...expo,
@@ -17,7 +17,7 @@ module.exports = () => {
     ios: { ...expo.ios, bundleIdentifier: variant.id, supportsTablet: true },
     runtimeVersion: { policy: 'fingerprint' },
     updates: projectId ? { url: `https://u.expo.dev/${projectId}`, fallbackToCacheTimeout: 0 } : { enabled: false },
-    extra: { appVariant: variant.name, ...(projectId ? { eas: { projectId } } : {}) },
+    extra: { ...expo.extra, appVariant: variant.name, ...(projectId ? { eas: { projectId } } : {}) },
     plugins: [
       ...expo.plugins,
       'expo-notifications',

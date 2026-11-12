@@ -26,3 +26,6 @@ dev-quiz-battle-main
 credentials.json
 play-service-account.json
 
+.local-signing/
+.worktrees/
+artifacts/
