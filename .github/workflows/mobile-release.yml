@@ -57,3 +57,26 @@ jobs:
           name: eas-build-result
           path: build-result.json
           retention-days: 14
+      - name: Collect binary and checksum from this exact EAS build
+        run: node scripts/collect-build.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signed-candidate
+          path: artifacts/
+          retention-days: 14
+  draft-release:
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: signed-candidate, path: artifacts }
+      - name: Attach candidate to a draft (publish after device sign-off)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" artifacts/* --verify-tag --draft --title "Papyrus $RELEASE_TAG" --notes "Release candidate. See docs/release/WEEK-12-CHECKLIST.md; device and signing evidence required before publishing."

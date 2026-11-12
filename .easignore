@@ -20,6 +20,7 @@ dev-quiz-battle-main/
 *.keystore
 *.p12
 *.p8
+*.pem
 *.mobileprovision
 credentials.json
 play-service-account.json

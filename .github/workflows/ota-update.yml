@@ -33,10 +33,15 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
       - run: npm ci
+      - name: Validate the selected EAS environment
+        run: npx --no-install eas env:exec "$APP_VARIANT" 'node scripts/check-release.cjs' --non-interactive
       - name: Export update with the same EAS environment as the binary
         env:
           UPDATE_MESSAGE: ${{ inputs.message }}
-        run: npx --no-install eas update --channel "$APP_VARIANT" --environment "$APP_VARIANT" --message "$UPDATE_MESSAGE" --non-interactive
+        run: |
+          rollout=100
+          if [ "$APP_VARIANT" = "production" ]; then rollout=10; fi
+          npx --no-install eas update --channel "$APP_VARIANT" --environment "$APP_VARIANT" --message "$UPDATE_MESSAGE" --rollout-percentage "$rollout" --non-interactive
       - name: Upload matching source maps
         if: env.SENTRY_ORG != ''
         run: npx --no-install sentry-expo-upload-sourcemaps dist

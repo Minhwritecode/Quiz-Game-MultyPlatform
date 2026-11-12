@@ -79,7 +79,7 @@ export default function GenerateScreen() {
     <PageHeader eyebrow="STEP 2 OF 3 · SHAPE" title="Make the generation yours" subtitle="Choose the output, review every answer and save only what you trust." />
     <Card style={styles.controls}>
       <Text style={[typography.body,{color:palette.ink}]}>AI sends the text you reviewed to our generation provider. Images stay on this device. Check the answers before saving.</Text>
-      <TextInput accessibilityLabel="Question set title" placeholder="Question set title" value={title} onChangeText={setTitle} maxLength={160} style={[styles.questionInput,{color:palette.ink,borderColor:palette.paperMuted}]} />
+      <TextInput testID="set-title" accessibilityLabel="Question set title" placeholder="Question set title" value={title} onChangeText={setTitle} maxLength={160} style={[styles.questionInput,{color:palette.ink,borderColor:palette.paperMuted}]} />
       {message ? <Text accessibilityRole="alert" style={{color:palette.danger}}>{message}</Text> : null}
       <Text style={[typography.title, { color: palette.ink }]}>Question count</Text>
       <View style={styles.choiceRow}>{[5, 10, 15].map((value) => <Button key={value} variant={count === value ? 'primary' : 'secondary'} onPress={() => setCount(value)}>{String(value)}</Button>)}</View>
@@ -93,15 +93,15 @@ export default function GenerateScreen() {
     <Button variant="secondary" disabled={busy || questions.length >= 30} onPress={()=>setQuestions(current=>[...current,{id:`manual-${Date.now()}`,content:'',options:['','','',''],correctIndex:0,explanation:'',position:current.length}])}>Add a question manually</Button>
     {questions.map((question, index) => <Card key={question.id} style={styles.question}>
       <View style={styles.questionHeader}><Text style={[typography.label, { color: palette.indigo }]}>QUESTION {index + 1}</Text><Pressable accessibilityRole="button" accessibilityLabel={`Remove question ${index + 1}`} onPress={() => removeQuestion(question.id)}><Ionicons name="trash-outline" size={20} color={palette.danger} /></Pressable></View>
-      <TextInput value={question.content} onChangeText={(content) => updateQuestion(question.id, (current) => ({ ...current, content }))} multiline textAlignVertical="top" style={[styles.questionInput, { color: palette.ink, borderColor: palette.paperMuted }]} />
+      <TextInput testID={`question-${index}-content`} accessibilityLabel={`Question ${index+1}`} value={question.content} onChangeText={(content) => updateQuestion(question.id, (current) => ({ ...current, content }))} multiline textAlignVertical="top" style={[styles.questionInput, { color: palette.ink, borderColor: palette.paperMuted }]} />
       {question.options.map((option, optionIndex) => <View key={`${question.id}-${optionIndex}`} style={styles.optionRow}>
         <Pressable accessibilityRole="radio" accessibilityState={{ selected: question.correctIndex === optionIndex }} accessibilityLabel={`Mark option ${optionIndex + 1} as correct`} onPress={() => updateQuestion(question.id, (current) => ({ ...current, correctIndex: optionIndex }))} style={[styles.answerMark, { backgroundColor: question.correctIndex === optionIndex ? palette.mintTint : palette.paperMuted }]}><Ionicons name={question.correctIndex === optionIndex ? 'checkmark-circle' : 'ellipse-outline'} size={20} color={question.correctIndex === optionIndex ? palette.mint : palette.inkMuted} /></Pressable>
-        <TextInput value={option} onChangeText={(nextOption) => updateQuestion(question.id, (current) => ({ ...current, options: current.options.map((value, currentIndex) => currentIndex === optionIndex ? nextOption : value) }))} style={[styles.optionInput, { color: palette.ink, borderColor: palette.paperMuted }]} />
+        <TextInput testID={`question-${index}-option-${optionIndex}`} accessibilityLabel={`Option ${optionIndex+1}`} value={option} onChangeText={(nextOption) => updateQuestion(question.id, (current) => ({ ...current, options: current.options.map((value, currentIndex) => currentIndex === optionIndex ? nextOption : value) }))} style={[styles.optionInput, { color: palette.ink, borderColor: palette.paperMuted }]} />
       </View>)}
-      <TextInput value={question.explanation} onChangeText={(explanation) => updateQuestion(question.id, (current) => ({ ...current, explanation }))} placeholder="Add an explanation" placeholderTextColor={palette.inkMuted} multiline style={[styles.explanationInput, { color: palette.ink, borderColor: palette.paperMuted }]} />
+      <TextInput testID={`question-${index}-explanation`} accessibilityLabel="Explanation" value={question.explanation} onChangeText={(explanation) => updateQuestion(question.id, (current) => ({ ...current, explanation }))} placeholder="Add an explanation" placeholderTextColor={palette.inkMuted} multiline style={[styles.explanationInput, { color: palette.ink, borderColor: palette.paperMuted }]} />
     </Card>)}
 
-    <View style={styles.actions}><Button variant="secondary" onPress={() => void generate()} disabled={busy}>{busy ? 'Generating…' : 'Generate from reviewed source'}</Button><Button icon="checkmark" onPress={() => void save()} disabled={busy || questions.length === 0}>{busy ? 'Saving…' : 'Save question set'}</Button></View>
+    <View style={styles.actions}><Button variant="secondary" onPress={() => void generate()} disabled={busy}>{busy ? 'Generating…' : 'Generate from reviewed source'}</Button><Button testID="save-question-set" icon="checkmark" onPress={() => void save()} disabled={busy || questions.length === 0}>{busy ? 'Saving…' : 'Save question set'}</Button></View>
   </Screen>;
 }
 

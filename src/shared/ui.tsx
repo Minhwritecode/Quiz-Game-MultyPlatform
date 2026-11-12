@@ -111,6 +111,7 @@ export function Button({
   icon,
   disabled = false,
   fullWidth = false,
+  testID,
 }: {
   children: ReactNode;
   onPress?: () => void;
@@ -118,6 +119,7 @@ export function Button({
   icon?: IconName;
   disabled?: boolean;
   fullWidth?: boolean;
+  testID?: string;
 }) {
   const palette = usePalette();
   const configs = {
@@ -132,6 +134,7 @@ export function Button({
 
   return (
     <Pressable
+      testID={testID}
       disabled={disabled}
       accessibilityRole="button"
       onPress={onPress}

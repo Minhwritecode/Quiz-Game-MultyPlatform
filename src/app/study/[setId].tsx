@@ -152,6 +152,7 @@ export default function StudyScreen() {
               key={option}
               disabled={revealed}
               onPress={() => setSelected(optionIndex)}
+              testID={`study-option-${optionIndex}`}
               style={[
                 styles.option,
                 {
@@ -216,6 +217,7 @@ export default function StudyScreen() {
       {/* Action Button */}
       <View style={{ marginTop: spacing.md, marginBottom: spacing.xxl }}>
         <Button
+          testID="study-next"
           disabled={selected === null || saving}
           onPress={() => void next()}
           variant={revealed ? (selected === question.correctIndex ? 'success' : 'primary') : 'primary'}
