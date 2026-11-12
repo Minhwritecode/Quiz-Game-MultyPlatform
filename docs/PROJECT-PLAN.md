@@ -697,3 +697,25 @@ following are true:
 Until this checklist is complete, the repository status should be described as
 **Papyrus project base / Capstone scaffold**, not as a production-ready app.
 
+
+
+## Week 12 checkpoint — 12 November 2026
+
+Release scope is now the source/manual-question → review → local save → study →
+result loop, with existing group games preserved. This does not close the full
+four-reference feature backlog or original production Definition of Done.
+
+- [x] Prepare isolated EAS variants, CI quality checks, Fastlane wrapper and OTA runtime protection.
+- [x] Remove automatic AI sample answers; add manual question authoring and inline validation.
+- [x] Add account deletion and test subject isolation/cleanup on local Supabase.
+- [x] Prepare filtered Sentry diagnostics, minimum-version gate and review prompt policy.
+- [x] Prepare release/store/defense checklists and device test flow.
+- [ ] Provision Expo/EAS, Sentry and signing accounts; user selected configuration preparation first.
+- [ ] Deploy and verify new backend changes on designated cloud dev project.
+- [ ] Resolve release-impacting dependency/lint findings and complete native auth/OCR/AI acceptance.
+- [ ] Run Maestro and real-device testing, produce signed artifacts and verify symbols/rollback.
+- [ ] Publish reviewed privacy/support/deletion resources; finish store and final-defense deliverables.
+
+See [the detailed Week 12 matrix](release/WEEK-12-CHECKLIST.md) and
+[operations runbook](release/RUNBOOK.md). Checkboxes here record code preparation
+only where explicitly stated; they do not claim a production rollout.
