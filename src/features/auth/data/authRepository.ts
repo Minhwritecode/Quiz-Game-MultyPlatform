@@ -108,3 +108,14 @@ export const authRepository: AuthRepository = {
   signOut,
   onAuthStateChange,
 };
+
+export async function updateDisplayName(name:string):Promise<AppUser> {
+  const trimmed=name.trim();
+  if(trimmed.length<2 || trimmed.length>60)throw new Error('Tên cần từ 2 đến 60 ký tự.');
+  if(!supabase)throw new Error('Bạn cần đăng nhập trước.');
+  const {data,error}=await supabase.auth.updateUser({data:{full_name:trimmed}});
+  if(error)throw new Error('Không lưu được hồ sơ. Kiểm tra kết nối rồi thử lại.');
+  const user=mapUser(data.user);
+  if(!user)throw new Error('Vui lòng đăng nhập lại.');
+  return user;
+}

@@ -1,0 +1,1 @@
+export const reminders={listen(_onOpen:()=>void){return ()=>undefined;},async enabled(){return false;},async setEnabled(_enabled:boolean,_hour=19,_minute=0){throw new Error('Nhắc học chỉ có trong ứng dụng Android/iOS.');}};

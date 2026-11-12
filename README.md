@@ -6,6 +6,17 @@ Papyrus is a React Native + TypeScript-first project base for an offline-first l
 
 This repository is the Capstone project for QuizClash, currently under active implementation. Local study, editable question review, manual account-set sync and server-controlled battle slices exist; five Supabase migrations are deployed. It is not feature-complete or a production release: live AI, full sync/auth/library flows, QR/rankings, native/device acceptance and release hardening remain. See the [current requirement and four-reference audit](docs/integration/STATUS-AUDIT-2026-11-11.md) for verified evidence and missing work.
 
+## Mobile UX checkpoint — 12 November 2026
+
+Settings now persist appearance/language/preferences; profile editing updates the
+signed-in account display name. Android/iOS have opt-in local study reminders at
+19:00, permission feedback and a system-settings shortcut. Startup no longer waits
+for an artificial progress animation. Existing game code remains unchanged.
+
+Latest verification: 14 Jest suites / 28 tests pass. Native reminder delivery,
+profile changes against a test account, foldable layouts and release performance
+still need device acceptance. See the [mobile UX audit](docs/release/MOBILE-UX-AUDIT.md).
+
 ## Product scope
 
 - Expo Router mobile/web client with responsive Papyrus UI and typed feature boundaries.

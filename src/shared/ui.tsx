@@ -1,3 +1,4 @@
+import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, usePathname } from 'expo-router';
 import type { PropsWithChildren, ReactNode } from 'react';
@@ -9,7 +10,9 @@ import { useI18n } from '@/core/i18n';
 export type IconName = keyof typeof Ionicons.glyphMap;
 
 export function usePalette() {
-  return palettes[useColorScheme() === 'dark' ? 'dark' : 'light'];
+  const system=useColorScheme();
+  const theme=usePapyrusStore(state=>state.theme);
+  return palettes[(theme === 'system' ? system : theme) === 'dark' ? 'dark' : 'light'];
 }
 
 export function Screen({ children, scroll = true, bottomNav = false, contentStyle }: PropsWithChildren<{ scroll?: boolean; bottomNav?: boolean; contentStyle?: object }>) {
@@ -19,7 +22,7 @@ export function Screen({ children, scroll = true, bottomNav = false, contentStyl
   const inner = <View style={[styles.content, { maxWidth: width >= 900 ? 1180 : 760 }, contentStyle]}>{children}</View>;
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: palette.paper }]} edges={['top', 'left', 'right']}>
-      {scroll ? <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: bottomNav ? 96 + insets.bottom : spacing.xxxl }]} showsVerticalScrollIndicator={false}>{inner}</ScrollView> : inner}
+      {scroll ? <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={[styles.scroll, { paddingBottom: bottomNav ? 96 + insets.bottom : spacing.xxxl }]} showsVerticalScrollIndicator={false}>{inner}</ScrollView> : inner}
       {bottomNav && <BottomNav />}
     </SafeAreaView>
   );
@@ -131,11 +134,13 @@ export function Button({
     ghost: { bg: 'transparent', border: palette.paperMuted, fg: palette.indigo, bbWidth: 1 },
   };
   const cfg = configs[variant] ?? configs.primary;
+  const reduceMotion=usePapyrusStore(s=>s.reduceMotion);
 
   return (
     <Pressable
       testID={testID}
       disabled={disabled}
+      accessibilityState={{disabled}}
       accessibilityRole="button"
       onPress={onPress}
       style={({ pressed }) => [
@@ -146,7 +151,7 @@ export function Button({
           borderBottomWidth: cfg.bbWidth,
           width: fullWidth ? '100%' : undefined,
           opacity: disabled ? 0.45 : pressed ? 0.85 : 1,
-          transform: pressed ? [{ translateY: 1 }] : undefined,
+          transform: pressed && !reduceMotion ? [{ translateY: 1 }] : undefined,
         },
       ]}
     >

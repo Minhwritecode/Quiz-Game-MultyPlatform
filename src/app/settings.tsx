@@ -1,6 +1,7 @@
+import { useEffect, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { AppState, Linking, Platform, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { Badge, BrandMark, Card, Screen, TopBar, usePalette } from '@/shared/ui';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { dependencies } from '@/composition/dependencies';
@@ -36,6 +37,13 @@ function PreferenceRow({
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const [reminder,setReminder]=useState(false);
+  const [busy,setBusy]=useState(false);
+  const [notice,setNotice]=useState('');
+  useEffect(()=>{const refresh=()=>{void dependencies.reminders.enabled().then(setReminder).catch(()=>undefined);};refresh();const listener=AppState.addEventListener('change',state=>{if(state==='active')refresh();});return ()=>listener.remove();},[]);
+  const toggleReminder=async(value:boolean)=>{if(busy)return;setBusy(true);setNotice('');try{await dependencies.reminders.setEnabled(value);setReminder(value);}catch(e){setNotice(e instanceof Error?e.message:'Không đổi được lịch nhắc.');}finally{setBusy(false);}};
+  const theme=usePapyrusStore(s=>s.theme);
+  const setTheme=usePapyrusStore(s=>s.setTheme);
   const palette = usePalette();
   const { language, setLanguage, t } = useI18n();
   const user = useAuthStore((state) => state.user);
@@ -55,7 +63,7 @@ export default function SettingsScreen() {
       <TopBar title={t.settings.title} />
 
       {/* User Profile Card */}
-      <Card style={styles.profile}>
+      <Card style={styles.profile} onPress={()=>router.push('/profile')}>
         <BrandMark size={56} />
         <View style={{ flex: 1 }}>
           <Text style={[typography.title, { color: palette.ink }]}>
@@ -77,7 +85,7 @@ export default function SettingsScreen() {
 
       <Card style={styles.group}>
         <PreferenceRow icon="moon-outline" title={t.settings.themeTitle} subtitle={t.settings.themeSub}>
-          <Badge tone="neutral">{t.settings.themeVal}</Badge>
+          <View style={{flexDirection:'row',flexWrap:'wrap',gap:4}}>{(['system','light','dark'] as const).map(value=><Pressable key={value} accessibilityRole="radio" accessibilityState={{selected:theme===value}} onPress={()=>setTheme(value)} style={{minHeight:48,padding:8,justifyContent:'center'}}><Text style={{color:theme===value?palette.indigo:palette.inkMuted}}>{value==='system'?'Auto':value==='light'?'Light':'Dark'}</Text></Pressable>)}</View>
         </PreferenceRow>
         <View style={[styles.separator, { backgroundColor: palette.paperMuted }]} />
 
@@ -93,6 +101,7 @@ export default function SettingsScreen() {
         <View style={[styles.separator, { backgroundColor: palette.paperMuted }]} />
         <PreferenceRow icon="sparkles-outline" title={t.settings.hapticsTitle} subtitle={t.settings.hapticsSub}>
           <Switch
+            accessibilityLabel={t.settings.hapticsTitle}
             value={haptics}
             onValueChange={toggleHaptics}
             trackColor={{ false: palette.paperMuted, true: palette.indigo }}
@@ -101,6 +110,7 @@ export default function SettingsScreen() {
         <View style={[styles.separator, { backgroundColor: palette.paperMuted }]} />
         <PreferenceRow icon="options-outline" title={t.settings.reduceMotionTitle} subtitle={t.settings.reduceMotionSub}>
           <Switch
+            accessibilityLabel={t.settings.reduceMotionTitle}
             value={reduceMotion}
             onValueChange={toggleReduceMotion}
             trackColor={{ false: palette.paperMuted, true: palette.indigo }}
@@ -140,6 +150,11 @@ export default function SettingsScreen() {
         </Pressable>
       </Card>
 
+      {Platform.OS !== 'web' && <Card style={{marginTop:spacing.lg}}>
+        <PreferenceRow icon="notifications-outline" title="Nhắc học mỗi ngày" subtitle="19:00 theo giờ điện thoại · không gửi nội dung tài liệu"><Switch accessibilityLabel="Nhắc học lúc 19 giờ" disabled={busy} value={reminder} onValueChange={value=>void toggleReminder(value)}/></PreferenceRow>
+        {notice?<Text accessibilityRole="alert" style={{color:palette.danger}}>{notice}</Text>:null}
+        <Pressable accessibilityRole="button" onPress={()=>void Linking.openSettings().catch(()=>setNotice('Không mở được cài đặt hệ thống.'))} style={{minHeight:48,justifyContent:'center'}}><Text style={{color:palette.indigo}}>Mở cài đặt điện thoại</Text></Pressable>
+      </Card>}
       {/* About Box */}
       <Card style={{marginTop:spacing.lg}} onPress={()=>router.push('/privacy')}>
         <Text style={[typography.title,{color:palette.ink}]}>Quyền riêng tư & dữ liệu</Text>

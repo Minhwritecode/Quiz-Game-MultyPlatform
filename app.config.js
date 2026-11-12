@@ -20,6 +20,7 @@ module.exports = () => {
     extra: { appVariant: variant.name, ...(projectId ? { eas: { projectId } } : {}) },
     plugins: [
       ...expo.plugins,
+      'expo-notifications',
       ['expo-build-properties', { android: { enableMinifyInReleaseBuilds: true, enableShrinkResourcesInReleaseBuilds: true } }],
       ...(sentry ? [['@sentry/react-native/expo', { organization: process.env.SENTRY_ORG, project: process.env.SENTRY_PROJECT, url: 'https://sentry.io/' }]] : []),
     ],
