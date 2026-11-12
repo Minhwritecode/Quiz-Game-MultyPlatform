@@ -66,7 +66,8 @@ docker compose up --build
 
 Release configuration and core-flow hardening are prepared on
 `codex/week12-release-ops`. Existing Memory Match and Survival game behavior is
-unchanged. This is **not yet a signed or production-approved release**.
+unchanged. An internal QA APK is now signed with a separate local preview key;
+this is **not a production-approved release** and has not passed device acceptance.
 
 - [Week 12 requirements, verified checks and remaining gates](docs/release/WEEK-12-CHECKLIST.md)
 - [Build, signing, OTA rollback and operations runbook](docs/release/RUNBOOK.md)
@@ -76,15 +77,20 @@ unchanged. This is **not yet a signed or production-approved release**.
 
 Development, preview and production have distinct app IDs and update channels.
 Preview produces an APK; production produces an AAB. EAS CLI is pinned in the
-lockfile. The group's Expo project `f4872061-8848-48a7-9d26-a1dbec552c6b` is now
-linked in source. EAS CLI login, cloud environment values and signing still need
-verification; see the phone guide above and `.env.example`. Sentry/store account
-setup remains separate.
+lockfile. The group's Expo project `f4872061-8848-48a7-9d26-a1dbec552c6b` is
+linked in source; EAS CLI access, preview environment values and remote preview
+signing are configured. An Android cloud preview build was submitted; check its
+[EAS build page](https://expo.dev/accounts/michaelminhs-team/projects/papyrus/builds/f9528839-100e-4441-9e55-b4cda46b18bc)
+for completion and download. A local signed QA APK is generated at
+`artifacts/android/papyrus-0.2.0-preview.apk`; that ignored file and its private QA
+keystore are not committed. iOS Simulator cloud build is still pending EAS API
+connectivity. Sentry/store setup and real-device acceptance remain open; see the
+phone guide above and `.env.example`.
 
 ```bash
 npm ci
 npm run test:release
-# After accounts, environment variables and signing are configured:
+# To create or rebuild the cloud Android preview:
 npx --no-install eas build --platform android --profile preview
 ```
 

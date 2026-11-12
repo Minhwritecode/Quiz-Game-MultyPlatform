@@ -57,6 +57,12 @@ và Sentry như [RUNBOOK](RUNBOOK.md).
 
 ## Android APK qua EAS
 
+Build preview hiện đã upload lên EAS với ID
+`f9528839-100e-4441-9e55-b4cda46b18bc`:
+[xem build trên Expo](https://expo.dev/accounts/michaelminhs-team/projects/papyrus/builds/f9528839-100e-4441-9e55-b4cda46b18bc).
+Lần truy vấn gần nhất từ CLI bị `ENOTFOUND api.expo.dev`; mở trang trên để xem build
+đã hoàn tất chưa và lấy APK nếu thành công. Chưa coi đây là artifact đã nghiệm thu.
+
 Sau khi đăng nhập và cấu hình environment preview:
 
 ```bash
@@ -103,10 +109,12 @@ khóa khác sẽ không cập nhật được bản đã cài. Khóa QA không p
 
 ## iOS Simulator trên Mac
 
-Build thực ngày 12/11/2026 đã dừng ở ExpoModulesJSI: **Swift tools 6.2 required,
+Build local ngày 12/11/2026 đã dừng ở ExpoModulesJSI: **Swift tools 6.2 required,
 installed 6.1** (Xcode 16.3). CocoaPods đã cài thành công nhưng chưa có `.app`/IPA.
 Không sửa version trong dependency để lách lỗi. Máy này cần toolchain Xcode mới
 tương thích với toàn bộ Expo SDK, hoặc build EAS trên image đã pin trong `eas.json`.
+EAS Simulator build chưa được gửi do CLI liên tục nhận lỗi DNS `ENOTFOUND
+api.expo.dev`; thử lại sau khi dịch vụ mạng phân giải được host.
 Kiểm tra trước khi build local:
 
 ```bash

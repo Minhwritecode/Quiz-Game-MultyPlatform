@@ -1,13 +1,16 @@
 # Papyrus — Week 12 release readiness
 
-Ngày rà soát: 12/11/2026. Nguồn yêu cầu: `Week-12-Release-Ops.pdf`, 61 trang,
+Ngày rà soát: 13/11/2026. Nguồn yêu cầu: `Week-12-Release-Ops.pdf`, 61 trang,
 Nguyen Thanh Tuan, VKU. Baseline: `8b0b8aa` (đã merge game của nhóm).
 
-**Kết luận: đã có code/cấu hình chuẩn bị release, chưa đủ điều kiện công bố production.**
-Nhóm đã tạo Expo project `f4872061-8848-48a7-9d26-a1dbec552c6b` và liên kết GitHub;
-source release đã lưu UUID và có profile Simulator riêng. Chưa xác nhận signing,
-Sentry hoặc store accounts. Không có binary ký số, số crash-free, video điện thoại
-hay store approval nào được giả định là đã hoàn thành. Không đổi gameplay của nhóm.
+**Kết luận: đã tạo APK preview ký số để QA; chưa đủ điều kiện công bố production.**
+Nhóm đã tạo Expo project `f4872061-8848-48a7-9d26-a1dbec552c6b`, liên kết GitHub,
+xác nhận EAS CLI là `michaelminh03` và quyền Owner trên project. Local Android
+Release build và APK preview ký bằng khóa QA riêng đã pass kiểm tra chữ ký/checksum.
+EAS Android preview build đã upload (ID `f9528839-100e-4441-9e55-b4cda46b18bc`);
+chưa xác nhận trạng thái cloud hoàn tất do API EAS bị lỗi DNS khi truy vấn. iOS
+Simulator cloud build chưa upload được vì cùng lỗi DNS. Chưa có Sentry/store account,
+thiết bị thật hoặc store approval. Không đổi gameplay của nhóm.
 
 ## 1. Phạm vi bản đầu tiên
 
@@ -55,9 +58,13 @@ Chuẩn bị cấu hình không đồng nghĩa dịch vụ đã hoạt động.
 - [x] Loại keystore, private key, credentials khỏi Git/EAS/Docker context.
 - [x] Workflow giữ đúng EAS build ID; tải artifact và SHA256, tạo GitHub Release **draft** trên tag.
 - [x] Nhóm tạo Expo project và cung cấp UUID; source release đã liên kết UUID.
-- [ ] Xác thực EAS CLI/account, upload keystore, vault backup, Play App Signing.
-- [ ] Build APK/AAB thật và kiểm tra chữ ký/cài đặt/nâng cấp cùng certificate.
-- [ ] Tạo app Play Console, khai Data Safety, reviewer account, internal testing.
+- [x] Xác thực EAS CLI/account và để EAS quản lý signing keystore cho package preview.
+- [x] Tạo local release APK preview; `apksigner verify`, certificate fingerprint,
+  ZIP alignment check và SHA-256 đều pass. Keystore QA chưa được vault-backed up.
+- [ ] Xác nhận EAS cloud APK hoàn tất; cài APK trên Android thật/emulator, kiểm tra
+  nâng cấp bằng cùng certificate. Build này chưa phải production AAB/Play App Signing.
+- [ ] Play App Signing, tạo app Play Console, khai Data Safety, reviewer account,
+  internal testing.
 - [ ] Kiểm tra target API/tester requirements hiện hành trong Console; không sao chép mốc API/chi phí của slide thành cam kết 2026.
 
 ### iOS signing / TestFlight — trang 18–25
@@ -131,7 +138,7 @@ Chuẩn bị cấu hình không đồng nghĩa dịch vụ đã hoạt động.
 | SQL | battle_security, battle_lifecycle, account_cleanup pass, fixture rollback |
 | API local | 2 tài khoản, subject isolation, deleted JWT, invalid AI JSON/types pass; không gọi Gemini |
 | Advisor local | Không trả finding; chỉ cho stack local tại checkpoint này |
-| Expo | Web export pass; Android prebuild pass, chưa compile/sign |
+| Expo | Web export pass; Android prebuild/release compile pass; APK local preview ký và xác minh pass; EAS Android build đã upload, cloud status chưa xác minh; iOS EAS submit đang bị DNS chặn |
 | Fastlane / workflows | Ruby syntax và YAML parse pass, chưa chạy dịch vụ ngoài |
 | Browser review | Không chạy được vì local browser use bị tắt trong Work settings |
 | Native E2E | `e2e/maestro/core-study.yaml` đã chuẩn bị, chưa chạy; không phải bằng chứng pass |
