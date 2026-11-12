@@ -1,0 +1,49 @@
+# Run on a disposable test installation. Does not clear an existing app's data.
+# maestro test -e APP_ID=com.papyrus.quizclash.preview -e APP_SCHEME=papyrus-preview -e RUN_ID=001 e2e/maestro/core-study.yaml
+appId: ${APP_ID}
+---
+- launchApp
+- openLink: ${APP_SCHEME}://create/generate
+- tapOn:
+    id: set-title
+- inputText: Release smoke ${RUN_ID}
+- hideKeyboard
+- tapOn: Add a question manually
+- tapOn:
+    id: question-0-content
+- inputText: Which number is even?
+- hideKeyboard
+- tapOn:
+    id: question-0-option-0
+- inputText: '2'
+- tapOn:
+    id: question-0-option-1
+- inputText: '3'
+- tapOn:
+    id: question-0-option-2
+- inputText: '5'
+- tapOn:
+    id: question-0-option-3
+- inputText: '7'
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: save-question-set
+- tapOn:
+    id: save-question-set
+- assertVisible: Release smoke ${RUN_ID}
+- stopApp
+- launchApp
+- openLink: ${APP_SCHEME}://sets
+- tapOn: Release smoke ${RUN_ID}
+- tapOn:
+    id: study-option-0
+- scrollUntilVisible:
+    element:
+      id: study-next
+- tapOn:
+    id: study-next
+- tapOn:
+    id: study-next
+- assertVisible: 100%
+- takeScreenshot: artifacts/core-study-result

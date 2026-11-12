@@ -14,3 +14,6 @@ port = 54323
 [functions.generate-questions]
 verify_jwt = true
 
+[functions.delete-account]
+verify_jwt = true
+

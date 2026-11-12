@@ -34,7 +34,7 @@ export function normaliseQuestions(value: unknown, expectedCount: number): Gener
     const key = content.toLocaleLowerCase();
     const valid = content.length > 0 && options.length === 4 &&
       options.every(Boolean) && new Set(options.map((option) => option.toLocaleLowerCase())).size === 4 &&
-      correctIndex >= 0 && correctIndex < 4 && explanation.length > 0;
+      Number.isInteger(correctIndex) && correctIndex >= 0 && correctIndex < 4 && explanation.length > 0;
     if (!valid || seen.has(key)) continue;
     seen.add(key);
     questions.push({ content, options, correct_index: correctIndex, explanation });

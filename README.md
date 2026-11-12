@@ -6,6 +6,17 @@ Papyrus is a React Native + TypeScript-first project base for an offline-first l
 
 This repository is the Capstone project for QuizClash, currently under active implementation. Local study, editable question review, manual account-set sync and server-controlled battle slices exist; five Supabase migrations are deployed. It is not feature-complete or a production release: live AI, full sync/auth/library flows, QR/rankings, native/device acceptance and release hardening remain. See the [current requirement and four-reference audit](docs/integration/STATUS-AUDIT-2026-11-11.md) for verified evidence and missing work.
 
+## Mobile UX checkpoint — 12 November 2026
+
+Settings now persist appearance/language/preferences; profile editing updates the
+signed-in account display name. Android/iOS have opt-in local study reminders at
+19:00, permission feedback and a system-settings shortcut. Startup no longer waits
+for an artificial progress animation. Existing game code remains unchanged.
+
+Latest verification: 14 Jest suites / 28 tests pass. Native reminder delivery,
+profile changes against a test account, foldable layouts and release performance
+still need device acceptance. See the [mobile UX audit](docs/release/MOBILE-UX-AUDIT.md).
+
 ## Product scope
 
 - Expo Router mobile/web client with responsive Papyrus UI and typed feature boundaries.
@@ -21,7 +32,7 @@ This repository is the Capstone project for QuizClash, currently under active im
 ## Quick start
 
 ```bash
-npm install
+npm ci
 npm start
 ```
 
@@ -51,11 +62,51 @@ docker compose up --build
 # open http://localhost:8080
 ```
 
-## Native release
+## Release preparation (Week 12)
 
-Native signing and credentials are managed by EAS. Link the app once with
-`npx eas-cli@latest init`, set `EXPO_TOKEN` in CI, and use the `development`,
-`preview` or `production` profiles in `eas.json`.
+Release configuration and core-flow hardening are prepared on
+`codex/week12-release-ops`. Existing Memory Match and Survival game behavior is
+unchanged. An internal QA APK is now signed with a separate local preview key;
+this is **not a production-approved release** and has not passed device acceptance.
+
+- [Week 12 requirements, verified checks and remaining gates](docs/release/WEEK-12-CHECKLIST.md)
+- [Build, signing, OTA rollback and operations runbook](docs/release/RUNBOOK.md)
+- [Cài APK Android và chạy iOS bằng Expo development build](docs/release/RUN-ON-PHONE.md)
+- [Store metadata, privacy inventory and reviewer preparation](docs/release/STORE-READINESS.md)
+- [Final defense deliverables and presentation outline](docs/release/DEFENSE-PACK.md)
+
+Development, preview and production have distinct app IDs and update channels.
+Preview produces an APK; production produces an AAB. EAS CLI is pinned in the
+lockfile. The group's Expo project `f4872061-8848-48a7-9d26-a1dbec552c6b` is
+linked in source; EAS CLI access, preview environment values and remote preview
+signing are configured. An Android cloud preview build was submitted; check its
+[EAS build page](https://expo.dev/accounts/michaelminhs-team/projects/papyrus/builds/f9528839-100e-4441-9e55-b4cda46b18bc)
+for completion and download. A local signed QA APK is generated at
+`artifacts/android/papyrus-0.2.0-preview.apk`; that ignored file and its private QA
+keystore are not committed. The iOS Simulator build was also submitted:
+[EAS build page](https://expo.dev/accounts/michaelminhs-team/projects/papyrus/builds/3f1b276d-b189-4c33-b4a8-afd755400708).
+Sentry/store setup and real-device acceptance remain open; see the
+phone guide above and `.env.example`.
+
+```bash
+npm ci
+npm run test:release
+# To create or rebuild the cloud Android preview:
+npx --no-install eas build --platform android --profile preview
+```
+
+CI checks source/tests and disposable local backend fixtures. The release workflow
+builds after CI, retains an exact build ID and checksum, and creates a **draft**
+GitHub Release on a version tag. Store submission remains explicit. OTA uses native
+runtime fingerprints and the linked Expo project. Publishing updates remains explicit.
+
+Current local checks: **14 Jest suites / 28 tests**, plus **3 release guard tests**.
+SQL account cleanup and battle regression tests, local Auth/Function isolation,
+TypeScript, web export and Android prebuild passed. Prebuild is not a signed APK.
+Lint still has inherited warnings; native/device tests, provider-backed AI, service
+activation and public policy/support links remain open. The Maestro core-study
+flow is prepared but has not been executed. Report 3 coverage below is a historical
+measurement, not coverage for this newer code.
 
 ## Repository map
 
@@ -73,7 +124,10 @@ docs/reports/                     # Capstone proposal, architecture and AI/testi
 docs/reports/evidence/            # compact, reproducible report evidence
 eas.json                         # EAS development, preview and production profiles
 docker/                          # Nginx runtime configuration
-.github/workflows/               # CI and manual Android release
+.github/workflows/               # CI, release candidates and OTA
+fastlane/                        # EAS-backed release lanes
+e2e/maestro/                     # Prepared native acceptance flow
+docs/release/                    # Week 12 readiness and operations
 ```
 
 ## Engineering rules
