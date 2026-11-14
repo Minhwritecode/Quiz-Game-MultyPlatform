@@ -43,6 +43,16 @@ export type AttemptAnswer = {
   timeMs: number;
 };
 
+export type StudyProgress = {
+  questionSetId: string;
+  currentIndex: number;
+  selectedIndex: number | null;
+  revealed: boolean;
+  answers: AttemptAnswer[];
+  startedAt: string;
+  updatedAt: string;
+};
+
 export type SyncOperation = 'insert' | 'update' | 'delete';
 
 export type SyncItem = {

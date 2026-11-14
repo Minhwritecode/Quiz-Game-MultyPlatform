@@ -4,11 +4,14 @@ import { traceOperation } from '@/core/observability/monitoring';
 
 export const isGenerationConfigured = Boolean(supabase);
 
-export async function requestGeneratedQuestions(request: GenerationRequest): Promise<string> {
+export async function requestGeneratedQuestions(request: GenerationRequest, signal?: AbortSignal): Promise<string> {
   if (!supabase) throw new Error('Supabase is not configured.');
   const {data:session}=await supabase.auth.getSession();
   if(!session.session)throw new Error('Sign in to generate questions. Manual authoring works offline.');
   const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),40000);
+  const cancel = () => controller.abort();
+  signal?.addEventListener('abort', cancel, { once: true });
+  if (signal?.aborted) controller.abort();
   try {
     return await traceOperation('generation',async()=>{
       const { data, error } = await supabase!.functions.invoke('generate-questions', {
@@ -18,5 +21,5 @@ export async function requestGeneratedQuestions(request: GenerationRequest): Pro
       if (error) throw new Error('Generation is unavailable. Check your connection and account, then try again. Your source text is still here.');
       return typeof data === 'string' ? data : JSON.stringify(data);
     });
-  } finally {clearTimeout(timeout);}
+  } finally {clearTimeout(timeout); signal?.removeEventListener('abort', cancel);}
 }

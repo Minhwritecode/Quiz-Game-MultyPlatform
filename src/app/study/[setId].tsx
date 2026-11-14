@@ -1,10 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Badge, Button, Card, ProgressBar, Screen, TopBar, usePalette } from '@/shared/ui';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
-import type { AttemptAnswer } from '@/core/domain/models';
+import type { AttemptAnswer, StudyProgress } from '@/core/domain/models';
 import { completeAttempt } from '@/features/study/domain/completeAttempt';
 import { dependencies } from '@/composition/dependencies';
 import { radii, spacing, typography } from '@/core/theme/tokens';
@@ -20,11 +20,44 @@ export default function StudyScreen() {
   const [selected, setSelected] = useState<number | null>(null);
   const [revealed, setRevealed] = useState(false);
   const [answers, setAnswers] = useState<AttemptAnswer[]>([]);
-  const [sessionStartedAt] = useState(() => new Date().toISOString());
+  const [sessionStartedAt, setSessionStartedAt] = useState(() => new Date().toISOString());
   const [questionStartedAt, setQuestionStartedAt] = useState(() => Date.now());
   const [saving, setSaving] = useState(false);
   const [saveError,setSaveError]=useState('');
+  const [progressLoaded, setProgressLoaded] = useState(false);
   const question = useMemo(() => questionSet?.questions[index], [index, questionSet]);
+
+  useEffect(() => {
+    let active = true;
+    void dependencies.study.getProgress(setId).then((progress) => {
+      if (!active) return;
+      if (progress) {
+        setIndex(Math.min(progress.currentIndex, Math.max(0, (questionSet?.questions.length ?? 1) - 1)));
+        setSelected(progress.selectedIndex);
+        setRevealed(progress.revealed);
+        setAnswers(progress.answers);
+        setSessionStartedAt(progress.startedAt);
+      } else {
+        const now = new Date().toISOString();
+        const initial: StudyProgress = { questionSetId: setId, currentIndex: 0, selectedIndex: null, revealed: false, answers: [], startedAt: now, updatedAt: now };
+        void dependencies.study.saveProgress(initial).catch(() => undefined);
+      }
+      setProgressLoaded(true);
+    }).catch(() => {
+      if (active) { setSaveError(t.study.progressUnavailable); setProgressLoaded(true); }
+    });
+    return () => { active = false; };
+  }, [setId, questionSet?.questions.length, t.study.progressUnavailable]);
+
+  const persistProgress = (progress: Omit<StudyProgress, 'updatedAt'>) => {
+    void dependencies.study.saveProgress({ ...progress, updatedAt: new Date().toISOString() })
+      .then(() => setSaveError(''))
+      .catch(() => setSaveError(t.study.progressSaveError));
+  };
+
+  if (!progressLoaded) {
+    return <Screen><TopBar title={t.study.studyMode} /><Card style={styles.empty}><Text style={[typography.body, { color: palette.inkMuted }]}>{t.study.restoringProgress}</Text></Card></Screen>;
+  }
 
   if (!questionSet || !question) {
     return (
@@ -51,7 +84,6 @@ export default function StudyScreen() {
       isCorrect: selected === question.correctIndex,
       timeMs: Math.max(0, Date.now() - questionStartedAt),
     };
-    setAnswers((current) => [...current.filter((item) => item.questionId !== question.id), answer]);
     return answer;
   };
 
@@ -60,7 +92,7 @@ export default function StudyScreen() {
     setSaving(true);
     const finalAnswers = [...answers.filter((item) => item.questionId !== lastAnswer.questionId), lastAnswer];
     const attempt = completeAttempt({
-      id: `attempt-${Date.now()}`,
+      id: `attempt-${questionSet.id}-${sessionStartedAt}`,
       questionSetId: questionSet.id,
       startedAt: sessionStartedAt,
       answers: finalAnswers,
@@ -68,6 +100,7 @@ export default function StudyScreen() {
     try {
       setSaveError('');
       await dependencies.study.saveAttempt(attempt);
+      await dependencies.study.clearProgress(questionSet.id).catch(() => setSaveError(t.study.progressCleanupError));
       router.replace({ pathname: '/study/result', params: { setId: questionSet.id, attemptId: attempt.id } });
     } catch {
       setSaveError('Không lưu được kết quả. Câu trả lời vẫn được giữ trên màn hình; hãy thử lại.');
@@ -76,12 +109,17 @@ export default function StudyScreen() {
 
   const next = async () => {
     if (!revealed) {
-      recordCurrentAnswer();
+      const answer = recordCurrentAnswer();
+      if (!answer) return;
+      const updatedAnswers = [...answers.filter((item) => item.questionId !== question.id), answer];
+      setAnswers(updatedAnswers);
       setRevealed(true);
+      persistProgress({ questionSetId: questionSet.id, currentIndex: index, selectedIndex: selected, revealed: true, answers: updatedAnswers, startedAt: sessionStartedAt });
       return;
     }
-    const lastAnswer = answers.find((item) => item.questionId === question.id) ?? recordCurrentAnswer();
+    const lastAnswer = answers.find((item) => item.questionId === question.id);
     if (index >= questionSet.questions.length - 1) {
+      if (!lastAnswer) return;
       await finish(lastAnswer);
       return;
     }
@@ -89,13 +127,14 @@ export default function StudyScreen() {
     setSelected(null);
     setRevealed(false);
     setQuestionStartedAt(Date.now());
+    persistProgress({ questionSetId: questionSet.id, currentIndex: index + 1, selectedIndex: null, revealed: false, answers, startedAt: sessionStartedAt });
   };
 
   const progress = (index + 1) / questionSet.questions.length;
 
   return (
     <Screen>
-      <TopBar title={questionSet.title} action={<Badge tone="success">{t.study.offlineModeBadge}</Badge>} />
+      <TopBar title={questionSet.title} action={<Badge tone={index > 0 || answers.length > 0 ? 'reward' : 'success'}>{index > 0 || answers.length > 0 ? t.study.resumedBadge : t.study.offlineModeBadge}</Badge>} />
       {saveError ? <Text accessibilityRole="alert" style={{color:palette.danger}}>{saveError}</Text> : null}
 
       {/* Progress Section */}
@@ -151,7 +190,10 @@ export default function StudyScreen() {
             <Pressable
               key={option}
               disabled={revealed}
-              onPress={() => setSelected(optionIndex)}
+              onPress={() => {
+                setSelected(optionIndex);
+                persistProgress({ questionSetId: questionSet.id, currentIndex: index, selectedIndex: optionIndex, revealed, answers, startedAt: sessionStartedAt });
+              }}
               testID={`study-option-${optionIndex}`}
               style={[
                 styles.option,

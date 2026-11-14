@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { usePapyrusStore } from '@/core/state/usePapyrusStore';
+import { randomUUID } from 'expo-crypto';
 import { dependencies } from '@/composition/dependencies';
 import { useAuthStore } from '@/core/state/useAuthStore';
 import type { QuestionSet } from '@/core/domain/models';
@@ -72,6 +74,11 @@ function AccountLibrary({ owner }: { owner: string }) {
             <Button disabled={busy} onPress={() => void run(() => dependencies.cloudSets.resolve(owner, document.id, 'local'), 'Device copy queued. Sync to upload.')}>Keep device copy</Button>
           </View> : null}
           {!pending && !document.deleted ? <>
+            <Button disabled={busy} variant="secondary" onPress={() => void run(async () => {
+              const copy: QuestionSet = { id: randomUUID(), title: document.title, subject: document.subject, updatedAt: new Date().toISOString(), syncStatus: 'pending', questions: document.questions.map(question => ({ ...question, id: randomUUID() })) };
+              await dependencies.questionSets.save(copy);
+              usePapyrusStore.getState().saveQuestionSet(copy);
+            }, 'Saved an independent copy to the device study library.')}>Save a study copy to this device</Button>
             <Button disabled={busy} variant="secondary" onPress={() => router.push('/battle')}>Use in battle</Button>
             {deleting === document.id ? <View>
               <Text style={label}>Delete this account copy on all synced devices? The original device set stays in your local library.</Text>
