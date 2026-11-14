@@ -1,3 +1,4 @@
+import { pickSourceDocument } from '@/features/scan-ocr/data/documentSource';
 import { reminders } from '@/features/reminders/data/reminders';
 import { questionSetRepository } from '@/features/question-sets/data/persistence';
 import { studyRepository } from '@/features/study/data/persistence';
@@ -15,7 +16,7 @@ export const dependencies = {
   reminders,
   release: releaseService,
   deleteCurrentAccount,
-  intake: { captureSourceImage, pickSourceImages, recognizeLocalImage },
+  intake: { pickSourceDocument, captureSourceImage, pickSourceImages, recognizeLocalImage },
   generation: { configured: isGenerationConfigured, generate: requestGeneratedQuestions },
   questionSets: questionSetRepository,
   study: studyRepository,
