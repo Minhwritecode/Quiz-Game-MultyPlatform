@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Button, Card, PageHeader, Screen, TopBar, usePalette } from '@/shared/ui';
@@ -28,6 +28,8 @@ export default function GenerateScreen() {
   const [count, setCount] = useState(10);
   const [difficulty, setDifficulty] = useState<'Easy' | 'Balanced' | 'Challenge'>('Balanced');
   const [busy, setBusy] = useState(false);
+  const generation = useRef<AbortController | null>(null);
+  useEffect(() => () => generation.current?.abort(), []);
 
   useEffect(() => {
     if (!manualMode || !existingSet) return;
@@ -49,6 +51,8 @@ export default function GenerateScreen() {
     if (busy) return;
     setMessage('');
     setBusy(true);
+    const controller = new AbortController();
+    generation.current = controller;
     try {
       if (dependencies.generation.configured && sourceDocument) {
         const raw = await dependencies.generation.generate({
@@ -56,7 +60,8 @@ export default function GenerateScreen() {
           questionCount: count,
           difficulty: difficulty === 'Easy' ? 'easy' : difficulty === 'Challenge' ? 'hard' : 'medium',
           languageCode: language,
-        });
+        }, controller.signal);
+        if (controller.signal.aborted) return;
         const parsed = parseGeneratedQuestions(raw);
         if (parsed.length !== count) throw new Error('The AI response did not contain valid questions.');
         setQuestions(parsed);
@@ -64,8 +69,9 @@ export default function GenerateScreen() {
         throw new Error('Add source text and sign in to use AI. You can also write your own questions below.');
       }
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not generate questions. Try again.');
+      setMessage(controller.signal.aborted ? (language === 'vi' ? 'Đã hủy. Bạn có thể tạo lại.' : 'Cancelled. You can retry.') : error instanceof Error ? error.message : 'Could not generate questions. Try again.');
     } finally {
+      generation.current = null;
       setBusy(false);
     }
   };
@@ -119,6 +125,7 @@ export default function GenerateScreen() {
       <TextInput testID={`question-${index}-explanation`} accessibilityLabel="Explanation" value={question.explanation} onChangeText={(explanation) => updateQuestion(question.id, (current) => ({ ...current, explanation }))} placeholder="Add an explanation" placeholderTextColor={palette.inkMuted} multiline style={[styles.explanationInput, { color: palette.ink, borderColor: palette.paperMuted }]} />
     </Card>)}
 
+    {busy && generation.current && <Button variant="secondary" onPress={() => generation.current?.abort()}>{language === 'vi' ? 'Hủy tạo câu hỏi' : 'Cancel generation'}</Button>}
     <View style={styles.actions}>{!manualMode && <Button variant="secondary" onPress={() => void generate()} disabled={busy}>{busy ? 'Generating…' : 'Generate from reviewed source'}</Button>}<Button testID="save-question-set" icon="checkmark" onPress={() => void save()} disabled={busy || questions.length === 0}>{busy ? 'Saving…' : existingSet ? t.home.saveChanges : manualMode ? t.home.saveSet : 'Save question set'}</Button></View>
   </Screen>;
 }

@@ -23,6 +23,20 @@ export default function BattleScreen() {
   const [roomMode, setRoomMode] = useState<'survival' | 'speed'>('survival');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
+  const [questionCount, setQuestionCount] = useState(10);
+  const [secondsPerQuestion, setSecondsPerQuestion] = useState(15);
+
+  useEffect(() => {
+    if (!battle?.question || battle.phase !== 'question_open') { setRemainingSeconds(null); return; }
+    const deadline = Date.parse(battle.question.closesAt);
+    const serverNow = Date.parse(battle.serverTime);
+    const receivedAt = Date.now();
+    const tick = () => setRemainingSeconds(Math.max(0, Math.ceil((deadline - serverNow - (Date.now() - receivedAt)) / 1000)));
+    tick();
+    const timer = setInterval(tick, 250);
+    return () => clearInterval(timer);
+  }, [battle]);
   const roomKey = `papyrus.battle.${user?.id ?? 'guest'}`;
 
   useEffect(() => {
@@ -285,6 +299,9 @@ export default function BattleScreen() {
               </Pressable>
             </View>
 
+            <Text style={[typography.caption, { color: palette.inkMuted }]}>{language === 'vi' ? 'Số câu hỏi / Thời gian mỗi câu' : 'Question count / Seconds per question'}</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginVertical: 8 }}>{[5, 10, 15].map(value => <Button key={value} variant={questionCount === value ? 'primary' : 'secondary'} onPress={() => setQuestionCount(value)}>{String(value)}</Button>)}</View>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>{[10, 15, 30].map(value => <Button key={value} variant={secondsPerQuestion === value ? 'primary' : 'secondary'} onPress={() => setSecondsPerQuestion(value)}>{value}s</Button>)}</View>
             {sets.length === 0 ? (
               <View style={styles.noSetsNotice}>
                 <Text style={[typography.caption, { color: palette.inkMuted }]}>
@@ -308,8 +325,8 @@ export default function BattleScreen() {
                       void run(async () => {
                         const room = await dependencies.rooms.create({
                           setId: set.id,
-                          questionCount: 10,
-                          secondsPerQuestion: 15,
+                          questionCount,
+                          secondsPerQuestion,
                           mode: roomMode,
                         });
                         await enter(room.id);
@@ -398,6 +415,7 @@ export default function BattleScreen() {
                 <Badge tone="primary">
                   {language === 'vi' ? `CÂU ${question.position + 1}` : `Q ${question.position + 1}`}
                 </Badge>
+                {remainingSeconds !== null && <Badge tone={remainingSeconds <= 5 ? "danger" : "neutral"}>{remainingSeconds}s</Badge>}
                 {battle.answered && (
                   <Badge tone="success">
                     {language === 'vi' ? 'ĐÃ TRẢ LỜI' : 'ANSWERED'}
@@ -414,7 +432,7 @@ export default function BattleScreen() {
                   <Button
                     key={index}
                     variant={battle.answered ? (question.correctIndex === index ? 'success' : 'ghost') : 'secondary'}
-                    disabled={busy || battle.answered || battle.phase !== 'question_open'}
+                    disabled={busy || battle.answered || remainingSeconds === 0 || battle.phase !== 'question_open'}
                     onPress={() =>
                       void run(async () => {
                         await dependencies.battle.answer(roomId!, question.position, index);
