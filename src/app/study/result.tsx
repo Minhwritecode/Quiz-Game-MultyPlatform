@@ -8,31 +8,34 @@ import { radii, spacing, typography } from '@/core/theme/tokens';
 import { useI18n } from '@/core/i18n';
 
 export default function StudyResultScreen() {
-  const { setId } = useLocalSearchParams<{ setId: string }>();
+  const { setId, attemptId } = useLocalSearchParams<{ setId: string; attemptId?: string }>();
   const router = useRouter();
   const palette = usePalette();
   const { language, t } = useI18n();
   const [attempt, setAttempt] = useState<Attempt | null>(null);
+  const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
     let active = true;
-    void dependencies.study.getLatestAttempt(setId ?? '').then((value: Attempt | null) => {
+    const request = attemptId ? dependencies.study.getAttempt(attemptId) : dependencies.study.getLatestAttempt(setId ?? '');
+    setLoadError('');
+    void request.then((value: Attempt | null) => {
       if (active) {
         setAttempt(value);
         if(value)void dependencies.release.recordStudyCompletion(value.id).catch(()=>undefined);
       }
-    });
+    }).catch(() => { if (active) setLoadError(language === 'vi' ? 'Không đọc được kết quả đã lưu.' : 'Could not load the saved result.'); });
     return () => {
       active = false;
     };
-  }, [setId]);
+  }, [setId, attemptId, language]);
 
   if (!attempt) {
     return (
       <Screen>
         <TopBar title={t.result.title} />
         <Card style={styles.empty}>
-          <Text style={[typography.title, { color: palette.ink }]}>{t.result.emptyTitle}</Text>
+          <Text style={[typography.title, { color: palette.ink }]}>{loadError || t.result.emptyTitle}</Text>
           <Button variant="secondary" onPress={() => router.replace('/sets')}>
             {t.study.backToLibrary}
           </Button>
@@ -124,6 +127,7 @@ export default function StudyResultScreen() {
           >
             {t.result.backToSets}
           </Button>
+          <Button variant="ghost" icon="time-outline" onPress={() => router.push('/study/history')}>{t.study.historyTitle}</Button>
         </View>
       </Card>
     </Screen>

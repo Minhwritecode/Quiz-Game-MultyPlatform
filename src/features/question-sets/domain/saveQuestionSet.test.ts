@@ -21,7 +21,7 @@ describe('saveQuestionSet', () => {
   it('delegates a valid set to the repository', async () => {
     const save = jest.fn<Promise<void>, [QuestionSet]>().mockResolvedValue();
 
-    await saveQuestionSet({ save, list: async () => [] }, validSet);
+    await saveQuestionSet({ save, remove: async () => {}, list: async () => [] }, validSet);
 
     expect(save).toHaveBeenCalledWith(validSet);
   });
@@ -29,7 +29,7 @@ describe('saveQuestionSet', () => {
   it('rejects malformed sets before persistence', async () => {
     const save = jest.fn<Promise<void>, [QuestionSet]>().mockResolvedValue();
 
-    await expect(saveQuestionSet({ save, list: async () => [] }, {
+    await expect(saveQuestionSet({ save, remove: async () => {}, list: async () => [] }, {
       ...validSet,
       questions: [{ ...validSet.questions[0]!, options: ['Only one option'] }],
     })).rejects.toThrow('invalid question');

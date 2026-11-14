@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Button, Card, PageHeader, Screen, TopBar, usePalette } from '@/shared/ui';
@@ -14,8 +14,9 @@ import { spacing, typography } from '@/core/theme/tokens';
 
 export default function GenerateScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ mode?: string }>();
+  const params = useLocalSearchParams<{ mode?: string; setId?: string }>();
   const manualMode = params.mode === 'manual';
+  const existingSet = usePapyrusStore((state) => state.questionSets.find((item) => item.id === params.setId));
   const { language, t } = useI18n();
   const [title,setTitle]=useState('');
   const [subject,setSubject]=useState('');
@@ -27,6 +28,13 @@ export default function GenerateScreen() {
   const [count, setCount] = useState(10);
   const [difficulty, setDifficulty] = useState<'Easy' | 'Balanced' | 'Challenge'>('Balanced');
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!manualMode || !existingSet) return;
+    setTitle(existingSet.title);
+    setSubject(existingSet.subject);
+    setQuestions(existingSet.questions);
+  }, [manualMode, existingSet?.id]);
 
   const updateQuestion = (questionId: string, update: (question: Question) => Question) => {
     setQuestions((current) => current.map((question) => question.id === questionId ? update(question) : question));
@@ -70,9 +78,10 @@ export default function GenerateScreen() {
     }
     setMessage('');
     setBusy(true);
-    const questionSet = { id: `${manualMode ? 'manual' : 'generated'}-${Date.now()}`, title: title.trim(), subject: subject.trim(), updatedAt: new Date().toISOString(), syncStatus: 'pending' as const, questions };
+    const questionSet = { id: existingSet?.id ?? `${manualMode ? 'manual' : 'generated'}-${Date.now()}`, title: title.trim(), subject: subject.trim(), updatedAt: new Date().toISOString(), syncStatus: 'pending' as const, questions };
     try {
       await saveQuestionSet(dependencies.questionSets, questionSet);
+      if (existingSet) await dependencies.study.clearProgress(existingSet.id);
       saveToStore(questionSet);
       router.replace('/sets');
     } catch (error) {
@@ -83,8 +92,8 @@ export default function GenerateScreen() {
   };
 
   return <Screen>
-    <TopBar title={manualMode ? t.home.manualTitle : 'Shape your quiz'} />
-    <PageHeader eyebrow={manualMode ? t.home.manualEyebrow : 'STEP 2 OF 3 · SHAPE'} title={manualMode ? t.home.manualTitle : 'Make the generation yours'} subtitle={manualMode ? t.home.manualSubtitle : 'Choose the output, review every answer and save only what you trust.'} />
+    <TopBar title={existingSet ? t.home.editSet : manualMode ? t.home.manualTitle : 'Shape your quiz'} />
+    <PageHeader eyebrow={manualMode ? t.home.manualEyebrow : 'STEP 2 OF 3 · SHAPE'} title={existingSet ? t.home.editSet : manualMode ? t.home.manualTitle : 'Make the generation yours'} subtitle={manualMode ? t.home.manualSubtitle : 'Choose the output, review every answer and save only what you trust.'} />
     <Card style={styles.controls}>
       {!manualMode && <Text style={[typography.body,{color:palette.ink}]}>AI sends the text you reviewed to our generation provider. Images stay on this device. Check the answers before saving.</Text>}
       <TextInput testID="set-title" accessibilityLabel="Question set title" placeholder={language === 'vi' ? 'Tên bộ câu hỏi' : 'Question set title'} value={title} onChangeText={setTitle} maxLength={160} style={[styles.questionInput,{color:palette.ink,borderColor:palette.paperMuted}]} />
@@ -110,7 +119,7 @@ export default function GenerateScreen() {
       <TextInput testID={`question-${index}-explanation`} accessibilityLabel="Explanation" value={question.explanation} onChangeText={(explanation) => updateQuestion(question.id, (current) => ({ ...current, explanation }))} placeholder="Add an explanation" placeholderTextColor={palette.inkMuted} multiline style={[styles.explanationInput, { color: palette.ink, borderColor: palette.paperMuted }]} />
     </Card>)}
 
-    <View style={styles.actions}>{!manualMode && <Button variant="secondary" onPress={() => void generate()} disabled={busy}>{busy ? 'Generating…' : 'Generate from reviewed source'}</Button>}<Button testID="save-question-set" icon="checkmark" onPress={() => void save()} disabled={busy || questions.length === 0}>{busy ? 'Saving…' : manualMode ? t.home.saveSet : 'Save question set'}</Button></View>
+    <View style={styles.actions}>{!manualMode && <Button variant="secondary" onPress={() => void generate()} disabled={busy}>{busy ? 'Generating…' : 'Generate from reviewed source'}</Button>}<Button testID="save-question-set" icon="checkmark" onPress={() => void save()} disabled={busy || questions.length === 0}>{busy ? 'Saving…' : existingSet ? t.home.saveChanges : manualMode ? t.home.saveSet : 'Save question set'}</Button></View>
   </Screen>;
 }
 

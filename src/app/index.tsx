@@ -113,6 +113,7 @@ export default function HomeScreen() {
           </View>
         </Card>
       ))}
+      <View style={{ marginBottom: spacing.md }}><Button variant="ghost" icon="time-outline" onPress={() => router.push('/study/history')}>{t.study.historyTitle}</Button></View>
 
       <SectionHeading title={t.home.featuresTitle} />
       <View style={[styles.quickGrid, width >= 720 && styles.quickGridWide]}>
