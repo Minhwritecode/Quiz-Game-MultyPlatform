@@ -1,3 +1,6 @@
+import Constants from 'expo-constants';
+import { roomInvite } from '@/features/room-battle/domain/invite';
+import { InviteQr, ScanRoomQr } from '@/features/room-battle/presentation/RoomQr';
 import { useEffect, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { AppState, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -17,6 +20,7 @@ export default function BattleScreen() {
   const user = useAuthStore((s) => s.user);
   const params = useLocalSearchParams<{ code?: string }>();
   const [code, setCode] = useState(params.code ?? '');
+  useEffect(()=>{if(params.code && /^[a-z0-9]{6}$/i.test(params.code))setCode(params.code.toUpperCase());},[params.code]);
   const [roomId, setRoomId] = useState<string | null>(null);
   const [battle, setBattle] = useState<Battle | null>(null);
   const [sets, setSets] = useState<{ id: string; title: string }[]>([]);
@@ -211,6 +215,7 @@ export default function BattleScreen() {
                 ? 'Nhập mã PIN 6 ký tự do bạn bè chia sẻ để tham gia ngay:'
                 : 'Enter the 6-character room PIN code shared by your host:'}
             </Text>
+            <ScanRoomQr onCode={setCode} />
             <TextInput
               accessibilityLabel="Room code"
               value={code}
@@ -369,13 +374,14 @@ export default function BattleScreen() {
                 : (language === 'vi' ? 'KẾT THÚC' : 'FINISHED')}
             </Badge>
 
+            {battle.phase==='waiting' && <InviteQr code={battle.code} />}
             <View style={styles.battleHeroButtons}>
               <Button
                 variant="reward"
                 icon="share-social"
                 onPress={() =>
                   void Share.share({
-                    message: `Tham gia phòng thi đấu Papyrus với mã: ${battle.code}\nLink: papyrus://battle?code=${battle.code}`,
+                    message: `Tham gia phòng thi đấu Papyrus với mã: ${battle.code}\nLink: ${roomInvite(battle.code,Constants.expoConfig?.scheme)}`,
                   })
                 }
               >
