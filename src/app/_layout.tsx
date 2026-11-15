@@ -1,3 +1,4 @@
+import { AssistantWidget } from '@/features/assistant/presentation/AssistantWidget';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack, useRouter, type ErrorBoundaryProps } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -43,7 +44,7 @@ function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
         <View style={styles.rootContainer}>
-          <ReleaseGate><Stack screenOptions={{ headerShown: false, animation: reduceMotion || systemMotion ? 'none' : 'default' }} /></ReleaseGate>
+          <ReleaseGate><Stack screenOptions={{ headerShown: false, animation: reduceMotion || systemMotion ? 'none' : 'default' }} /><AssistantWidget /></ReleaseGate>
 
         </View>
       </QueryClientProvider>

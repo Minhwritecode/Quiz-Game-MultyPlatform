@@ -63,7 +63,6 @@ export default function HomeScreen() {
           <View style={styles.heroActions}>
             <Button icon="sparkles" onPress={() => router.push('/create/scan')} variant="reward">{t.home.createAiBtn}</Button>
             <Button icon="create-outline" onPress={() => router.push('/create/generate?mode=manual')} variant="secondary">{t.home.createManualBtn}</Button>
-            <Button icon="chatbubbles-outline" onPress={() => router.push('/pdf-chat')} variant="secondary">{language === 'vi' ? 'Chat với PDF' : 'Chat with PDF'}</Button>
             <Button icon="game-controller-outline" onPress={() => router.push('/battle')} variant="secondary">{t.home.battleBtn}</Button>
           </View>
         </View>
