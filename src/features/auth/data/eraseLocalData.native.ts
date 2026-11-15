@@ -1,8 +1,10 @@
+import { clearChatSync } from '@/features/assistant/data/historySync';
 import { saveHistory } from '@/features/assistant/data/history';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getLocalDatabase } from '@/core/database/sqlite.native';
 export async function eraseLocalData(owner:string) {
   await saveHistory(owner, []);
+  await clearChatSync(owner);
   const db=getLocalDatabase();
   db.withTransactionSync(()=>{
     db.execSync('DELETE FROM study_progress; DELETE FROM attempt_answers; DELETE FROM attempts; DELETE FROM questions; DELETE FROM question_sets; DELETE FROM sync_queue;');

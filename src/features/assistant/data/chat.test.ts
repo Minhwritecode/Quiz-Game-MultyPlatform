@@ -1,3 +1,4 @@
+jest.mock('expo/fetch',()=>({fetch:jest.fn()}));
 import { askPapybot } from './chat';
 import { supabase } from '@/core/network/supabase';
 jest.mock('@/core/network/supabase',()=>({supabase:{auth:{getSession:jest.fn()},functions:{invoke:jest.fn()}}}));
