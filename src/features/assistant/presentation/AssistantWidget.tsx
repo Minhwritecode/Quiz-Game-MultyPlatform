@@ -43,14 +43,14 @@ export function AssistantWidget() {
   };
   const icon = (name: keyof typeof Ionicons.glyphMap, label: string, onPress: () => void, disabled = false) => <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={disabled} onPress={onPress} style={{ minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center', opacity: disabled ? 0.4 : 1 }}><Ionicons name={name} size={23} color={palette.indigo} /></Pressable>;
   return <>
-    {!open && <Pressable accessibilityRole="button" accessibilityLabel="Mở trợ lý Papyrus" onPress={() => setOpen(true)} style={{ position: 'absolute', right: 20, bottom: insets.bottom + 88, width: 56, height: 56, borderRadius: 28, backgroundColor: palette.indigo, alignItems: 'center', justifyContent: 'center', elevation: 6 }}><Ionicons name="chatbubbles" size={27} color="#fff" /></Pressable>}
+    {!open && <Pressable accessibilityRole="button" accessibilityLabel="Mở Papybot" onPress={() => setOpen(true)} style={{ position: 'absolute', right: 20, bottom: insets.bottom + 88, width: 56, height: 56, borderRadius: 28, backgroundColor: palette.indigo, alignItems: 'center', justifyContent: 'center', elevation: 6 }}><Ionicons name="chatbubbles" size={27} color="#fff" /></Pressable>}
     <Modal visible={open} transparent animationType="none" onRequestClose={close} onDismiss={close}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, justifyContent: 'flex-end', alignItems: desktop ? 'flex-end' : 'stretch' }}>
-        <Pressable accessibilityLabel="Đóng trợ lý" accessibilityRole="button" onPress={close} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#00000033' }} />
+        <Pressable accessibilityLabel="Đóng Papybot" accessibilityRole="button" onPress={close} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#00000033' }} />
         <View accessibilityViewIsModal style={{ width: desktop ? 420 : '100%', height: Math.min(height - insets.top - 20, 680), marginRight: desktop ? 24 : 0, marginBottom: desktop ? 24 : 0, paddingBottom: desktop ? 0 : insets.bottom, backgroundColor: palette.paper, borderRadius: 24, overflow: 'hidden' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', paddingLeft: 20, borderBottomWidth: 1, borderColor: palette.paperMuted }}>
-            <View style={{ flex: 1 }}><Text accessibilityRole="header" style={{ color: palette.ink, fontSize: 19, fontWeight: '700' }}>Trợ lý Papyrus</Text><Text style={{ color: palette.inkMuted, fontSize: 12 }}>Học tập · Hướng dẫn · Tài liệu</Text></View>
-            {icon('close', 'Đóng trợ lý Papyrus', close)}
+            <View style={{ flex: 1 }}><Text accessibilityRole="header" style={{ color: palette.ink, fontSize: 19, fontWeight: '700' }}>Papybot</Text><Text style={{ color: palette.inkMuted, fontSize: 12 }}>Học tập · Hướng dẫn · Tài liệu</Text></View>
+            {icon('close', 'Đóng Papybot', close)}
           </View>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20, gap: 12 }}>
             <Text style={{ color: palette.inkMuted }}>Bạn đang ở: {context?.title ?? (path === '/' ? 'Trang chủ' : 'Papyrus')}. Chỉ tên màn hình được dùng làm ngữ cảnh, chưa gửi dữ liệu lên AI.</Text>
@@ -62,7 +62,7 @@ export function AssistantWidget() {
           {attachment && <View style={{ flexDirection: 'row', alignItems: 'center', paddingLeft: 16 }}><Text numberOfLines={1} style={{ flex: 1, color: palette.ink }}>{attachment.name}</Text>{icon('close-circle-outline', 'Bỏ tài liệu', () => setAttachment(null))}</View>}
           <View style={{ flexDirection: 'row', alignItems: 'flex-end', borderTopWidth: 1, borderColor: palette.paperMuted, padding: 8 }}>
             {icon('attach', 'Đính kèm PDF, TXT hoặc DOCX', () => void pick(), picking)}
-            <TextInput accessibilityLabel="Câu hỏi cho trợ lý" placeholder="Hỏi về app hoặc bài học…" placeholderTextColor={palette.inkMuted} value={draft} onChangeText={setDraft} multiline maxLength={4000} style={{ flex: 1, minHeight: 48, maxHeight: 120, padding: 12, color: palette.ink }} />
+            <TextInput accessibilityLabel="Câu hỏi cho Papybot" placeholder="Hỏi về app hoặc bài học…" placeholderTextColor={palette.inkMuted} value={draft} onChangeText={setDraft} multiline maxLength={4000} style={{ flex: 1, minHeight: 48, maxHeight: 120, padding: 12, color: palette.ink }} />
             {icon('send', 'Gửi câu hỏi', () => setNotice('Chưa gửi: dịch vụ AI chưa được cấu hình. Câu hỏi và tài liệu vẫn ở trên thiết bị.'), !draft.trim())}
           </View>
         </View>
