@@ -386,7 +386,7 @@ restart, and expose sync state without calling the cloud from Presentation.
 - [ ] Add optional Google sign-in only after the P0 email flow is stable.
 - [ ] Implement profile read/update through a repository.
 - [ ] Add loading, invalid credentials, expired session and offline states.
-- [ ] Add RLS tests for profile ownership.
+- [x] Add RLS tests for profile ownership (`supabase/tests/user_profiles.sql`, 16 November 2026).
 - [ ] Add component tests for login and session transitions.
 
 **Exit gate:** a user can authenticate, close/reopen the app, retain a valid
@@ -735,3 +735,18 @@ four-reference feature backlog or original production Definition of Done.
 See [the detailed Week 12 matrix](release/WEEK-12-CHECKLIST.md) and
 [operations runbook](release/RUNBOOK.md). Checkboxes here record code preparation
 only where explicitly stated; they do not claim a production rollout.
+
+## Supabase schema checkpoint — 16 November 2026
+
+- [x] Audit hosted project `rqfolapnysclnmolrsva`: previously 11 public tables, five migrations and one Auth account with no profile.
+- [x] Deploy pending account cleanup, Papybot quota/history and battle leaderboard migrations.
+- [x] Provision `profiles` on Auth signup; synchronize name/avatar metadata changes; backfill existing accounts; cascade deletion.
+- [x] Add owner-only `user_preferences` (theme/language/haptics/reduced motion), constrained values and server-managed timestamps.
+- [x] Restrict profile visibility to its owner; battle/leaderboard expose display names only through authenticated RPCs.
+- [x] Run local profile/RLS, battle security, battle lifecycle and account cleanup SQL tests with rollback.
+- [x] Verify hosted backfill: one account, one profile, one preferences row, zero missing profiles; 14 public tables all have RLS.
+- [ ] Connect automatic cross-device preference synchronization in the app. The database table is ready; existing local preference behavior is unchanged.
+
+Auth identity/email/passwords stay in `auth.users` / Authentication → Users. Do not duplicate credentials in public tables. Current source, question, attempt and room tables already exist; no separate database is needed per feature.
+
+Security Advisor was reviewed: authenticated SECURITY DEFINER battle/sync RPCs remain intentional with authorization checks; leaked-password protection is still disabled in the project's Auth configuration. This checkpoint does not claim every Advisor warning is cleared or every future feature is implemented.
