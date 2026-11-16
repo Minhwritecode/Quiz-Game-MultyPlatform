@@ -7,9 +7,9 @@
 **Document type:** Project execution plan and completion checklist  
 **Plan status:** Active implementation; acceptance gates incomplete
 
-**Version:** 1.1
+**Version:** 1.2
 
-**Updated:** 11 November 2026
+**Updated:** 16 November 2026
 
 **Primary client:** React Native + TypeScript + Expo
 
@@ -30,8 +30,24 @@ verified: the complete app journeys on real devices or authenticated cloud UI.
 Checkboxes below describe their full stated scope. Partial implementations do
 not close a combined requirement. In particular, manual account import/conflict
 resolution differs from the original automatic sync/server-timestamp LWW design.
-Strict Clean Architecture remains open because Presentation still imports some
-Data adapters; the current import checker does not detect every such dependency.
+The Group A architecture remediation is recorded below. Other unchecked feature,
+design-system and release gates retain their original scope.
+
+---
+
+## Group A — Clean Architecture (16 November 2026)
+
+- [x] Move Supabase, storage and document access out of screens/widgets: Papybot uses `dependencies.assistant`, leaderboard receives domain `Ranking` values, battle session persistence uses an owner-scoped repository, and preferences use a storage port.
+- [x] Add domain repository contracts and injected use cases for assistant, leaderboard and battle sessions; wire concrete adapters in `src/composition/`. Domain tests inject in-memory/fake repositories.
+- [x] Replace the regex checker with a TypeScript AST dependency graph: aliases, relative/barrel re-exports, `require`, dynamic imports and type imports; reject Domain → framework/infrastructure, Presentation → Data and Data → Presentation/composition. Reject direct fetch/browser storage in Presentation. CI runs the checker and its five regression tests.
+- [x] Remove the unused legacy `src/core/sync/syncEngine.ts` direct-upsert path. Existing account sync/RPC flow remains the supported path; this does not mark background sync complete.
+- [x] Introduce shared `AppError` codes and safe UI message mapping. Assistant/intake/auth adapters use curated messages; screen catch handlers hide unknown provider errors. Existing auth string-result contracts remain compatible through safe adapter mapping.
+
+Evidence: `scripts/check_architecture.sh`, `npm run typecheck`, `npm test -- --watch=false`, and the domain tests for assistant validation/cancellation, leaderboard pagination, owner-scoped battle sessions, and safe error messages. The checker treats composition as the explicit injection boundary; it is a static dependency check, not proof of runtime behavior or a replacement for code review.
+
+Verification: full Jest run passed 52 tests; the follow-up run passed all 7 targeted tests, including 2 new domain tests (54 distinct tests covered overall). TypeScript and all 5 architecture regression tests passed. Full-project lint is still failing with 17 React Hooks errors and 74 warnings; the same 17 errors were reproduced against baseline commit `b04f6e9`. Lint is not a completed release gate.
+
+This checkpoint closes these five architecture tasks only. Phase 2 design/Figma/accessibility items and all native/cloud acceptance gates remain separate.
 
 ---
 
@@ -160,9 +176,9 @@ Presentation  --->  Domain  <---  Data
 
 ### 3.2 Non-negotiable rules
 
-- [ ] Domain files do not import `react`, `react-native`, Expo, Supabase,
+- [x] Domain files do not import `react`, `react-native`, Expo, Supabase,
   SQLite, camera, ML Kit or network libraries.
-- [ ] A screen never calls Supabase, SQLite, OCR or an Edge Function directly.
+- [x] A screen never calls Supabase, SQLite, OCR or an Edge Function directly.
 - [ ] A repository interface is declared at the Domain boundary; its concrete
   implementation lives in Data.
 - [ ] DTOs are not exposed to Presentation. Data maps DTOs to domain entities.
@@ -312,7 +328,7 @@ base technology choices are visible in the repository.
 - [ ] Install the pinned Node/npm toolchain and document it.
 - [x] Create the Expo React Native TypeScript app shell.
 - [x] Configure Expo Router and a small route map.
-- [x] Configure strict TypeScript, Jest and initial import-boundary checks (strict coverage still needs improvement).
+- [x] Configure strict TypeScript, Jest and initial import-boundary checks (AST dependency coverage added on 16 November).
 - [x] Add environment example files without real credentials.
 - [x] Add Docker web preview and Nginx configuration (runtime/reproducibility gate remains open).
 - [x] Add GitHub Actions for install, typecheck, tests, architecture checks and
@@ -330,10 +346,10 @@ and open the Docker preview without provider secrets.
 
 - [ ] Create the `Presentation → Domain ← Data` folders for every planned
   feature.
-- [ ] Add one representative pure domain entity and use case.
-- [ ] Add one repository port and one in-memory test implementation.
-- [ ] Add the composition root and inject the representative feature.
-- [ ] Add import rules that fail when Domain imports UI or infrastructure.
+- [x] Add one representative pure domain entity and use case.
+- [x] Add one repository port and one in-memory test implementation.
+- [x] Add the composition root and inject the representative feature.
+- [x] Add import rules that fail when Domain imports UI or infrastructure.
 - [ ] Record the architecture in `docs/architecture/` and keep it current.
 - [ ] Audit the Papyrus Figma file against the required 10 screens.
 - [ ] Define light, dark and system theme behavior.
@@ -582,7 +598,7 @@ The Week 09 slide deck sets the target distribution:
 
 - [x] `npm run typecheck` passes (11 November audit).
 - [x] `npm test -- --watch=false` passes: 8 suites / 16 tests (11 November audit).
-- [x] `bash scripts/check_architecture.sh` passes; this limited regex check is not a full dependency audit.
+- [x] `bash scripts/check_architecture.sh` passes with the AST graph checker and five regression tests (16 November).
 - [x] `npx expo export --platform web` passes (previous sync delivery evidence).
 - [ ] Docker image builds and serves the web preview.
 - [ ] No secrets are required for the base demo.

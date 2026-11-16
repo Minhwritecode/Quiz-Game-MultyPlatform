@@ -14,8 +14,10 @@ Status date: 11 November 2026. Papyrus is under active implementation, not featu
 See [the requirement audit](STATUS-AUDIT-2026-11-11.md) for all 17 original
 requirements and four-reference gaps, and [delivery evidence](DELIVERY-CHECKLIST.md)
 for test/deployment details. Current checks: TypeScript passes, 8 Jest suites /
-16 tests pass. The architecture script passes but misses known Presentation-to-Data
-imports; strict Clean Architecture is still incomplete.
+The 11 November test count is historical. On 16 November, Group A moved the known
+Presentation-to-Data accesses behind injected contracts and replaced the import
+checker with AST graph checks plus five regression tests. See the Group A checklist
+in `../PROJECT-PLAN.md`; native/cloud acceptance remains separate.
 
 No reference source has been merged. The four reference snapshots stay gitignored
 and outside the released client source. Reference README claims are not proof of

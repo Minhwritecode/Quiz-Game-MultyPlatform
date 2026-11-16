@@ -107,5 +107,15 @@
 - **Implemented slices:** local study/result, editable review, camera permission handling, account-set manual sync and server battle/Realtime. Local API/domain evidence is recorded in the delivery checklist.
 - **Cloud:** five migrations deployed; RLS/RPC grants and anonymous-denial probes verified. Authenticated app/device journeys remain pending.
 - **Missing:** complete auth, live/streaming AI, PDF/documents, full library CRUD, resume/history, automatic/attempt sync, QR and global leaderboard.
-- **Still open:** strict architecture dependencies, component/E2E/native tests, signed builds and report/Figma/device reconciliation.
+- **Still open:** component/E2E/native tests, signed builds and report/Figma/device reconciliation.
 - **Broader reference scope:** X1–X6 in the audit tracks guest/host modes, programming categories, RAG/providers, ranked duels, moderation/media and billing/self-hosting. These are not covered by the original eight-week core delivery order.
+
+## Group A checkpoint — 16 November 2026
+
+- [x] Move assistant/leaderboard/battle persistence and document access behind domain ports and composition.
+- [x] Add injected use cases and domain fake-repository tests.
+- [x] Enforce cross-layer imports with AST graph checks in the existing CI gate.
+- [x] Remove unused legacy direct-upsert sync engine.
+- [x] Standardize safe errors and UI fallbacks.
+
+See [Group A in the project plan](PROJECT-PLAN.md#group-a--clean-architecture-16-november-2026) for scope and evidence. This checkpoint does not complete all of Phase 2 or any release acceptance gate.
