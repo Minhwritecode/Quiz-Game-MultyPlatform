@@ -1,3 +1,4 @@
+import { AppError, errorMessage } from '@/core/domain/failure';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
@@ -63,13 +64,13 @@ export default function GenerateScreen() {
         }, controller.signal);
         if (controller.signal.aborted) return;
         const parsed = parseGeneratedQuestions(raw);
-        if (parsed.length !== count) throw new Error('The AI response did not contain valid questions.');
+        if (parsed.length !== count) throw new AppError('validation', 'The AI response did not contain valid questions.');
         setQuestions(parsed);
       } else {
-        throw new Error('Add source text and sign in to use AI. You can also write your own questions below.');
+        throw new AppError('validation', 'Add source text and sign in to use AI. You can also write your own questions below.');
       }
     } catch (error) {
-      setMessage(controller.signal.aborted ? (language === 'vi' ? 'Đã hủy. Bạn có thể tạo lại.' : 'Cancelled. You can retry.') : error instanceof Error ? error.message : 'Could not generate questions. Try again.');
+      setMessage(controller.signal.aborted ? (language === 'vi' ? 'Đã hủy. Bạn có thể tạo lại.' : 'Cancelled. You can retry.') : errorMessage(error, 'Could not generate questions. Try again.'));
     } finally {
       generation.current = null;
       setBusy(false);
@@ -91,7 +92,7 @@ export default function GenerateScreen() {
       saveToStore(questionSet);
       router.replace('/sets');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not save. Try again.');
+      setMessage(errorMessage(error, 'Could not save. Try again.'));
     } finally {
       setBusy(false);
     }

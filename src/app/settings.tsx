@@ -1,3 +1,4 @@
+import { errorMessage } from '@/core/domain/failure';
 import { useEffect, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -41,7 +42,7 @@ export default function SettingsScreen() {
   const [busy,setBusy]=useState(false);
   const [notice,setNotice]=useState('');
   useEffect(()=>{const refresh=()=>{void dependencies.reminders.enabled().then(setReminder).catch(()=>undefined);};refresh();const listener=AppState.addEventListener('change',state=>{if(state==='active')refresh();});return ()=>listener.remove();},[]);
-  const toggleReminder=async(value:boolean)=>{if(busy)return;setBusy(true);setNotice('');try{await dependencies.reminders.setEnabled(value);setReminder(value);}catch(e){setNotice(e instanceof Error?e.message:'Không đổi được lịch nhắc.');}finally{setBusy(false);}};
+  const toggleReminder=async(value:boolean)=>{if(busy)return;setBusy(true);setNotice('');try{await dependencies.reminders.setEnabled(value);setReminder(value);}catch(e){setNotice(errorMessage(e, 'Không đổi được lịch nhắc.'));}finally{setBusy(false);}};
   const theme=usePapyrusStore(s=>s.theme);
   const setTheme=usePapyrusStore(s=>s.setTheme);
   const palette = usePalette();

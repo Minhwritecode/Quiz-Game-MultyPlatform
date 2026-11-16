@@ -1,10 +1,10 @@
+import { errorMessage } from '@/core/domain/failure';
 import Constants from 'expo-constants';
 import { roomInvite } from '@/features/room-battle/domain/invite';
 import { InviteQr, ScanRoomQr } from '@/features/room-battle/presentation/RoomQr';
 import { useEffect, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { AppState, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { Badge, Button, Card, IconTile, Screen, usePalette } from '@/shared/ui';
 import { dependencies } from '@/composition/dependencies';
@@ -41,7 +41,7 @@ export default function BattleScreen() {
     const timer = setInterval(tick, 250);
     return () => clearInterval(timer);
   }, [battle]);
-  const roomKey = `papyrus.battle.${user?.id ?? 'guest'}`;
+  const roomOwner = user?.id ?? 'guest';
 
   useEffect(() => {
     let active = true;
@@ -49,22 +49,22 @@ export default function BattleScreen() {
     setBattle(null);
     setSets([]);
     if (user) {
-      void AsyncStorage.getItem(roomKey).then((id) => {
+      void dependencies.battleSession.load(roomOwner).then((id) => {
         if (active) setRoomId(id);
-      });
+      }).catch(error=>{if(active)setError(errorMessage(error,'Không khôi phục được phòng gần nhất.'));});
       void dependencies.battle
         .sets()
         .then((value: { id: string; title: string }[]) => {
           if (active) setSets(value);
         })
         .catch((e: { message?: string }) => {
-          if (active) setError(String(e.message ?? 'Unknown error'));
+          if (active) setError(errorMessage(e, 'Không tải được danh sách bộ đề.'));
         });
     }
     return () => {
       active = false;
     };
-  }, [user?.id, roomKey]);
+  }, [user?.id, roomOwner]);
 
   useEffect(() => {
     if (!roomId) return;
@@ -81,7 +81,7 @@ export default function BattleScreen() {
           setError('');
         }
       } catch (e) {
-        if (active) setError(e instanceof Error ? e.message : t.battle.reconnecting);
+        if (active) setError(errorMessage(e, t.battle.reconnecting));
       } finally {
         fetching = false;
       }
@@ -120,20 +120,20 @@ export default function BattleScreen() {
     try {
       await action();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Please try again.');
+      setError(errorMessage(e, 'Please try again.'));
     } finally {
       setBusy(false);
     }
   };
 
   const enter = async (id: string) => {
-    await AsyncStorage.setItem(roomKey, id);
+    await dependencies.battleSession.save(roomOwner, id);
     setRoomId(id);
   };
 
   const leave = async () => {
     if (roomId) await dependencies.battle.leave(roomId);
-    await AsyncStorage.removeItem(roomKey);
+    await dependencies.battleSession.clear(roomOwner);
     setRoomId(null);
     setBattle(null);
   };

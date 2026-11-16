@@ -17,6 +17,6 @@ it('sends conversation and extracted document together',async()=>{
  expect(invoke).toHaveBeenCalledWith('papybot',expect.objectContaining({body:{messages,context:'/sets',document:'Document text'}}));
 });
 it('preserves server quota error for the UI',async()=>{
- invoke.mockResolvedValue({error:{context:{json:async()=>({error:'Hết lượt'})}}});
- await expect(askPapybot([{role:'user',content:'Hi'}],'/',undefined,new AbortController().signal)).rejects.toThrow('Hết lượt');
+ invoke.mockResolvedValue({error:{context:{status:429,json:async()=>({error:'secret server internals'})}}});
+ await expect(askPapybot([{role:'user',content:'Hi'}],'/',undefined,new AbortController().signal)).rejects.toThrow('hết lượt');
 });

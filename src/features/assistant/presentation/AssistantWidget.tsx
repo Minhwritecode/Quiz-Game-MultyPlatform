@@ -1,9 +1,7 @@
-import { syncHistory, markChatDeleted } from '../data/historySync';
-import { pickPdf, type PdfAttachment } from '../data/pdf';
-import { loadHistory, saveHistory, type Conversation } from '../data/history';
+import { errorMessage } from '@/core/domain/failure';
+import { dependencies } from '@/composition/dependencies';
+import type { ChatMessage, Conversation, PdfAttachment } from '../domain/repository';
 import * as Crypto from 'expo-crypto';
-import { askPapybot, type ChatMessage } from '../data/chat';
-import { pickSourceDocument } from '@/features/scan-ocr/data/documentSource';
 import { useAuthStore } from '@/core/state/useAuthStore';
 import { useEffect, useRef, useState, type ElementRef } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, TextInput, View, useWindowDimensions } from 'react-native';
@@ -46,7 +44,7 @@ export function AssistantWidget() {
     request.current?.abort(); request.current = null;
     setBusy(false); setMessages([]); setConversations([]); setDraft(''); setDocumentText(undefined);setPdf(null);setPartial(''); setNotice(''); setHelp(null); setHydrated(false); setHistoryVisible(false); setConversationId(Crypto.randomUUID());
     if (!userId) setHydrated(true);
-    else void loadHistory(userId).then(saved => {
+    else void dependencies.assistant.load(userId).then(saved => {
       if (!active) return;
       setConversations(saved);
       if (saved[0]) { setMessages(saved[0].messages); setConversationId(saved[0].id); }
@@ -57,18 +55,17 @@ export function AssistantWidget() {
   const persist = (next: Conversation[]) => {
     setConversations(next);
     const account = userId;
-    if(account) void saveHistory(account,next).catch(() => {if(owner.current === account) setNotice('Không lưu được lịch sử. Hội thoại hiện tại vẫn đang mở.');});
+    if(account) void dependencies.assistant.save(account,next).catch(() => {if(owner.current === account) setNotice('Không lưu được lịch sử. Hội thoại hiện tại vẫn đang mở.');});
   };
   const resetConversation = () => {setConversationId(Crypto.randomUUID());setMessages([]);setDraft('');setDocumentText(undefined);setPdf(null);setPartial('');setNotice('');setHistoryVisible(false);setHelp(null);};
 
   const send = async () => {
     if (syncing || request.current || !hydrated || picking || !draft.trim()) return;
     const history: ChatMessage[] = [...messages, {role:'user',content:draft.trim()}];
-    if(history.length > 19 || history.reduce((n,m)=>n+m.content.length,0)>16000) {setNotice('Hội thoại đã đạt giới hạn. Hãy bắt đầu cuộc trò chuyện mới.'); return;}
     const controller = new AbortController(); request.current=controller; setBusy(true); setPartial(''); setNotice('');
     let lastUpdate=0;
-    try { const answer=await askPapybot(history,path,documentText,controller.signal, text => {if(!controller.signal.aborted && Date.now()-lastUpdate>80){lastUpdate=Date.now();setPartial(text);}},pdf ?? undefined); if(!controller.signal.aborted) {const completed: ChatMessage[] = [...history,{role:'assistant',content:answer}];setMessages(completed);setDraft('');persist([{id:conversationId,updatedAt:Date.now(),messages:completed},...conversations.filter(c=>c.id!==conversationId)].slice(0,20));} }
-    catch(error) {if(!controller.signal.aborted) setNotice(error instanceof Error?error.message:'Không gửi được.');}
+    try { const answer=await dependencies.assistant.ask(history,path,documentText,controller.signal, text => {if(!controller.signal.aborted && Date.now()-lastUpdate>80){lastUpdate=Date.now();setPartial(text);}},pdf ?? undefined); if(!controller.signal.aborted) {const completed: ChatMessage[] = [...history,{role:'assistant',content:answer}];setMessages(completed);setDraft('');persist([{id:conversationId,updatedAt:Date.now(),messages:completed},...conversations.filter(c=>c.id!==conversationId)].slice(0,20));} }
+    catch(error) {if(!controller.signal.aborted) setNotice(errorMessage(error, 'Không gửi được.'));}
     finally {if(request.current===controller) {request.current=null;setBusy(false);setPartial('');}}
   };
   const [open, setOpen] = useState(false);
@@ -82,23 +79,23 @@ export function AssistantWidget() {
     const account = userId;
     setPicking(true);
     try {
-      const text = await pickSourceDocument();
+      const text = await dependencies.assistant.pickDocument();
       if(owner.current !== account) return;
       if(text) {setPdf(null);setDocumentText(text); setNotice(`Đã đọc ${text.length} ký tự (không lưu nội dung tệp vào lịch sử). Nội dung sẽ gửi kèm câu hỏi đến dịch vụ AI khi bạn bấm Gửi.`);}
-    } catch(error) { if(owner.current===account) setNotice(error instanceof Error ? error.message : 'Không chọn được tài liệu. Hãy thử lại.'); }
+    } catch(error) { if(owner.current===account) setNotice(errorMessage(error, 'Không chọn được tài liệu. Hãy thử lại.')); }
     finally { setPicking(false); }
   };
   const attachPdf = async () => {
     const account=userId; setPicking(true);
-    try {const file=await pickPdf();if(file && owner.current===account) {setDocumentText(undefined);setPdf(file);setNotice('PDF sẽ gửi đến AI khi bạn bấm Gửi; không lưu tệp vào lịch sử.');}}
-    catch(error){if(owner.current===account)setNotice(error instanceof Error?error.message:'Không đọc được PDF.');}
+    try {const file=await dependencies.assistant.pickPdf();if(file && owner.current===account) {setDocumentText(undefined);setPdf(file);setNotice('PDF sẽ gửi đến AI khi bạn bấm Gửi; không lưu tệp vào lịch sử.');}}
+    catch(error){if(owner.current===account)setNotice(errorMessage(error, 'Không đọc được PDF.'));}
     finally {setPicking(false);}
   };
   const sync = async () => {
     if(!userId || syncing) return;
     const account=userId;setSyncing(true);
-    try {const saved=await syncHistory(account,conversations);if(owner.current!==account)return;setConversations(saved);const active=saved.find(c=>c.id===conversationId);if(active)setMessages(active.messages);else resetConversation();setNotice('Đã đồng bộ lịch sử với tài khoản.');}
-    catch(error){if(owner.current===account)setNotice(error instanceof Error?error.message:'Đồng bộ thất bại.');}
+    try {const saved=await dependencies.assistant.sync(account,conversations);if(owner.current!==account)return;setConversations(saved);const active=saved.find(c=>c.id===conversationId);if(active)setMessages(active.messages);else resetConversation();setNotice('Đã đồng bộ lịch sử với tài khoản.');}
+    catch(error){if(owner.current===account)setNotice(errorMessage(error, 'Đồng bộ thất bại.'));}
     finally {setSyncing(false);}
   };
   const icon = (name: keyof typeof Ionicons.glyphMap, label: string, onPress: () => void, disabled = false) => <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={disabled || syncing} onPress={onPress} style={{ minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center', opacity: disabled ? 0.4 : 1 }}><Ionicons name={name} size={23} color={palette.indigo} /></Pressable>;
@@ -117,7 +114,7 @@ export function AssistantWidget() {
             <View style={{ padding: 14, borderRadius: 16, backgroundColor: palette.indigoTint }}><Text style={{ color: palette.indigoDeep }}>Câu hỏi, lịch sử trong phiên và nội dung đính kèm sẽ được gửi tới AI. Hướng dẫn có sẵn dùng được khi chưa đăng nhập.</Text></View>
             {!messages.length && !historyVisible && [...(context ? [context] : []), ...guides.filter(item => item !== context)].map(item => <Pressable key={item.match} accessibilityRole="button" onPress={() => setHelp(item)} style={{ padding: 14, borderWidth: 1, borderColor: palette.paperMuted, borderRadius: 14 }}><Text style={{ color: palette.ink }}>{item.title}</Text></Pressable>)}
             {help && <View style={{ padding: 16, backgroundColor: palette.paperRaised, borderRadius: 16 }}><Text style={{ color: palette.ink, fontWeight: '700' }}>Hướng dẫn có sẵn · {help.title}</Text><Text selectable style={{ color: palette.ink, lineHeight: 23, marginTop: 8 }}>{help.text}</Text></View>}
-            {historyVisible && <View style={{gap:8}}><Text style={{color:palette.ink}}>Lịch sử trên thiết bị · tối đa 20 hội thoại</Text>{conversations.length===0 && <Text style={{color:palette.inkMuted}}>Chưa có hội thoại đã lưu.</Text>}{conversations.map(c=><View key={c.id} style={{flexDirection:'row',alignItems:'center'}}><Pressable accessibilityRole="button" disabled={busy || picking || syncing} onPress={()=>{setConversationId(c.id);setMessages(c.messages);setDraft('');setDocumentText(undefined);setPdf(null);setPartial('');setNotice('');setHistoryVisible(false);}} style={{flex:1,padding:12}}><Text numberOfLines={2} style={{color:palette.ink}}>{c.messages[0]?.content || 'Hội thoại'}</Text></Pressable>{icon('trash-outline','Xóa hội thoại',()=>{void (async()=>{try {const account=userId;if(account)await markChatDeleted(account,c.id);if(owner.current!==account)return;persist(conversations.filter(item=>item.id!==c.id));if(conversationId===c.id) resetConversation();}catch{setNotice('Không xóa được hội thoại. Hãy thử lại.');}})();},busy || picking)}</View>)}</View>}
+            {historyVisible && <View style={{gap:8}}><Text style={{color:palette.ink}}>Lịch sử trên thiết bị · tối đa 20 hội thoại</Text>{conversations.length===0 && <Text style={{color:palette.inkMuted}}>Chưa có hội thoại đã lưu.</Text>}{conversations.map(c=><View key={c.id} style={{flexDirection:'row',alignItems:'center'}}><Pressable accessibilityRole="button" disabled={busy || picking || syncing} onPress={()=>{setConversationId(c.id);setMessages(c.messages);setDraft('');setDocumentText(undefined);setPdf(null);setPartial('');setNotice('');setHistoryVisible(false);}} style={{flex:1,padding:12}}><Text numberOfLines={2} style={{color:palette.ink}}>{c.messages[0]?.content || 'Hội thoại'}</Text></Pressable>{icon('trash-outline','Xóa hội thoại',()=>{void (async()=>{try {const account=userId;if(account)await dependencies.assistant.markDeleted(account,c.id);if(owner.current!==account)return;persist(conversations.filter(item=>item.id!==c.id));if(conversationId===c.id) resetConversation();}catch{setNotice('Không xóa được hội thoại. Hãy thử lại.');}})();},busy || picking)}</View>)}</View>}
             {messages.map((m,i)=><View key={i} style={{padding:12,borderRadius:12,backgroundColor:palette.paperRaised}}><Text style={{color:palette.indigo,fontWeight:'700'}}>{m.role==='user'?'Bạn':'Papybot'}</Text><Text selectable style={{color:palette.ink,lineHeight:23}}>{m.content}</Text></View>)}
             {busy && !!partial && <Text selectable style={{color:palette.ink,lineHeight:23}}>{partial}</Text>}
             {busy && <Text accessibilityLiveRegion="polite" style={{color:palette.ink}}>Papybot đang trả lời…</Text>}

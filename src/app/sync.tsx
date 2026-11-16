@@ -1,3 +1,4 @@
+import { errorMessage } from '@/core/domain/failure';
 import { useCallback, useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -42,7 +43,7 @@ function AccountLibrary({ owner }: { owner: string }) {
     if (busy) return;
     setBusy(true); setMessage('');
     try { await action(); setMessage(success); }
-    catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to sync.'); }
+    catch (error) { setMessage(errorMessage(error, 'Unable to sync.')); }
     finally {
       try { await refresh(); } catch (error) { setMessage(String(error)); }
       setBusy(false);

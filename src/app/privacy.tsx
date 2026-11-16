@@ -1,3 +1,4 @@
+import { errorMessage } from '@/core/domain/failure';
 import { useState } from 'react';
 import { Linking, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -26,7 +27,7 @@ export default function PrivacyScreen() {
       usePapyrusStore.setState({questionSets:[],sourceDocument:null,hydrated:true});
       setFinished(true);
       setMessage(result.cleanupRequired ? 'Tài khoản trên máy chủ đã được xóa. Chưa dọn hết dữ liệu trên thiết bị; hãy xóa dữ liệu ứng dụng trong cài đặt hệ điều hành trước khi dùng lại.' : 'Đã xóa tài khoản, dữ liệu cloud và dữ liệu học trên thiết bị này.');
-    } catch(error){setMessage(error instanceof Error ? error.message : 'Không thể xóa tài khoản.');}
+    } catch(error){setMessage(errorMessage(error, 'Không thể xóa tài khoản.'));}
     finally {setBusy(false);}
   };
   return <Screen><TopBar title="Quyền riêng tư & dữ liệu" />

@@ -1,3 +1,4 @@
+import { AppError, errorMessage } from '@/core/domain/failure';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Alert, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -22,7 +23,7 @@ export default function ScanScreen() {
     try {
       const images = await (camera ? captureSourceImage() : pickSourceImages());
       if (images.length === 0) return;
-      if (images.length > 10) throw new Error('Choose at most 10 pages at a time.');
+      if (images.length > 10) throw new AppError('validation', 'Choose at most 10 pages at a time.');
       const pages: string[] = [];
       for (const uri of images) pages.push(await recognizeLocalImage(uri));
       const extracted = pages
@@ -33,7 +34,7 @@ export default function ScanScreen() {
       if (extracted) setText((current) => [current.trim(), extracted].filter(Boolean).join('\n\n'));
       else Alert.alert('Text not detected', 'OCR is unavailable for this platform or the image has no readable text. You can paste the notes manually.');
     } catch (error) {
-      Alert.alert('Could not read images', error instanceof Error ? error.message : 'Please choose the images again.');
+      Alert.alert('Could not read images', errorMessage(error, 'Please choose the images again.'));
     } finally {
       setBusy(false);
     }
@@ -45,10 +46,10 @@ export default function ScanScreen() {
       const extracted = await dependencies.intake.pickSourceDocument();
       if (extracted === null) return;
       const combined = [text.trim(), extracted].filter(Boolean).join('\n\n');
-      if (combined.length > 30000) throw new Error('Combined material exceeds 30,000 characters. Shorten your notes first.');
+      if (combined.length > 30000) throw new AppError('validation', 'Combined material exceeds 30,000 characters. Shorten your notes first.');
       setText(combined);
     } catch (error) {
-      Alert.alert('Could not import document', error instanceof Error ? error.message : 'Choose the document again.');
+      Alert.alert('Could not import document', errorMessage(error, 'Choose the document again.'));
     } finally { setBusy(false); }
   };
   const continueToShape = () => {

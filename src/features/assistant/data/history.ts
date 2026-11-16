@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { ChatMessage } from './chat';
-export type Conversation = { id: string; updatedAt: number; messages: ChatMessage[] };
+import type { Conversation } from '../domain/repository';
+export type { Conversation } from '../domain/repository';
 const key = (user: string) => `papybot:history:v1:${user}`;
 let pending: Promise<unknown> = Promise.resolve();
 export async function loadHistory(user: string): Promise<Conversation[]> {

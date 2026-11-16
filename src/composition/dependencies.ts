@@ -1,3 +1,8 @@
+import { createBattleSessionUseCases } from '@/features/room-battle/domain/session';
+import { assistant } from './assistant';
+import { battleSession } from '@/features/room-battle/data/session';
+import { leaderboardRepository } from '@/features/leaderboard/data/repository';
+import { createLeaderboardUseCases } from '@/features/leaderboard/domain/repository';
 import { pickSourceDocument } from '@/features/scan-ocr/data/documentSource';
 import { reminders } from '@/features/reminders/data/reminders';
 import { questionSetRepository } from '@/features/question-sets/data/persistence';
@@ -13,6 +18,7 @@ import { recognizeLocalImage } from '@/features/scan-ocr/data/ocr';
 import { isGenerationConfigured, requestGeneratedQuestions } from '@/features/quiz-generation/data/edgeFunctionClient';
 
 export const dependencies = {
+  assistant, battleSession: createBattleSessionUseCases(battleSession), leaderboard: createLeaderboardUseCases(leaderboardRepository),
   reminders,
   release: releaseService,
   deleteCurrentAccount,

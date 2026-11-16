@@ -1,3 +1,4 @@
+import { errorMessage } from '@/core/domain/failure';
 import { useState } from 'react';
 import { Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -12,7 +13,7 @@ export default function ProfileScreen(){
   async function save(){
     if(busy)return;setBusy(true);setMessage('');
     try {const updated=await dependencies.updateDisplayName(name);useAuthStore.getState().setUser(updated);setMessage('Đã lưu hồ sơ.');}
-    catch(error){setMessage(error instanceof Error?error.message:'Không lưu được hồ sơ.');}
+    catch(error){setMessage(errorMessage(error, 'Không lưu được hồ sơ.'));}
     finally{setBusy(false);}
   }
   return <Screen><TopBar title="Hồ sơ cá nhân"/>
