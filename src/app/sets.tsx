@@ -13,6 +13,7 @@ export default function LibraryScreen() {
   const palette = usePalette();
   const { language, t } = useI18n();
   const [query, setQuery] = useState('');
+  const syncMessage = usePapyrusStore(state=>state.syncMessage);
   const sets = usePapyrusStore((state) => state.questionSets);
   const [actionBusyId, setActionBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState('');
@@ -68,6 +69,8 @@ export default function LibraryScreen() {
       </View>
       {actionError ? <Text accessibilityRole="alert" style={[typography.caption, { color: palette.danger, marginBottom: spacing.md }]}>{actionError}</Text> : null}
 
+      {!!syncMessage&&<Text accessibilityLiveRegion="polite" style={{color:palette.inkMuted}}>{syncMessage}</Text>}
+      <Button variant="ghost" onPress={()=>router.push('/sync')}>Trạng thái đồng bộ</Button>
       {/* Search Input */}
       <View style={[styles.search, { borderColor: palette.paperMuted, backgroundColor: palette.paperRaised }]}>
         <Ionicons name="search" size={20} color={palette.inkMuted} />
@@ -129,8 +132,8 @@ export default function LibraryScreen() {
               </Text>
             </View>
             <View style={styles.trailing}>
-              <Badge tone={set.syncStatus === 'pending' || set.syncStatus === 'failed' ? 'reward' : 'success'}>
-                {set.syncStatus === 'pending' || set.syncStatus === 'failed' ? t.library.pendingSync : t.library.synced}
+              <Badge tone={set.syncStatus === 'conflict' ? 'danger' : set.syncStatus === 'pending' || set.syncStatus === 'failed' ? 'reward' : 'success'}>
+                {set.syncStatus === 'conflict' ? 'Xung đột' : set.syncStatus === 'failed' ? 'Chờ thử lại' : set.syncStatus === 'pending' ? t.library.pendingSync : t.library.synced}
               </Badge>
               <View style={styles.actionIcons}>
                 {set.questions.length >= 3 && (

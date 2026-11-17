@@ -3,6 +3,7 @@ import { saveHistory } from '@/features/assistant/data/history';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getLocalDatabase } from '@/core/database/sqlite.native';
 export async function eraseLocalData(owner:string) {
+  await AsyncStorage.multiRemove([`learning-sync:v1:${encodeURIComponent(owner)}`,`papyrus.progress.v2:${owner}`]);
   await saveHistory(owner, []);
   await clearChatSync(owner);
   const db=getLocalDatabase();

@@ -22,3 +22,7 @@ in `../PROJECT-PLAN.md`; native/cloud acceptance remains separate.
 No reference source has been merged. The four reference snapshots stay gitignored
 and outside the released client source. Reference README claims are not proof of
 Papyrus behavior.
+
+### 17 November — Group B update
+
+The earlier baseline table is historical. Account sets now feed the study library with identical UUIDs; completed attempts/answers and source text have durable, owner-scoped sync. Auto-sync wakes on login, foreground/network recovery and periodic retries. Revision/CAS plus explicit resolution replaces timestamp winner selection. See the Group B plan checkpoint for the 82-test, architecture, web export, SQL and two-session local API evidence. This does not close native acceptance, preference sync or the entire reference-repository backlog.

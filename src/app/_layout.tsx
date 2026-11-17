@@ -22,6 +22,7 @@ export function ErrorBoundary({error,retry}:ErrorBoundaryProps) {
 
 function RootLayout() {
   const router=useRouter();
+  const authScope=useAuthStore(s=>s.user?.id ?? 'guest');
   useEffect(()=>dependencies.reminders.listen(()=>router.push('/sets')),[router]);
   const systemScheme = useColorScheme();
   const theme=usePapyrusStore(s=>s.theme);
@@ -30,21 +31,20 @@ function RootLayout() {
   const [systemMotion,setSystemMotion]=useState(false);
   useEffect(()=>{void AccessibilityInfo.isReduceMotionEnabled().then(setSystemMotion);const listener=AccessibilityInfo.addEventListener('reduceMotionChanged',setSystemMotion);return ()=>listener.remove();},[]);
   const queryClient = useMemo(() => new QueryClient({ defaultOptions: { queries: { staleTime: 30_000, retry: 1 } } }), []);
-  const hydrateQuestionSets = usePapyrusStore((state) => state.hydrateQuestionSets);
+  useEffect(() => dependencies.learning.start(), []);
   const bootstrapAuth = useAuthStore((state) => state.bootstrap);
 
 
   useEffect(() => {
-    void hydrateQuestionSets(dependencies.questionSets.list).catch(error=>reportFailure(error,'startup'));
     void bootstrapAuth(dependencies.auth).catch(error=>reportFailure(error,'startup'));
-  }, [bootstrapAuth, hydrateQuestionSets]);
+  }, [bootstrapAuth]);
 
   return (
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
         <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
         <View style={styles.rootContainer}>
-          <ReleaseGate><Stack screenOptions={{ headerShown: false, animation: reduceMotion || systemMotion ? 'none' : 'default' }} /><AssistantWidget /></ReleaseGate>
+          <ReleaseGate><Stack key={authScope} screenOptions={{ headerShown: false, animation: reduceMotion || systemMotion ? 'none' : 'default' }} /><AssistantWidget /></ReleaseGate>
 
         </View>
       </QueryClientProvider>

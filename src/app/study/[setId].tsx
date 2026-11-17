@@ -1,3 +1,4 @@
+import { randomUUID } from 'expo-crypto';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
@@ -22,6 +23,7 @@ export default function StudyScreen() {
   const [answers, setAnswers] = useState<AttemptAnswer[]>([]);
   const [sessionStartedAt, setSessionStartedAt] = useState(() => new Date().toISOString());
   const [questionStartedAt, setQuestionStartedAt] = useState(() => Date.now());
+  const [attemptId,setAttemptId]=useState(randomUUID);
   const [saving, setSaving] = useState(false);
   const [saveError,setSaveError]=useState('');
   const [progressLoaded, setProgressLoaded] = useState(false);
@@ -29,7 +31,7 @@ export default function StudyScreen() {
 
   useEffect(() => {
     let active = true;
-    void dependencies.study.getProgress(setId).then((progress) => {
+    void dependencies.study.getProgress(setId).then(async (progress) => {
       if (!active) return;
       if (progress) {
         setIndex(Math.min(progress.currentIndex, Math.max(0, (questionSet?.questions.length ?? 1) - 1)));
@@ -37,10 +39,14 @@ export default function StudyScreen() {
         setRevealed(progress.revealed);
         setAnswers(progress.answers);
         setSessionStartedAt(progress.startedAt);
+        const restoredId=progress.attemptId??attemptId;
+        if(!progress.attemptId)await dependencies.study.saveProgress({...progress,attemptId:restoredId});
+        if(!active)return;
+        setAttemptId(restoredId);
       } else {
         const now = new Date().toISOString();
-        const initial: StudyProgress = { questionSetId: setId, currentIndex: 0, selectedIndex: null, revealed: false, answers: [], startedAt: now, updatedAt: now };
-        void dependencies.study.saveProgress(initial).catch(() => undefined);
+        const initial: StudyProgress = { attemptId, questionSetId: setId, currentIndex: 0, selectedIndex: null, revealed: false, answers: [], startedAt: now, updatedAt: now };
+        await dependencies.study.saveProgress(initial);
       }
       setProgressLoaded(true);
     }).catch(() => {
@@ -50,7 +56,7 @@ export default function StudyScreen() {
   }, [setId, questionSet?.questions.length, t.study.progressUnavailable]);
 
   const persistProgress = (progress: Omit<StudyProgress, 'updatedAt'>) => {
-    void dependencies.study.saveProgress({ ...progress, updatedAt: new Date().toISOString() })
+    void dependencies.study.saveProgress({ ...progress, attemptId, updatedAt: new Date().toISOString() })
       .then(() => setSaveError(''))
       .catch(() => setSaveError(t.study.progressSaveError));
   };
@@ -92,7 +98,7 @@ export default function StudyScreen() {
     setSaving(true);
     const finalAnswers = [...answers.filter((item) => item.questionId !== lastAnswer.questionId), lastAnswer];
     const attempt = completeAttempt({
-      id: `attempt-${questionSet.id}-${sessionStartedAt}`,
+      id: attemptId,
       questionSetId: questionSet.id,
       startedAt: sessionStartedAt,
       answers: finalAnswers,

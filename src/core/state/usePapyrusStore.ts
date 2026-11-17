@@ -8,6 +8,10 @@ type PapyrusState = {
   deletedSetIds: string[];
   sourceDocument: SourceDocument | null;
   hydrated: boolean;
+  syncMessage: string;
+  setSyncMessage: (message:string) => void;
+  replaceQuestionSets: (sets:QuestionSet[]) => void;
+  resetAccountView: () => void;
   haptics: boolean;
   reduceMotion: boolean;
   language: 'vi' | 'en';
@@ -29,6 +33,10 @@ export const usePapyrusStore = create<PapyrusState>()(persist((set, get) => ({
   deletedSetIds: [],
   sourceDocument: null,
   hydrated: false,
+  syncMessage: '',
+  setSyncMessage: (syncMessage) => set({syncMessage}),
+  replaceQuestionSets: (questionSets) => set({questionSets,hydrated:true}),
+  resetAccountView: () => set({questionSets:[],sourceDocument:null,hydrated:false,syncMessage:''}),
   haptics: true,
   reduceMotion: false,
   language: 'vi',

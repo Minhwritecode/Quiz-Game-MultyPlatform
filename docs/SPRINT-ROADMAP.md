@@ -119,3 +119,14 @@
 - [x] Standardize safe errors and UI fallbacks.
 
 See [Group A in the project plan](PROJECT-PLAN.md#group-a--clean-architecture-16-november-2026) for scope and evidence. This checkpoint does not complete all of Phase 2 or any release acceptance gate.
+
+## Group B checkpoint — 17 November 2026
+
+- [x] Foreground login/resume/network-recovery auto-sync and timer cleanup.
+- [x] Completed attempts/answers and source-document push/pull with owner-scoped RPCs.
+- [x] Same-ID account study library and account-isolated caches.
+- [x] Durable outbox, backoff, receipt replay, cursor and tombstones.
+- [x] Per-set status and explicit conflict actions.
+- [x] Revision policy adopted consistently; timestamp LWW superseded.
+
+Evidence and scope limits: [Group B in the project plan](PROJECT-PLAN.md#group-b--learning-data-synchronization-17-november-2026). Native acceptance and cross-device preferences remain open.

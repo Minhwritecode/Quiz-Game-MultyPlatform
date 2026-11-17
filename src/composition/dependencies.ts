@@ -1,3 +1,4 @@
+import { learning } from './learning';
 import { createBattleSessionUseCases } from '@/features/room-battle/domain/session';
 import { assistant } from './assistant';
 import { battleSession } from '@/features/room-battle/data/session';
@@ -5,8 +6,6 @@ import { leaderboardRepository } from '@/features/leaderboard/data/repository';
 import { createLeaderboardUseCases } from '@/features/leaderboard/domain/repository';
 import { pickSourceDocument } from '@/features/scan-ocr/data/documentSource';
 import { reminders } from '@/features/reminders/data/reminders';
-import { questionSetRepository } from '@/features/question-sets/data/persistence';
-import { studyRepository } from '@/features/study/data/persistence';
 import { roomRepository, battleRepository } from '@/features/room-battle/data/roomRepository';
 import { localSyncQueue } from '@/features/sync/data/localQueue';
 import { authRepository, updateDisplayName } from '@/features/auth/data/authRepository';
@@ -24,8 +23,10 @@ export const dependencies = {
   deleteCurrentAccount,
   intake: { pickSourceDocument, captureSourceImage, pickSourceImages, recognizeLocalImage },
   generation: { configured: isGenerationConfigured, generate: requestGeneratedQuestions },
-  questionSets: questionSetRepository,
-  study: studyRepository,
+  questionSets: learning.questionSets,
+  sources: learning.sources,
+  learning,
+  study: learning.study,
   rooms: roomRepository,
   battle: battleRepository,
   syncQueue: localSyncQueue,

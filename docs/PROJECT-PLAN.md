@@ -9,7 +9,7 @@
 
 **Version:** 1.2
 
-**Updated:** 16 November 2026
+**Updated:** 17 November 2026
 
 **Primary client:** React Native + TypeScript + Expo
 
@@ -29,7 +29,8 @@ verified: the complete app journeys on real devices or authenticated cloud UI.
 
 Checkboxes below describe their full stated scope. Partial implementations do
 not close a combined requirement. In particular, manual account import/conflict
-resolution differs from the original automatic sync/server-timestamp LWW design.
+resolution originally differed from the timestamp LWW design. Group B below now
+implements automatic sync and records the explicit revision-based conflict policy.
 The Group A architecture remediation is recorded below. Other unchecked feature,
 design-system and release gates retain their original scope.
 
@@ -464,14 +465,14 @@ consistent deadlines, score results and reconnect behavior.
 
 ### Phase 9 - Sync, resilience and privacy
 
-- [ ] Implement ordered push from the outbox.
-- [ ] Retry transient errors with exponential backoff.
-- [ ] Pull by cursor and upsert only newer server records.
-- [ ] Make retries idempotent with client UUIDs.
-- [ ] Resolve question-set conflicts by server timestamp.
+- [x] Implement ordered push from the outbox.
+- [x] Retry transient errors with exponential backoff.
+- [x] Pull by cursor and upsert only newer server records.
+- [x] Make retries idempotent with client UUIDs.
+- [x] Resolve conflicts by server revision / compare-and-swap, with explicit local/server choice. **Policy amendment, 17 November:** supersedes timestamp LWW; server timestamps remain display metadata.
 - [ ] Keep attempts append-only and apply newer soft deletes.
-- [ ] Add a visible sync indicator at set level and app level.
-- [ ] Add manual retry and “sync now” controls.
+- [x] Add a visible sync indicator at set level and app level.
+- [x] Add manual retry and “sync now” controls.
 - [ ] Test crashes or network loss during local write, push and pull.
 - [ ] Document data flows and privacy boundaries in the final report.
 
@@ -750,3 +751,16 @@ only where explicitly stated; they do not claim a production rollout.
 Auth identity/email/passwords stay in `auth.users` / Authentication → Users. Do not duplicate credentials in public tables. Current source, question, attempt and room tables already exist; no separate database is needed per feature.
 
 Security Advisor was reviewed: authenticated SECURITY DEFINER battle/sync RPCs remain intentional with authorization checks; leaked-password protection is still disabled in the project's Auth configuration. This checkpoint does not claim every Advisor warning is cleared or every future feature is implemented.
+
+## Group B — Learning data synchronization (17 November 2026)
+
+- [x] Trigger foreground sync on authentication changes, app activation and network recovery, with a 30-second retry wake-up. Stop listeners/timers on disposal; captured owners prevent account-switch request rebinding.
+- [x] Sync source documents and completed attempts with their ordered answers through atomic RPCs, in addition to existing question sets. Source text is saved on confirmed intake; images remain local.
+- [x] Read downloaded sets directly into the same account's study library using the original set/question UUIDs. Completed attempts and documents are read from that account's durable cache. Removed the independent-download-copy action. Guest legacy data remains separate and requires explicit import; guest IDs are mapped once during import.
+- [x] Persist outbox, cached documents and cursor together; retry with bounded exponential backoff; preserve mutation UUID on ambiguous failures; persist acknowledgements before advancing; reject regressing/stuck cursors; pull tombstones. Edits coalesce while offline; unresolved conflicts never silently overwrite local work.
+- [x] Show pending, failed/retry, conflict and synced status per set, with a sync screen, conflict choices and app-level error message. Sources and attempts show their pending/conflict status in the sync screen.
+- [x] Adopt revision-based optimistic concurrency for sets, sources and attempts. Server-generated timestamps are informational; device clock cannot choose the winner. Keep-server accepts the remote revision; keep-local enqueues a new mutation against it. Removed the unused timestamp winner helper.
+
+Verification: TypeScript passed; 28 Jest suites / 82 tests passed, including engine crash/retry/owner isolation and nine auto-sync lifecycle tests; five architecture regression tests passed; Expo web export passed. `supabase/tests/learning_sync.sql` passed locally with rollback (including two-session locking), and `scripts/test-learning-sync-local.mjs` passed through real local Auth/PostgREST using two sessions of one account plus an outsider. Tests cover normalized answers, stale/concurrent writes, exact receipt replay, pagination, soft deletes, historical attempts after question deletion and cross-account denial.
+
+Limits kept separate: this is foreground/reconnect sync, not an OS background task while the app is terminated. Native airplane-mode/relaunch acceptance still needs a device run; no APK was built. In-progress study resume remains local and account-scoped; completed attempts synchronize. Automatic preferences sync remains a separate open item. Existing guest history is not silently assigned to whichever account signs in.

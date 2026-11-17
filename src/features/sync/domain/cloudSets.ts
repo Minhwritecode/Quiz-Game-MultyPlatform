@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AppError } from '@/core/domain/failure';
 import type { QuestionSet } from '@/core/domain/models';
 
 const question = z.object({id:z.string().uuid(),content:z.string().min(1),options:z.array(z.string().min(1)).length(4),correctIndex:z.number().int().min(0).max(3),explanation:z.string(),position:z.number().int().nonnegative()});
@@ -32,10 +33,21 @@ export class CloudSets {
    state.documents=[document,...state.documents.filter(d=>d.id!==id)];
    await this.store.save(owner,state);
  });}
+ save(owner:string,set:QuestionSet){return this.exclusive(async()=>{
+   const state=await this.store.load(owner),existing=state.documents.find(d=>d.id===set.id);
+   const pending=state.pending.find(p=>p.document.id===set.id);
+   if(pending?.conflict)throw new AppError('conflict','Giải quyết xung đột trong màn Đồng bộ trước khi sửa tiếp.');
+   const document=cloudSetSchema.parse({...set,revision:existing?.revision??'0',deleted:false});
+   state.pending=state.pending.filter(p=>p.document.id!==set.id);
+   state.pending.push({mutationId:this.uuid(),baseRevision:document.revision,document,failures:0,retryAt:0});
+   state.documents=[document,...state.documents.filter(d=>d.id!==set.id)];
+   await this.store.save(owner,state);
+ });}
  remove(owner:string,id:string){return this.exclusive(async()=>{
    const state=await this.store.load(owner),document=state.documents.find(d=>d.id===id);
    if(!document)throw new Error('Set not found.');
-   if(state.pending.some(p=>p.document.id===id))throw new Error('Resolve the pending change first.');
+   if(state.pending.some(p=>p.document.id===id && p.conflict))throw new AppError('conflict','Giải quyết xung đột trước khi xóa.');
+   state.pending=state.pending.filter(p=>p.document.id!==id);
    const deleted={...document,deleted:true};
    state.documents=state.documents.map(d=>d.id===id?deleted:d);
    state.pending.push({mutationId:this.uuid(),baseRevision:document.revision,document:deleted,failures:0,retryAt:0});
@@ -64,7 +76,7 @@ export class CloudSets {
    let more=true;
    while(more){
      const page=await this.remote.pull(owner,state.cursor);
-     if(page.hasMore&&page.cursor===state.cursor)throw new Error('Server returned a non-advancing cursor.');
+     if(BigInt(page.cursor)<BigInt(state.cursor)||(page.hasMore&&page.cursor===state.cursor))throw new Error('Server returned a non-advancing cursor.');
      for(const document of page.documents){
        if(!state.pending.some(p=>p.document.id===document.id))state.documents=[document,...state.documents.filter(d=>d.id!==document.id)];
      }

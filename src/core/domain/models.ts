@@ -1,4 +1,4 @@
-export type SyncStatus = 'synced' | 'pending' | 'failed';
+export type SyncStatus = 'synced' | 'pending' | 'failed' | 'conflict';
 
 export type Question = {
   id: string;
@@ -44,6 +44,7 @@ export type AttemptAnswer = {
 };
 
 export type StudyProgress = {
+  attemptId?: string;
   questionSetId: string;
   currentIndex: number;
   selectedIndex: number | null;

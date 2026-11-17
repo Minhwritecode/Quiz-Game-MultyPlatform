@@ -1,3 +1,5 @@
+import { useAuthStore } from '@/core/state/useAuthStore';
+import { randomUUID } from 'expo-crypto';
 import { AppError, errorMessage } from '@/core/domain/failure';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -25,7 +27,7 @@ export default function GenerateScreen() {
   const palette = usePalette();
   const saveToStore = usePapyrusStore((state) => state.saveQuestionSet);
   const sourceDocument = usePapyrusStore((state) => state.sourceDocument);
-  const [questions, setQuestions] = useState<Question[]>(() => manualMode ? [{ id: `manual-${Date.now()}`, content: '', options: ['', '', '', ''], correctIndex: 0, explanation: '', position: 0 }] : []);
+  const [questions, setQuestions] = useState<Question[]>(() => manualMode ? [{ id: randomUUID(), content: '', options: ['', '', '', ''], correctIndex: 0, explanation: '', position: 0 }] : []);
   const [count, setCount] = useState(10);
   const [difficulty, setDifficulty] = useState<'Easy' | 'Balanced' | 'Challenge'>('Balanced');
   const [busy, setBusy] = useState(false);
@@ -65,7 +67,7 @@ export default function GenerateScreen() {
         if (controller.signal.aborted) return;
         const parsed = parseGeneratedQuestions(raw);
         if (parsed.length !== count) throw new AppError('validation', 'The AI response did not contain valid questions.');
-        setQuestions(parsed);
+        setQuestions(parsed.map(question => ({...question,id:randomUUID()})));
       } else {
         throw new AppError('validation', 'Add source text and sign in to use AI. You can also write your own questions below.');
       }
@@ -85,9 +87,11 @@ export default function GenerateScreen() {
     }
     setMessage('');
     setBusy(true);
-    const questionSet = { id: existingSet?.id ?? `${manualMode ? 'manual' : 'generated'}-${Date.now()}`, title: title.trim(), subject: subject.trim(), updatedAt: new Date().toISOString(), syncStatus: 'pending' as const, questions };
+    const account=useAuthStore.getState().user?.id;
+    const questionSet = { id: existingSet?.id ?? randomUUID(), title: title.trim(), subject: subject.trim(), updatedAt: new Date().toISOString(), syncStatus: 'pending' as const, questions };
     try {
       await saveQuestionSet(dependencies.questionSets, questionSet);
+      if(useAuthStore.getState().user?.id!==account)return;
       if (existingSet) await dependencies.study.clearProgress(existingSet.id);
       saveToStore(questionSet);
       router.replace('/sets');
@@ -115,7 +119,7 @@ export default function GenerateScreen() {
 
     <Text style={[typography.title, { color: palette.ink, marginTop: spacing.xl, marginBottom: spacing.md }]}>{manualMode ? t.home.correctAnswerHint : 'Review before saving'}</Text>
     {questions.length === 0 && <Card><Text style={[typography.body, { color: palette.inkMuted }]}>No questions remain. Generate a new set or go back to your source.</Text></Card>}
-    <Button variant="secondary" disabled={busy || questions.length >= 30} onPress={()=>setQuestions(current=>[...current,{id:`manual-${Date.now()}`,content:'',options:['','','',''],correctIndex:0,explanation:'',position:current.length}])}>{t.home.addQuestion}</Button>
+    <Button variant="secondary" disabled={busy || questions.length >= 30} onPress={()=>setQuestions(current=>[...current,{id:randomUUID(),content:'',options:['','','',''],correctIndex:0,explanation:'',position:current.length}])}>{t.home.addQuestion}</Button>
     {questions.map((question, index) => <Card key={question.id} style={styles.question}>
       <View style={styles.questionHeader}><Text style={[typography.label, { color: palette.indigo }]}>{t.home.questionLabel.toLocaleUpperCase()} {index + 1}</Text><Pressable accessibilityRole="button" accessibilityLabel={`${t.home.removeQuestion} ${index + 1}`} onPress={() => removeQuestion(question.id)} style={styles.removeButton}><Ionicons name="trash-outline" size={20} color={palette.danger} /></Pressable></View>
       <TextInput testID={`question-${index}-content`} accessibilityLabel={`${t.home.questionLabel} ${index+1}`} placeholder={t.home.questionLabel} value={question.content} onChangeText={(content) => updateQuestion(question.id, (current) => ({ ...current, content }))} multiline textAlignVertical="top" style={[styles.questionInput, { color: palette.ink, borderColor: palette.paperMuted }]} />

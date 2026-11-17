@@ -1,3 +1,4 @@
+import { learningSync } from '@/features/sync/data/learningSync';
 import { AppError } from '@/core/domain/failure';
 import { supabase } from '@/core/network/supabase';
 import { cloudSets } from '@/features/sync/data/cloudSets';
@@ -15,6 +16,6 @@ export async function deleteCurrentAccount() {
       if(error || !data?.deleted)throw new AppError('unavailable', 'Could not delete the account. Check your connection or contact support. Your data has not been cleared on this device.');
     },
     async clearSession(){const {error}=await supabase!.auth.signOut({scope:'local'});if(error)throw error;},
-    async eraseDevice(){await cloudSets.clearAccountCache(owner);await eraseLocalData(owner);},
+    async eraseDevice(){await cloudSets.clearAccountCache(owner);await learningSync.clearAccountCache(owner);await eraseLocalData(owner);},
   });
 }
