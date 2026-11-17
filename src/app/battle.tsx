@@ -9,6 +9,10 @@ import { useAuthStore } from '@/core/state/useAuthStore';
 import type { Battle } from '@/features/room-battle/domain/battle';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { useI18n } from '@/core/i18n';
+import { GameEnvironment } from '@/shared/GameEnvironment';
+import { CharacterAvatar } from '@/shared/CharacterAvatar';
+
+const SCHOLAR_COLORS = ['#3B82F6', '#F59E0B', '#10B981', '#EC4899', '#8B5CF6', '#06B6D4'];
 
 export default function BattleScreen() {
   const router = useRouter();
@@ -125,6 +129,7 @@ export default function BattleScreen() {
 
   return (
     <Screen bottomNav>
+      <GameEnvironment gameMode="battle">
       {/* Header */}
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
@@ -352,6 +357,37 @@ export default function BattleScreen() {
                 : (language === 'vi' ? 'KẾT THÚC' : 'FINISHED')}
             </Badge>
 
+            {/* 3D Colosseum Scholars Arena Display */}
+            <View style={styles.arenaScholarsRow}>
+              {battle.players.slice(0, 4).map((p, idx) => {
+                let action: 'idle' | 'attack' | 'hurt' | 'victory' = 'idle';
+                if (battle.phase === 'finished') {
+                  action = idx === 0 ? 'victory' : 'idle';
+                } else if (battle.answered && p.userId === user?.id) {
+                  action = 'attack';
+                } else if (battle.mode === 'survival' && (p.lives ?? 3) < 3) {
+                  action = 'hurt';
+                }
+
+                return (
+                  <View key={p.userId} style={styles.scholarContainer}>
+                    <CharacterAvatar
+                      color={SCHOLAR_COLORS[idx % SCHOLAR_COLORS.length]}
+                      name={p.name}
+                      action={action}
+                      size={48}
+                      showName={true}
+                    />
+                    {p.userId === battle.hostId && (
+                      <View style={styles.hostCrown}>
+                        <Text style={{ fontSize: 11 }}>👑</Text>
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+
             <View style={styles.battleHeroButtons}>
               <Button
                 variant="reward"
@@ -468,6 +504,15 @@ export default function BattleScreen() {
                       {i === 0 ? '🥇 1' : i === 1 ? '🥈 2' : i === 2 ? '🥉 3' : `${i + 1}`}
                     </Text>
                   </View>
+                  <View style={{ marginRight: 8 }}>
+                    <CharacterAvatar
+                      color={SCHOLAR_COLORS[i % SCHOLAR_COLORS.length]}
+                      name={p.name}
+                      action={battle.phase === 'finished' && i === 0 ? 'victory' : 'idle'}
+                      size={36}
+                      showName={false}
+                    />
+                  </View>
                   <View style={{ flex: 1 }}>
                     <Text style={[typography.body, { color: palette.ink, fontWeight: '700' }]}>
                       {p.name} {p.userId === battle.hostId && (language === 'vi' ? '(Chủ phòng)' : '(Host)')} {p.userId === user?.id && (language === 'vi' ? '(Bạn)' : '(You)')}
@@ -507,11 +552,29 @@ export default function BattleScreen() {
           </Button>
         </View>
       )}
+      </GameEnvironment>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  arenaScholarsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 12,
+    marginVertical: spacing.md,
+    flexWrap: 'wrap',
+  },
+  scholarContainer: {
+    alignItems: 'center',
+    position: 'relative',
+  },
+  hostCrown: {
+    position: 'absolute',
+    top: -6,
+    right: -4,
+  },
   header: { paddingTop: spacing.md, marginBottom: spacing.md },
   errorBox: {
     flexDirection: 'row',

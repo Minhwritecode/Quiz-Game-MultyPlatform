@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
   Modal,
   Platform,
   Pressable,
@@ -15,6 +16,191 @@ import { useI18n } from '@/core/i18n';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { colors, radii, shadows, spacing, typography } from '@/core/theme/tokens';
 import { Badge, Button, Card, Screen, TopBar, usePalette } from '@/shared/ui';
+import { CharacterHero, CharacterAction } from '@/shared/CharacterHero';
+import { GameEnvironment } from '@/shared/GameEnvironment';
+import { MagicParticles } from '@/shared/MagicParticles';
+
+// ─── 3D Flip Card Component ───────────────────────────────────────────────
+const CYAN = '#06B6D4';
+const GOLD = '#FBBF24';
+const INDIGO = '#4F46E5';
+const VIOLET = '#7C3AED';
+
+function FlipCard({
+  card,
+  width: cardWidth,
+  palette,
+  onPress,
+}: {
+  card: MatchCard;
+  width: number;
+  palette: ReturnType<typeof usePalette>;
+  onPress: () => void;
+}) {
+  const flipAnim = useRef(new Animated.Value(0)).current;
+  const shakeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const prevState = useRef(card.state);
+
+  useEffect(() => {
+    if (prevState.current === card.state) return;
+    prevState.current = card.state;
+
+    if (card.state === 'flipped' || card.state === 'matched') {
+      Animated.spring(flipAnim, { toValue: 1, useNativeDriver: true, friction: 8, tension: 100 }).start();
+    } else if (card.state === 'hidden') {
+      Animated.spring(flipAnim, { toValue: 0, useNativeDriver: true, friction: 8, tension: 100 }).start();
+    } else if (card.state === 'wrong') {
+      // Shake animation
+      Animated.sequence([
+        Animated.timing(shakeAnim, { toValue: 10, duration: 60, useNativeDriver: true }),
+        Animated.timing(shakeAnim, { toValue: -10, duration: 60, useNativeDriver: true }),
+        Animated.timing(shakeAnim, { toValue: 8, duration: 60, useNativeDriver: true }),
+        Animated.timing(shakeAnim, { toValue: -8, duration: 60, useNativeDriver: true }),
+        Animated.timing(shakeAnim, { toValue: 0, duration: 60, useNativeDriver: true }),
+      ]).start();
+    }
+
+    if (card.state === 'matched') {
+      Animated.sequence([
+        Animated.timing(scaleAnim, { toValue: 1.08, duration: 150, useNativeDriver: true }),
+        Animated.timing(scaleAnim, { toValue: 0.95, duration: 100, useNativeDriver: true }),
+        Animated.timing(scaleAnim, { toValue: 1.0, duration: 100, useNativeDriver: true }),
+      ]).start();
+    }
+  }, [card.state]);
+
+  const frontRotate = flipAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] });
+  const backRotate = flipAnim.interpolate({ inputRange: [0, 1], outputRange: ['180deg', '360deg'] });
+
+  const isFlipped = card.state === 'flipped' || card.state === 'matched';
+  const isMatched = card.state === 'matched';
+  const isWrong = card.state === 'wrong';
+
+  const cardH = Math.round(cardWidth * 1.3);
+
+  const matchBg = isMatched
+    ? { backgroundColor: 'rgba(16, 185, 129, 0.15)', borderColor: '#10B981', borderWidth: 2 }
+    : {};
+  const wrongBorder = isWrong ? { borderColor: '#EF4444', borderWidth: 2 } : {};
+
+  return (
+    <Animated.View
+      style={{
+        transform: [{ translateX: shakeAnim }, { scale: scaleAnim }],
+        width: cardWidth,
+        height: cardH,
+      }}
+    >
+      <Pressable onPress={onPress} style={{ flex: 1 }}>
+        {/* Back face (hidden) */}
+        <Animated.View
+          style={[
+            styles.flipFace,
+            { width: cardWidth, height: cardH, backfaceVisibility: 'hidden', transform: [{ rotateY: frontRotate }] },
+            { backgroundColor: 'rgba(79, 70, 229, 0.12)', borderColor: INDIGO, borderWidth: 1.5 },
+            wrongBorder,
+          ]}
+        >
+          <View style={{ alignItems: 'center', justifyContent: 'center', flex: 1, gap: 6 }}>
+            {/* Rune symbol on back */}
+            <Text style={{ fontSize: 28, opacity: 0.7 }}>
+              {isWrong ? '💨' : '✦'}
+            </Text>
+            <Text style={{ fontSize: 10, color: CYAN, fontWeight: '800', letterSpacing: 2, opacity: 0.8 }}>
+              {isWrong ? 'WRONG' : 'RUNE'}
+            </Text>
+          </View>
+        </Animated.View>
+
+        {/* Front face (content) */}
+        <Animated.View
+          style={[
+            styles.flipFace,
+            {
+              position: 'absolute',
+              width: cardWidth,
+              height: cardH,
+              backfaceVisibility: 'hidden',
+              transform: [{ rotateY: backRotate }],
+            },
+            {
+              backgroundColor: card.type === 'question'
+                ? 'rgba(79, 70, 229, 0.18)'
+                : 'rgba(6, 182, 212, 0.14)',
+              borderColor: card.type === 'question' ? VIOLET : CYAN,
+              borderWidth: 2,
+            },
+            matchBg,
+          ]}
+        >
+          <View style={{ flex: 1, padding: 8, justifyContent: 'space-between' }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={{
+                fontSize: 10, fontWeight: '800', letterSpacing: 1,
+                color: card.type === 'question' ? VIOLET : CYAN,
+              }}>
+                {card.type === 'question' ? '📜 Q' : '💡 A'}
+              </Text>
+              {isMatched && <Text style={{ fontSize: 14 }}>✅</Text>}
+            </View>
+            <Text style={[styles.cardText, { color: palette.ink }]} numberOfLines={4}>
+              {card.text}
+            </Text>
+          </View>
+        </Animated.View>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+// ─── Scroll Mascot Companion ───────────────────────────────────────────────
+function ScrollMascot({ action }: { action: 'idle' | 'happy' | 'sad' }) {
+  const bounceAnim = useRef(new Animated.Value(0)).current;
+  const rotateAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (action === 'happy') {
+      Animated.sequence([
+        Animated.timing(bounceAnim, { toValue: -18, duration: 180, useNativeDriver: true }),
+        Animated.timing(bounceAnim, { toValue: 0, duration: 180, useNativeDriver: true }),
+        Animated.timing(bounceAnim, { toValue: -12, duration: 140, useNativeDriver: true }),
+        Animated.timing(bounceAnim, { toValue: 0, duration: 140, useNativeDriver: true }),
+      ]).start();
+      Animated.sequence([
+        Animated.timing(rotateAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
+        Animated.timing(rotateAnim, { toValue: -1, duration: 200, useNativeDriver: true }),
+        Animated.timing(rotateAnim, { toValue: 0, duration: 150, useNativeDriver: true }),
+      ]).start();
+    } else if (action === 'sad') {
+      Animated.sequence([
+        Animated.timing(bounceAnim, { toValue: 5, duration: 200, useNativeDriver: true }),
+        Animated.timing(bounceAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
+      ]).start();
+    } else {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(bounceAnim, { toValue: -5, duration: 1000, useNativeDriver: true }),
+          Animated.timing(bounceAnim, { toValue: 0, duration: 1000, useNativeDriver: true }),
+        ])
+      ).start();
+    }
+  }, [action]);
+
+  const rotate = rotateAnim.interpolate({ inputRange: [-1, 0, 1], outputRange: ['-20deg', '0deg', '20deg'] });
+  const emoji = action === 'happy' ? '🎉' : action === 'sad' ? '😔' : '📜';
+
+  return (
+    <Animated.View style={{ transform: [{ translateY: bounceAnim }, { rotate }], alignItems: 'center' }}>
+      <View style={styles.mascotBody}>
+        <Text style={{ fontSize: 32 }}>{emoji}</Text>
+      </View>
+      <Text style={{ fontSize: 10, color: GOLD, fontWeight: '800', marginTop: 2, letterSpacing: 1 }}>
+        {action === 'happy' ? 'MATCHED!' : action === 'sad' ? 'TRY AGAIN' : 'SCROLL'}
+      </Text>
+    </Animated.View>
+  );
+}
 
 interface MatchCard {
   id: string;
@@ -67,6 +253,9 @@ export default function MatchGameScreen() {
   const [seconds, setSeconds] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [isGameOver, setIsGameOver] = useState(false);
+  const [characterAction, setCharacterAction] = useState<CharacterAction>('idle');
+  const [mascotAction, setMascotAction] = useState<'idle' | 'happy' | 'sad'>('idle');
+  const [particleTrigger, setParticleTrigger] = useState(0);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -173,6 +362,9 @@ export default function MatchGameScreen() {
         const nextCombo = combo + 1;
         setCombo(nextCombo);
         if (nextCombo > maxCombo) setMaxCombo(nextCombo);
+        setCharacterAction('attack');
+        setMascotAction('happy');
+        setParticleTrigger((p) => p + 1);
 
         setTimeout(() => {
           setCards((prev) =>
@@ -189,11 +381,18 @@ export default function MatchGameScreen() {
           if (nextMatched === totalPairs) {
             setIsGameOver(true);
             setIsTimerRunning(false);
+            setCharacterAction('victory');
+            setMascotAction('happy');
+          } else {
+            setCharacterAction('idle');
+            setTimeout(() => setMascotAction('idle'), 800);
           }
         }, 400);
       } else {
         // MISMATCH!
         setCombo(0);
+        setCharacterAction('hurt');
+        setMascotAction('sad');
         setTimeout(() => {
           setCards((prev) =>
             prev.map((c) =>
@@ -210,6 +409,8 @@ export default function MatchGameScreen() {
           );
           setSelectedCards([]);
           setIsEvaluating(false);
+          setCharacterAction('idle');
+          setTimeout(() => setMascotAction('idle'), 400);
         }, 900);
       }
     }
@@ -242,6 +443,7 @@ export default function MatchGameScreen() {
 
   return (
     <Screen scroll={true}>
+      <GameEnvironment gameMode="match">
       <TopBar
         title={t.match.title}
         action={
@@ -251,25 +453,39 @@ export default function MatchGameScreen() {
             accessibilityRole="button"
             accessibilityLabel="Switch question set"
           >
-            <Ionicons name="folder-outline" size={16} color={palette.indigo} />
-            <Text style={[styles.pickerPillText, { color: palette.indigo }]} numberOfLines={1}>
+            <Ionicons name="folder-outline" size={16} color={CYAN} />
+            <Text style={[styles.pickerPillText, { color: CYAN }]} numberOfLines={1}>
               {currentSet?.title || t.match.selectSet}
             </Text>
-            <Ionicons name="chevron-down" size={14} color={palette.indigo} />
+            <Ionicons name="chevron-down" size={14} color={CYAN} />
           </Pressable>
         }
       />
 
-      {/* Header Info */}
-      <View style={styles.headerInfo}>
-        <Text style={[typography.heading, { color: palette.ink }]}>{t.match.title}</Text>
-        <Text style={[typography.body, { color: palette.inkMuted, marginTop: 4 }]}>
-          {t.match.subtitle}
-        </Text>
+      {/* Library Environment Header */}
+      <View style={styles.libraryHeader}>
+        <View style={{ flex: 1 }}>
+          <Text style={[typography.heading, { color: '#FEF3C7' }]}>🏛️ {t.match.title}</Text>
+          <Text style={[typography.body, { color: 'rgba(254,243,199,0.65)', marginTop: 4 }]}>
+            {t.match.subtitle}
+          </Text>
+        </View>
+      </View>
+
+      {/* Scroll Mascot Companion + Particle burst on match */}
+      <View style={{ alignItems: 'center', marginBottom: spacing.xs, position: 'relative' }}>
+        <MagicParticles color={GOLD} count={8} type="butterflies" trigger={particleTrigger}
+          style={{ position: 'absolute', top: -20, zIndex: 10 }} />
+        <ScrollMascot action={mascotAction} />
+        {combo > 1 && (
+          <View style={styles.comboBadge}>
+            <Text style={styles.comboText}>🔥 COMBO x{combo}!</Text>
+          </View>
+        )}
       </View>
 
       {/* Stat Bar */}
-      <View style={[styles.statRow, { backgroundColor: palette.paperRaised, borderColor: palette.paperMuted }]}>
+      <View style={[styles.statRow, { backgroundColor: 'rgba(0,0,0,0.4)', borderColor: 'rgba(6,182,212,0.3)' }]}>
         <View style={styles.statItem}>
           <Text style={[typography.caption, { color: palette.inkMuted }]}>{t.match.timer}</Text>
           <View style={styles.statValRow}>
@@ -321,8 +537,8 @@ export default function MatchGameScreen() {
       {/* Card Grid */}
       {(!currentSet || currentSet.questions.length < 3) ? (
         <Card style={styles.emptySetCard}>
-          <Ionicons name="alert-circle-outline" size={48} color={palette.gold} />
-          <Text style={[typography.title, { color: palette.ink, marginTop: spacing.md, textAlign: 'center' }]}>
+          <Ionicons name="alert-circle-outline" size={48} color={GOLD} />
+          <Text style={[typography.title, { color: '#FEF3C7', marginTop: spacing.md, textAlign: 'center' }]}>
             {t.match.needMoreQuestions}
           </Text>
           <View style={{ marginTop: spacing.lg, width: '100%', maxWidth: 300 }}>
@@ -333,83 +549,15 @@ export default function MatchGameScreen() {
         </Card>
       ) : (
         <View style={styles.gridContainer}>
-          {cards.map((card) => {
-            const isFlipped = card.state === 'flipped';
-            const isMatched = card.state === 'matched';
-            const isWrong = card.state === 'wrong';
-            const isHidden = card.state === 'hidden';
-
-            let bgColor = palette.paperRaised;
-            let borderColor = palette.paperMuted;
-            let bbColor = palette.paperMuted;
-
-            if (isHidden) {
-              bgColor = palette.indigoTint;
-              borderColor = '#C7D2FE';
-              bbColor = '#A5B4FC';
-            } else if (isMatched) {
-              bgColor = '#ECFDF5';
-              borderColor = palette.mint;
-              bbColor = palette.mintBorder;
-            } else if (isWrong) {
-              bgColor = palette.dangerTint;
-              borderColor = palette.danger;
-              bbColor = palette.dangerBorder;
-            } else if (isFlipped) {
-              bgColor = palette.paper;
-              borderColor = palette.indigo;
-              bbColor = palette.indigoBorder;
-            }
-
-            return (
-              <Pressable
-                key={card.id}
-                onPress={() => handleCardPress(card)}
-                disabled={isMatched || isEvaluating}
-                style={({ pressed }) => [
-                  styles.cardWrapper,
-                  {
-                    width: cardWidth,
-                    height: cardWidth * 1.15,
-                    backgroundColor: bgColor,
-                    borderColor,
-                    borderBottomColor: bbColor,
-                    opacity: isMatched ? 0.65 : pressed ? 0.9 : 1,
-                    transform: [{ scale: pressed && !isMatched ? 0.97 : 1 }],
-                  },
-                ]}
-              >
-                {isHidden ? (
-                  <View style={styles.cardBackContent}>
-                    <Ionicons name="sparkles" size={28} color={palette.indigo} />
-                    <Text style={[styles.cardBackLabel, { color: palette.indigo }]}>PAPYRUS</Text>
-                  </View>
-                ) : (
-                  <View style={styles.cardFrontContent}>
-                    <View style={styles.cardTypeBadge}>
-                      <Badge tone={card.type === 'question' ? 'primary' : 'success'}>
-                        {card.type === 'question' ? 'Q' : 'A'}
-                      </Badge>
-                      {isMatched && <Ionicons name="checkmark-circle" size={18} color={palette.mint} />}
-                    </View>
-                    <Text
-                      style={[
-                        typography.body,
-                        styles.cardText,
-                        {
-                          color: isMatched ? palette.mintBorder : palette.ink,
-                          fontWeight: isMatched ? '700' : '500',
-                        },
-                      ]}
-                      numberOfLines={5}
-                    >
-                      {card.text}
-                    </Text>
-                  </View>
-                )}
-              </Pressable>
-            );
-          })}
+          {cards.map((card) => (
+            <FlipCard
+              key={card.id}
+              card={card}
+              width={cardWidth}
+              palette={palette}
+              onPress={() => handleCardPress(card)}
+            />
+          ))}
         </View>
       )}
 
@@ -467,8 +615,8 @@ export default function MatchGameScreen() {
       <Modal visible={isGameOver} animationType="fade" transparent={true}>
         <View style={styles.modalOverlay}>
           <View style={[styles.victoryModal, { backgroundColor: palette.paper }]}>
-            <View style={styles.trophyWrapper}>
-              <Ionicons name="trophy" size={54} color={palette.gold} />
+            <View style={{ alignItems: 'center', marginBottom: spacing.xs }}>
+              <CharacterHero action="victory" size="md" />
             </View>
 
             <Text style={[typography.display, { color: palette.ink, textAlign: 'center', fontSize: 26 }]}>
@@ -535,11 +683,42 @@ export default function MatchGameScreen() {
           </View>
         </View>
       </Modal>
+      </GameEnvironment>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  libraryHeader: {
+    marginTop: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  comboBadge: {
+    backgroundColor: 'rgba(239, 68, 68, 0.9)',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    marginTop: 4,
+  },
+  comboText: {
+    color: '#FFF',
+    fontWeight: '800',
+    fontSize: 13,
+  },
+  mascotBody: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(251, 191, 36, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  flipFace: {
+    borderRadius: radii.md,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   headerInfo: {
     marginTop: spacing.sm,
     marginBottom: spacing.md,

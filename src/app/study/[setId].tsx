@@ -9,6 +9,9 @@ import { completeAttempt } from '@/features/study/domain/completeAttempt';
 import { dependencies } from '@/composition/dependencies';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { useI18n } from '@/core/i18n';
+import { GameEnvironment } from '@/shared/GameEnvironment';
+import { MagicParticles } from '@/shared/MagicParticles';
+import { CharacterAvatar } from '@/shared/CharacterAvatar';
 
 export default function StudyScreen() {
   const { setId } = useLocalSearchParams<{ setId: string }>();
@@ -23,6 +26,10 @@ export default function StudyScreen() {
   const [sessionStartedAt] = useState(() => new Date().toISOString());
   const [questionStartedAt, setQuestionStartedAt] = useState(() => Date.now());
   const [saving, setSaving] = useState(false);
+  const [exp, setExp] = useState(0);
+  const [level, setLevel] = useState(1);
+  const [particleTrigger, setParticleTrigger] = useState(0);
+  const [levelUpMessage, setLevelUpMessage] = useState(false);
   const question = useMemo(() => questionSet?.questions[index], [index, questionSet]);
 
   if (!questionSet || !question) {
@@ -70,8 +77,21 @@ export default function StudyScreen() {
 
   const next = async () => {
     if (!revealed) {
-      recordCurrentAnswer();
+      const currentAns = recordCurrentAnswer();
       setRevealed(true);
+      if (currentAns?.isCorrect) {
+        setParticleTrigger((c) => c + 1);
+        setExp((prev) => {
+          const nextExp = prev + 25;
+          if (nextExp >= 100) {
+            setLevel((l) => l + 1);
+            setLevelUpMessage(true);
+            setTimeout(() => setLevelUpMessage(false), 3000);
+            return nextExp - 100;
+          }
+          return nextExp;
+        });
+      }
       return;
     }
     const lastAnswer = answers.find((item) => item.questionId === question.id) ?? recordCurrentAnswer();
@@ -89,7 +109,54 @@ export default function StudyScreen() {
 
   return (
     <Screen>
+      <GameEnvironment gameMode="study">
       <TopBar title={questionSet.title} action={<Badge tone="success">{t.study.offlineModeBadge}</Badge>} />
+
+      {/* Magic Particles */}
+      <MagicParticles trigger={particleTrigger} type="sparkles" />
+
+      {/* Zen Scholar Header & EXP Gauge */}
+      <Card style={styles.scholarHeaderCard}>
+        <View style={styles.scholarHeaderRow}>
+          <CharacterAvatar
+            color="#10B981"
+            name="Zen Scholar"
+            action={revealed ? (selected === question.correctIndex ? 'victory' : 'hurt') : 'idle'}
+            size={52}
+            showName={false}
+          />
+          <View style={{ flex: 1, gap: 4 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={[typography.title, { color: palette.ink, fontSize: 15 }]}>
+                🌸 Sanctuary of Scholars
+              </Text>
+              <Badge tone="reward">
+                Lv. {level}
+              </Badge>
+            </View>
+
+            {/* Wisdom EXP Bar */}
+            <View style={styles.expBarTrack}>
+              <View style={[styles.expBarFill, { width: `${exp}%` }]} />
+            </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <Text style={{ fontSize: 11, color: palette.inkMuted, fontWeight: '600' }}>
+                EXP +25 per correct answer
+              </Text>
+              <Text style={{ fontSize: 11, color: '#10B981', fontWeight: '800' }}>
+                {exp}/100 EXP
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Level Up Banner */}
+        {levelUpMessage && (
+          <View style={styles.levelUpBanner}>
+            <Text style={styles.levelUpText}>✨ LEVEL UP! Wisdom +1 (Lv. {level}) ✨</Text>
+          </View>
+        )}
+      </Card>
 
       {/* Progress Section */}
       <View style={styles.progressContainer}>
@@ -229,11 +296,53 @@ export default function StudyScreen() {
             : t.study.nextQuestion}
         </Button>
       </View>
+      </GameEnvironment>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  scholarHeaderCard: {
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+    backgroundColor: 'rgba(16, 185, 129, 0.06)',
+  },
+  scholarHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  expBarTrack: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(148, 163, 184, 0.25)',
+    overflow: 'hidden',
+    marginTop: 2,
+  },
+  expBarFill: {
+    height: '100%',
+    backgroundColor: '#10B981',
+    borderRadius: 4,
+  },
+  levelUpBanner: {
+    marginTop: 10,
+    backgroundColor: 'rgba(245, 158, 11, 0.2)',
+    borderColor: '#F59E0B',
+    borderWidth: 1,
+    borderRadius: radii.sm,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+  },
+  levelUpText: {
+    color: '#D97706',
+    fontWeight: '800',
+    fontSize: 13,
+    letterSpacing: 0.5,
+  },
   empty: { padding: spacing.xl, alignItems: 'center', gap: spacing.md, marginTop: spacing.xl },
   progressContainer: { marginTop: spacing.sm, marginBottom: spacing.md, gap: spacing.xs },
   progressMeta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
