@@ -1,10 +1,14 @@
+<p align="center">
+  <img src="assets/icon.png" width="120" height="120" style="border-radius: 28px;" alt="Papyrus" />
+</p>
+
 # Papyrus
 
 > From Ancient Scroll to AI Power.
 
 Papyrus is a React Native + TypeScript-first project base for an offline-first learning quiz platform that will turn personal study material into reviewable question sets and realtime 2–4 player quiz battles. OCR is designed to stay on-device; only user-confirmed text will be sent to the protected generation endpoint once the production vertical slice is implemented.
 
-This repository is the Capstone project for QuizClash, currently under active implementation. Local study, editable question review, manual account-set sync and server-controlled battle slices exist; five Supabase migrations are deployed. It is not feature-complete or a production release: live AI, full sync/auth/library flows, QR/rankings, native/device acceptance and release hardening remain. See the [current requirement and four-reference audit](docs/integration/STATUS-AUDIT-2026-11-11.md) for verified evidence and missing work.
+This repository is the Capstone project for Papyrus, currently under active implementation. Local study, editable question review, manual account-set sync and server-controlled battle slices exist; five Supabase migrations are deployed. It is not feature-complete or a production release: live AI, full sync/auth/library flows, QR/rankings, native/device acceptance and release hardening remain. See the [current requirement and four-reference audit](docs/integration/STATUS-AUDIT-2026-11-11.md) for verified evidence and missing work.
 
 ## Mobile UX checkpoint — 12 November 2026
 

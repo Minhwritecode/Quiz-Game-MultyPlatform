@@ -31,10 +31,10 @@
       "output": "single"
     },
     "android": {
-      "package": "com.papyrus.quizclash"
+      "package": "com.papyrus.app"
     },
     "ios": {
-      "bundleIdentifier": "com.papyrus.quizclash"
+      "bundleIdentifier": "com.papyrus.app"
     }
   }
 }
