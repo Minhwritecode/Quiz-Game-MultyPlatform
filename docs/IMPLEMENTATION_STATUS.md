@@ -1,13 +1,20 @@
 # Implementation status
 
-| Area | Base status | Next vertical slice |
-| --- | --- | --- |
-| React Native shell | Runnable with guest/auth session bootstrap | Add native development-build verification and route policy |
-| Clean Architecture | TypeScript boundaries and domain entities present | Complete use cases and adapters feature by feature |
-| Local data | SQLite native + web AsyncStorage persistence baseline for question sets and attempts | Add versioned migrations, resume state and sync queue hydration tests |
-| OCR | ML Kit adapter boundary present | Add camera/gallery UI, preprocessing and Vietnamese QA |
-| LLM generation | Server-side Gemini-compatible adapter, structured JSON validation and client parser baseline | Add streaming, provider retries/rate limits and citation-aware review |
-| Study mode | Offline study persists completed attempts and renders a result screen | Persist resume checkpoints, attempt history and interruption recovery |
-| Realtime battle | Room state reducer, Supabase room repository/Realtime adapter and server-authoritative RPC migration baseline | Seed room questions, wire lifecycle UI, Presence and reconnect state machine |
-| Sync | SQLite/web outbox persistence, coalesced writes and tested drain contract | Wire authenticated Supabase push/pull, cursor and retry backoff |
-| CI/CD | GitHub Actions, EAS profile scaffold, manual release workflow and Docker | Link EAS project, signing configuration and protected release environment |
+Updated: 11 November 2026.
+
+Papyrus has a React Native + TypeScript + Expo client, local study persistence,
+editable question review, account question-set sync and server-controlled battle
+slices. The cloud schema is deployed. It is not a complete app or a full
+implementation of the four reference products.
+
+- [Current milestone status](integration/IMPLEMENTATION-STATUS.md)
+- [FR-01–FR-17 and four-reference coverage audit](integration/STATUS-AUDIT-2026-11-11.md)
+- [Tests, cloud deployment and remaining acceptance gates](integration/DELIVERY-CHECKLIST.md)
+- [Original execution plan](PROJECT-PLAN.md)
+- [Delivery sequence](SPRINT-ROADMAP.md)
+
+Verified during the latest audit: TypeScript, 8 Jest suites / 16 tests and the
+existing architecture script pass. This script does not detect all known
+Presentation-to-Data dependencies. Camera hardware, authenticated cloud journeys,
+component/E2E/native coverage, live AI generation, signed builds and full
+responsive-device acceptance remain pending.

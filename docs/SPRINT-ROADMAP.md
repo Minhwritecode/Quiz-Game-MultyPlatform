@@ -3,6 +3,8 @@
 **Product:** Papyrus — *From Ancient Scroll to AI Power.*  
 **Architecture:** React Native + TypeScript + Expo Router, Clean Architecture (`Presentation → Domain ← Data`), Supabase as the single backend system.  
 **Planning baseline:** 10 November 2026  
+**Evidence reconciled:** 11 November 2026; [full coverage audit](integration/STATUS-AUDIT-2026-11-11.md). Weeks indicate delivery order, not completed calendar sprints.
+
 **Delivery rule:** each sprint ends with a small vertical slice, automated checks, a separate commit and a separate push. The repository remains a project under active development; a green check does not mean production readiness.
 
 ## Working agreements
@@ -41,7 +43,7 @@
 - [x] Validate generated questions against a server contract before returning them.
 - [x] Add timeout, request-size and question-count limits.
 - [x] Replace the hardcoded generation preview with source-backed generated state when Supabase is configured.
-- [ ] Add editable review actions: edit question, edit option, change answer, remove question.
+- [x] Add editable review actions: edit question, edit option, change answer, remove question (UI code; component test pending).
 - [x] Add client parser tests with malformed questions, code fences and duplicate questions.
 - [ ] Acceptance: a signed-in user can submit confirmed text and save only schema-valid questions; no provider key reaches the app.
 
@@ -51,13 +53,14 @@
 - [x] Add email/password plus Google provider port; keep OAuth configuration external.
 - [ ] Persist source documents and attempts with owner IDs in Supabase.
 - [x] Implement local outbox read/ack/retry contract with coalesced entity writes.
-- [ ] Implement pull cursor and conflict resolution for question sets.
+- [x] Implement account-set revision cursor and explicit conflict resolution; local tests pass. This differs from the original timestamp LWW policy.
 - [ ] Add RLS tests for owner-only documents, sets, attempts and sync rows.
 - [ ] Acceptance: offline writes survive restart and converge after sign-in without duplicating entities.
 
 ### Week 4 — Native intake quality and responsive mobile UX
 
-- [ ] Add camera capture permissions and a multi-page capture flow.
+- [x] Add camera permission/cancel handling and gallery multi-page OCR path; adapter tests pass.
+- [ ] Verify capture on native hardware and finish page ordering/recapture UX.
 - [ ] Add OCR preprocessing, Vietnamese/Latin script selection and review diff/highlighting.
 - [ ] Add PDF/document extraction behind a server adapter where the platform cannot safely extract locally.
 - [ ] Add foldable-aware responsive layout rules, keyboard-safe forms and accessibility labels.
@@ -65,17 +68,20 @@
 
 ### Week 5 — Battle lobby and server-authoritative game loop
 
-- [ ] Implement create/join room RPCs with six-character codes and a 2–4 player cap.
-- [ ] Seed room question snapshots and server deadlines.
-- [ ] Implement Realtime room/player/question projections in React Native.
-- [ ] Enforce duplicate-answer idempotency and score calculation in PostgreSQL.
-- [ ] Add host start/countdown/result/finish state transitions.
-- [ ] Acceptance: two authenticated clients can join one room, answer once per question and receive the same authoritative score.
+- [x] Implement create/join room RPCs with six-character codes and a 2–4 player cap.
+- [x] Snapshot room questions and schedule server deadlines at match start.
+- [x] Wire RN room/player updates and polling snapshots; API Realtime smoke passes.
+- [x] Enforce duplicate-answer idempotency and score calculation in PostgreSQL.
+- [x] Add host start/countdown/result/finish server state transitions.
+- [x] API acceptance: four authenticated local clients complete a match; concurrent duplicate answers do not double score.
+- [ ] UI acceptance: visible countdown, configurable host settings and two browser/native clients complete the match on cloud.
 
 ### Week 6 — Reconnect, QR/link join and ranking
 
-- [ ] Add connection leases and a 30-second reconnect seat hold.
-- [ ] Add QR/link payload generation and safe code fallback.
+- [x] Add heartbeat, room restore and host transfer after a 30-second lease.
+- [ ] Complete strict seat expiry/forfeiture and idle-room cleanup.
+- [x] Add shareable deep-link payload and room code fallback.
+- [ ] Add QR renderer/scanner and cold/warm link verification.
 - [ ] Add personal and friends leaderboard queries with pagination.
 - [ ] Add battle result persistence and anti-tampering checks.
 - [ ] Acceptance: a temporarily disconnected player can resume the held seat and cannot submit outside the server window.
@@ -98,6 +104,8 @@
 
 ## Current implementation status
 
-- **Done:** Week 1 local-first baseline and independent reference audit.
-- **In progress:** Week 2 provider-backed AI generation and review.
-- **Not production-ready:** Auth, cloud sync, native camera permissions, realtime battle, reconnect, ranking and release signing.
+- **Implemented slices:** local study/result, editable review, camera permission handling, account-set manual sync and server battle/Realtime. Local API/domain evidence is recorded in the delivery checklist.
+- **Cloud:** five migrations deployed; RLS/RPC grants and anonymous-denial probes verified. Authenticated app/device journeys remain pending.
+- **Missing:** complete auth, live/streaming AI, PDF/documents, full library CRUD, resume/history, automatic/attempt sync, QR and global leaderboard.
+- **Still open:** strict architecture dependencies, component/E2E/native tests, signed builds and report/Figma/device reconciliation.
+- **Broader reference scope:** X1–X6 in the audit tracks guest/host modes, programming categories, RAG/providers, ranked duels, moderation/media and billing/self-hosting. These are not covered by the original eight-week core delivery order.

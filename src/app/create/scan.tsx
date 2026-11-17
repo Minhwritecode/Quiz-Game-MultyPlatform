@@ -5,8 +5,9 @@ import { Button, Card, IconTile, PageHeader, Screen, TopBar, usePalette } from '
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { createSourceDocument } from '@/features/scan-ocr/domain/sourceDocument';
-import { pickSourceImages, captureSourceImage } from '@/features/scan-ocr/data/imageSource';
-import { recognizeLocalImage } from '@/features/scan-ocr/data/ocr';
+import { dependencies } from '@/composition/dependencies';
+
+const { pickSourceImages, captureSourceImage, recognizeLocalImage } = dependencies.intake;
 
 export default function ScanScreen() {
   const router = useRouter();
@@ -37,6 +38,19 @@ export default function ScanScreen() {
       setBusy(false);
     }
   };
+  const chooseDocument = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const extracted = await dependencies.intake.pickSourceDocument();
+      if (extracted === null) return;
+      const combined = [text.trim(), extracted].filter(Boolean).join('\n\n');
+      if (combined.length > 30000) throw new Error('Combined material exceeds 30,000 characters. Shorten your notes first.');
+      setText(combined);
+    } catch (error) {
+      Alert.alert('Could not import document', error instanceof Error ? error.message : 'Choose the document again.');
+    } finally { setBusy(false); }
+  };
   const continueToShape = () => {
     const sourceText = text.trim();
     if (!sourceText || sourceText.length > 30000) {
@@ -46,7 +60,7 @@ export default function ScanScreen() {
     saveSourceDocument(createSourceDocument(`source-${Date.now()}`, sourceText));
     router.push('/create/generate');
   };
-  return <Screen><TopBar title="Create a question set" /><PageHeader eyebrow="STEP 1 OF 3 · SOURCE" title="Bring your material" subtitle="Papyrus reads your notes on-device before you decide what to send for generation." /><View style={styles.steps}><View style={[styles.step, { backgroundColor: palette.indigo }]}><Text style={{ color: palette.white, fontWeight: '800' }}>01</Text><Text style={[typography.caption, { color: palette.indigo }]}>Source</Text></View><View style={[styles.stepLine, { backgroundColor: palette.paperMuted }]} /><View style={[styles.step, { backgroundColor: palette.paperMuted }]}><Text style={{ color: palette.inkMuted, fontWeight: '800' }}>02</Text><Text style={[typography.caption, { color: palette.inkMuted }]}>Shape</Text></View><View style={[styles.stepLine, { backgroundColor: palette.paperMuted }]} /><View style={[styles.step, { backgroundColor: palette.paperMuted }]}><Text style={{ color: palette.inkMuted, fontWeight: '800' }}>03</Text><Text style={[typography.caption, { color: palette.inkMuted }]}>Review</Text></View></View><View style={styles.captureRow}><Card onPress={() => void chooseImage(true)} style={styles.captureCard}><IconTile icon="camera-outline" tint="primary" /><Text style={[typography.title, { color: palette.ink, marginTop: spacing.md }]}>Scan with camera</Text><Text style={[typography.caption, { color: palette.inkMuted, marginTop: 4 }]}>Capture one or more pages</Text></Card><Card onPress={() => void chooseImage()} style={styles.captureCard}><IconTile icon="images-outline" tint="success" /><Text style={[typography.title, { color: palette.ink, marginTop: spacing.md }]}>Choose from gallery</Text><Text style={[typography.caption, { color: palette.inkMuted, marginTop: 4 }]}>{busy ? 'Reading images…' : picked ? 'Image ready for OCR' : 'Use photos or screenshots'}</Text></Card></View><Text style={[typography.title, { color: palette.ink, marginTop: spacing.xl }]}>Or paste your notes</Text><TextInput value={text} onChangeText={setText} multiline maxLength={30000} textAlignVertical="top" placeholder="Paste a lecture excerpt, summary or chapter here…" placeholderTextColor={palette.inkMuted} style={[styles.textArea, { color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paperRaised }]} /><Text style={[typography.caption, { color: palette.inkMuted, marginTop: spacing.sm }]}>{text.length.toLocaleString()} / 30,000 characters · Clean up headings for sharper questions.</Text><Card color={palette.mintTint} style={styles.privacy}><IconTile icon="lock-closed-outline" tint="success" /><Text style={[typography.caption, { color: palette.mint, flex: 1 }]}>Privacy checkpoint{`\n`}Images are processed locally. You will review extracted text before any generation request.</Text></Card><Button disabled={busy} icon="arrow-forward" onPress={continueToShape}>{busy ? 'Reading material…' : 'Continue to question setup'}</Button></Screen>;
+  return <Screen><TopBar title="Create a question set" /><PageHeader eyebrow="STEP 1 OF 3 · SOURCE" title="Bring your material" subtitle="Papyrus reads your notes on-device before you decide what to send for generation." /><View style={styles.steps}><View style={[styles.step, { backgroundColor: palette.indigo }]}><Text style={{ color: palette.white, fontWeight: '800' }}>01</Text><Text style={[typography.caption, { color: palette.indigo }]}>Source</Text></View><View style={[styles.stepLine, { backgroundColor: palette.paperMuted }]} /><View style={[styles.step, { backgroundColor: palette.paperMuted }]}><Text style={{ color: palette.inkMuted, fontWeight: '800' }}>02</Text><Text style={[typography.caption, { color: palette.inkMuted }]}>Shape</Text></View><View style={[styles.stepLine, { backgroundColor: palette.paperMuted }]} /><View style={[styles.step, { backgroundColor: palette.paperMuted }]}><Text style={{ color: palette.inkMuted, fontWeight: '800' }}>03</Text><Text style={[typography.caption, { color: palette.inkMuted }]}>Review</Text></View></View><View style={styles.captureRow}><Card onPress={() => void chooseImage(true)} style={styles.captureCard}><IconTile icon="camera-outline" tint="primary" /><Text style={[typography.title, { color: palette.ink, marginTop: spacing.md }]}>Scan with camera</Text><Text style={[typography.caption, { color: palette.inkMuted, marginTop: 4 }]}>Capture one or more pages</Text></Card><Card onPress={() => void chooseImage()} style={styles.captureCard}><IconTile icon="images-outline" tint="success" /><Text style={[typography.title, { color: palette.ink, marginTop: spacing.md }]}>Choose from gallery</Text><Text style={[typography.caption, { color: palette.inkMuted, marginTop: 4 }]}>{busy ? 'Reading images…' : picked ? 'Image ready for OCR' : 'Use photos or screenshots'}</Text></Card></View><Text style={[typography.title, { color: palette.ink, marginTop: spacing.xl }]}>Or paste your notes</Text><Button disabled={busy} icon="document-text-outline" variant="secondary" onPress={() => void chooseDocument()}>Import TXT / DOCX</Button><TextInput value={text} onChangeText={setText} multiline maxLength={30000} textAlignVertical="top" placeholder="Paste a lecture excerpt, summary or chapter here…" placeholderTextColor={palette.inkMuted} style={[styles.textArea, { color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paperRaised }]} /><Text style={[typography.caption, { color: palette.inkMuted, marginTop: spacing.sm }]}>{text.length.toLocaleString()} / 30,000 characters · Clean up headings for sharper questions.</Text><Card color={palette.mintTint} style={styles.privacy}><IconTile icon="lock-closed-outline" tint="success" /><Text style={[typography.caption, { color: palette.mint, flex: 1 }]}>Privacy checkpoint{`\n`}Images are processed locally. You will review extracted text before any generation request.</Text></Card><Button disabled={busy} icon="arrow-forward" onPress={continueToShape}>{busy ? 'Reading material…' : 'Continue to question setup'}</Button></Screen>;
 }
 
 const styles = StyleSheet.create({

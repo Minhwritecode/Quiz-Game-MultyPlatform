@@ -1,0 +1,82 @@
+name: Mobile release candidate
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      profile:
+        type: choice
+        options: [preview, production]
+        default: preview
+      platform:
+        type: choice
+        options: [android, ios]
+        default: android
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  quality:
+    uses: ./.github/workflows/ci.yml
+  build:
+    needs: quality
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.profile || 'production' }}
+    env:
+      APP_VARIANT: ${{ inputs.profile || 'production' }}
+      EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
+      EXPO_PUBLIC_SUPABASE_URL: ${{ vars.EXPO_PUBLIC_SUPABASE_URL }}
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+      EXPO_PUBLIC_PRIVACY_URL: ${{ vars.EXPO_PUBLIC_PRIVACY_URL }}
+      EXPO_PUBLIC_ACCOUNT_DELETION_URL: ${{ vars.EXPO_PUBLIC_ACCOUNT_DELETION_URL }}
+      EXPO_PUBLIC_SUPPORT_URL: ${{ vars.EXPO_PUBLIC_SUPPORT_URL }}
+      EXPO_PUBLIC_SENTRY_DSN: ${{ vars.EXPO_PUBLIC_SENTRY_DSN }}
+      SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+      SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - name: Match release tag to app version
+        if: github.ref_type == 'tag'
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node scripts/check-release.cjs
+      - run: node scripts/check-release.cjs
+      - name: Build signed candidate (does not submit to a store)
+        env:
+          BUILD_PLATFORM: ${{ inputs.platform || 'android' }}
+        run: npx --no-install eas build --platform "$BUILD_PLATFORM" --profile "$APP_VARIANT" --non-interactive --wait --json > build-result.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eas-build-result
+          path: build-result.json
+          retention-days: 14
+      - name: Collect binary and checksum from this exact EAS build
+        run: node scripts/collect-build.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signed-candidate
+          path: artifacts/
+          retention-days: 14
+  draft-release:
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: signed-candidate, path: artifacts }
+      - name: Attach candidate to a draft (publish after device sign-off)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" artifacts/* --verify-tag --draft --title "Papyrus $RELEASE_TAG" --notes "Release candidate. See docs/release/WEEK-12-CHECKLIST.md; device and signing evidence required before publishing."

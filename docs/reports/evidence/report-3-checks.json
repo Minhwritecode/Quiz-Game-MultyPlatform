@@ -1,0 +1,201 @@
+{
+  "report": "Papyrus Report 3",
+  "date": "2026-11-11",
+  "timezone": "Asia/Ho_Chi_Minh",
+  "sourceCommit": "bed201a6341352afe6a1258ffc00f345d951f383",
+  "environment": {
+    "node": "v22.20.0",
+    "npm": "10.9.3",
+    "runner": "local macOS, Jest Expo preset"
+  },
+  "command": "npm test -- --watch=false --coverage --coverageDirectory=/tmp/papyrus-report3-evidence/coverage --coverageReporters=json-summary --coverageReporters=text --json --outputFile=/tmp/papyrus-report3-evidence/jest-results.json",
+  "coverageScope": {
+    "included": "src/**/*.{ts,tsx}",
+    "excluded": "src/app/**; server SQL and supabase/functions outside configured collection",
+    "domainSubset": "sum of covered/total counters for paths containing /domain/; not an average of percentages"
+  },
+  "checks": {
+    "typecheck": "pass",
+    "existingArchitectureScript": "pass; known UI-to-Data gaps not caught"
+  },
+  "testSuites": 8,
+  "passedSuites": 8,
+  "tests": 16,
+  "passedTests": 16,
+  "coverage": {
+    "lines": {
+      "total": 382,
+      "covered": 90,
+      "skipped": 0,
+      "pct": 23.56
+    },
+    "statements": {
+      "total": 498,
+      "covered": 121,
+      "skipped": 0,
+      "pct": 24.29
+    },
+    "functions": {
+      "total": 184,
+      "covered": 35,
+      "skipped": 0,
+      "pct": 19.02
+    },
+    "branches": {
+      "total": 302,
+      "covered": 72,
+      "skipped": 0,
+      "pct": 23.84
+    },
+    "branchesTrue": {
+      "total": 0,
+      "covered": 0,
+      "skipped": 0,
+      "pct": 100
+    }
+  },
+  "domainCoverage": {
+    "lines": {
+      "covered": 86,
+      "total": 123,
+      "pct": 69.92
+    },
+    "statements": {
+      "covered": 116,
+      "total": 175,
+      "pct": 66.29
+    },
+    "branches": {
+      "covered": 69,
+      "total": 128,
+      "pct": 53.91
+    },
+    "functions": {
+      "covered": 34,
+      "total": 49,
+      "pct": 69.39
+    }
+  },
+  "suites": [
+    {
+      "path": "src/features/sync/domain/cloudSets.test.ts",
+      "status": "passed",
+      "tests": [
+        {
+          "name": "legacy import has new stable UUIDs and stays isolated by account",
+          "status": "passed"
+        },
+        {
+          "name": "failed request retains the same mutation across backoff and restart",
+          "status": "passed"
+        },
+        {
+          "name": "server pull cannot overwrite a local conflict; resolution explicitly rebases it",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "path": "src/features/room-battle/domain/roomState.test.ts",
+      "status": "passed",
+      "tests": [
+        {
+          "name": "reduceRoomState allows only valid server event transitions",
+          "status": "passed"
+        },
+        {
+          "name": "reduceRoomState keeps player membership idempotent",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "path": "src/features/quiz-generation/domain/parseGeneratedQuestions.test.ts",
+      "status": "passed",
+      "tests": [
+        {
+          "name": "parseGeneratedQuestions parses structured JSON and removes duplicate content",
+          "status": "passed"
+        },
+        {
+          "name": "parseGeneratedQuestions accepts a fenced JSON response and rejects malformed questions",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sync/domain/drainOutbox.test.ts",
+      "status": "passed",
+      "tests": [
+        {
+          "name": "drainOutbox pushes oldest items first and acknowledges successes",
+          "status": "passed"
+        },
+        {
+          "name": "drainOutbox marks failed items for retry without blocking later items",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "path": "src/features/scan-ocr/data/imageSource.test.ts",
+      "status": "passed",
+      "tests": [
+        {
+          "name": "camera intake does not open the camera after permission denial",
+          "status": "passed"
+        },
+        {
+          "name": "camera intake returns no page when the learner cancels capture",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "path": "src/features/question-sets/domain/saveQuestionSet.test.ts",
+      "status": "passed",
+      "tests": [
+        {
+          "name": "saveQuestionSet delegates a valid set to the repository",
+          "status": "passed"
+        },
+        {
+          "name": "saveQuestionSet rejects malformed sets before persistence",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "path": "src/features/study/domain/completeAttempt.test.ts",
+      "status": "passed",
+      "tests": [
+        {
+          "name": "completeAttempt builds a persisted result from answer records",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "path": "src/core/domain/models.test.ts",
+      "status": "passed",
+      "tests": [
+        {
+          "name": "Papyrus domain rules requires exactly four distinct answer options",
+          "status": "passed"
+        },
+        {
+          "name": "Papyrus domain rules keeps speed scoring server-compatible",
+          "status": "passed"
+        }
+      ]
+    }
+  ],
+  "notMeasured": [
+    "OCR latency/accuracy/RAM",
+    "FPS",
+    "native SQLite crash recovery",
+    "authenticated cloud app E2E",
+    "AI provider live generation"
+  ],
+  "historicalEvidence": "Local SQL/API smoke and cloud deployment evidence are recorded separately in docs/integration/DELIVERY-CHECKLIST.md; not rerun by this Jest command."
+}

@@ -108,11 +108,6 @@ export default function AuthScreen() {
 
     // 3. Sign In or Sign Up Mode
     if (!cleanEmail || !password) {
-      if (!cleanEmail && !password && mode === 'signIn') {
-        router.replace('/');
-        setBusy(false);
-        return;
-      }
       setErrorMsg(t.auth.missingFields);
       setBusy(false);
       return;
@@ -123,8 +118,8 @@ export default function AuthScreen() {
       if (result === 'CONFIRM_EMAIL_REQUIRED') {
         setInfoMsg(
           language === 'vi'
-            ? 'Đã tạo tài khoản! Vui lòng kiểm tra email để xác nhận (hoặc tắt "Confirm email" trong Supabase để vào thẳng).'
-            : 'Account created! Please check your email to verify (or disable "Confirm email" in Supabase to log in directly).'
+            ? 'Vui lòng kiểm tra email để xác nhận tài khoản trước khi đăng nhập.'
+            : 'Please check your email to verify your account before signing in.'
         );
       } else if (result) {
         setErrorMsg(result);

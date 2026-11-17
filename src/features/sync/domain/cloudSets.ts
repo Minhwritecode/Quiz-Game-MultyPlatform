@@ -19,6 +19,7 @@ export class CloudSets {
  constructor(private store:CloudStore,private remote:CloudRemote,private uuid:()=>string,private now:()=>number=Date.now){}
  private exclusive<T>(fn:()=>Promise<T>):Promise<T>{const job=this.tail.then(fn,fn);this.tail=job.catch(()=>undefined);return job;}
  list(owner:string){return this.exclusive(()=>this.store.load(owner));}
+ clearAccountCache(owner:string){return this.exclusive(()=>this.store.save(owner,emptyCloudState()));}
  import(owner:string,set:QuestionSet){return this.exclusive(async()=>{
    const state=await this.store.load(owner);
    const id=state.imports[set.id]??this.uuid();

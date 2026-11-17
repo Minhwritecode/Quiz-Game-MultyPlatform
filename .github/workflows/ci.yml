@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_call:
   pull_request:
   push:
     branches: [main]
@@ -21,9 +22,49 @@ jobs:
         run: npm ci
       - name: TypeScript check
         run: npm run typecheck
+      - name: Lint
+        run: npm run lint
       - name: Unit tests
-        run: npm test -- --passWithNoTests
+        run: npm test -- --ci --coverage
+      - name: Release guard tests
+        run: node --test scripts/release.test.cjs
       - name: Architecture boundary check
         run: ./scripts/check_architecture.sh
       - name: Web build smoke test
-        run: npx expo export --platform web
+        run: npx --no-install expo export --platform web
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: quality-evidence
+          path: coverage/
+          retention-days: 14
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - uses: supabase/setup-cli@v1
+        with: { version: 3.1.0 }
+      - run: npm ci
+      - name: Start disposable local database
+        run: supabase start
+      - name: SQL permission, lifecycle and account cleanup tests
+        run: |
+          for file in supabase/tests/battle_security.sql supabase/tests/battle_lifecycle.sql supabase/tests/account_cleanup.sql; do
+            docker exec -i supabase_db_papyrus-local psql -U postgres -d postgres -v ON_ERROR_STOP=1 < "$file"
+          done
+      - name: Start local functions and validate auth boundaries
+        run: |
+          supabase functions serve > "$RUNNER_TEMP/functions.log" 2>&1 &
+          ready=false
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent -X OPTIONS http://127.0.0.1:54321/functions/v1/delete-account; then ready=true; break; fi
+            sleep 2
+          done
+          test "$ready" = true
+          node scripts/test-release-local.mjs
+      - name: Stop local services
+        if: always()
+        run: supabase stop

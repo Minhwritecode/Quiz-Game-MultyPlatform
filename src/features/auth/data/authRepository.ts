@@ -28,7 +28,7 @@ export async function signOut(): Promise<void> {
 }
 
 export async function signInWithPassword(email: string, password: string): Promise<string | null> {
-  if (!supabase) return null;
+  if (!supabase) return 'Supabase is not configured. You can still use guest study.';
   const { error } = await supabase.auth.signInWithPassword({ email, password });
   return error?.message ?? null;
 }
@@ -38,7 +38,7 @@ export async function signUpWithPassword(email: string, password: string): Promi
   const { data, error } = await supabase.auth.signUp({ email, password });
   if (error) {
     if (error.message.includes('rate limit')) {
-      return 'Supabase email rate limit exceeded. Please turn off "Confirm email" in Supabase Dashboard (Authentication -> Providers -> Email) to sign up instantly without email confirmation.';
+      return 'Email delivery is temporarily limited. Please wait before trying again.';
     }
     return error.message;
   }
@@ -108,3 +108,14 @@ export const authRepository: AuthRepository = {
   signOut,
   onAuthStateChange,
 };
+
+export async function updateDisplayName(name:string):Promise<AppUser> {
+  const trimmed=name.trim();
+  if(trimmed.length<2 || trimmed.length>60)throw new Error('Tên cần từ 2 đến 60 ký tự.');
+  if(!supabase)throw new Error('Bạn cần đăng nhập trước.');
+  const {data,error}=await supabase.auth.updateUser({data:{full_name:trimmed}});
+  if(error)throw new Error('Không lưu được hồ sơ. Kiểm tra kết nối rồi thử lại.');
+  const user=mapUser(data.user);
+  if(!user)throw new Error('Vui lòng đăng nhập lại.');
+  return user;
+}

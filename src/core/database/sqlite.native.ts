@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { Attempt, QuestionSet, SyncItem } from '@/core/domain/models';
+import type { Attempt, QuestionSet, StudyProgress, SyncItem } from '@/core/domain/models';
 
 let database: SQLite.SQLiteDatabase | null = null;
 
@@ -50,6 +50,11 @@ export function getLocalDatabase(): SQLite.SQLiteDatabase {
       chosen_index INTEGER,
       is_correct INTEGER NOT NULL,
       time_ms INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS study_progress (
+      question_set_id TEXT PRIMARY KEY NOT NULL,
+      progress_json TEXT NOT NULL,
+      updated_at TEXT NOT NULL
     );
   `);
   return database;
@@ -102,6 +107,18 @@ export async function persistQuestionSet(questionSet: QuestionSet): Promise<void
   });
 }
 
+export async function removeQuestionSet(questionSetId: string): Promise<void> {
+  const db = getLocalDatabase();
+  db.withTransactionSync(() => {
+    const current = db.getFirstSync<{ id: string; title: string }>('SELECT id, title FROM question_sets WHERE id = ? AND is_deleted = 0', questionSetId);
+    if (!current) return;
+    db.runSync('UPDATE question_sets SET is_deleted = 1 WHERE id = ?', questionSetId);
+    db.runSync('DELETE FROM sync_queue WHERE entity = ? AND entity_id = ?', 'question_sets', questionSetId);
+    db.runSync('INSERT INTO sync_queue (entity, entity_id, operation, payload, created_at) VALUES (?, ?, ?, ?, ?)',
+      'question_sets', questionSetId, 'delete', JSON.stringify({ id: questionSetId, title: current.title }), new Date().toISOString());
+  });
+}
+
 export async function saveAttempt(attempt: Attempt): Promise<void> {
   const db = getLocalDatabase();
   db.withTransactionSync(() => {
@@ -147,6 +164,61 @@ export async function getLatestAttempt(questionSetId: string): Promise<Attempt |
     status: row.status,
     answers: answers.map((answer) => ({ questionId: answer.question_id, chosenIndex: answer.chosen_index, isCorrect: answer.is_correct === 1, timeMs: answer.time_ms })),
   };
+}
+
+type AttemptRow = { id: string; question_set_id: string; score: number; correct_count: number; total: number; started_at: string; finished_at: string; status: 'completed' };
+
+function readAttempt(row: AttemptRow): Attempt {
+  const answers = getLocalDatabase().getAllSync<{ question_id: string; chosen_index: number | null; is_correct: number; time_ms: number }>(
+    'SELECT question_id, chosen_index, is_correct, time_ms FROM attempt_answers WHERE attempt_id = ? ORDER BY id ASC', row.id,
+  );
+  return {
+    id: row.id, questionSetId: row.question_set_id, score: row.score,
+    correctCount: row.correct_count, total: row.total, startedAt: row.started_at,
+    finishedAt: row.finished_at, status: row.status,
+    answers: answers.map((answer) => ({ questionId: answer.question_id, chosenIndex: answer.chosen_index, isCorrect: answer.is_correct === 1, timeMs: answer.time_ms })),
+  };
+}
+
+export async function getAttempt(attemptId: string): Promise<Attempt | null> {
+  const row = getLocalDatabase().getFirstSync<AttemptRow>(
+    'SELECT id, question_set_id, score, correct_count, total, started_at, finished_at, status FROM attempts WHERE id = ?', attemptId,
+  );
+  return row ? readAttempt(row) : null;
+}
+
+export async function listAttempts(): Promise<Attempt[]> {
+  const rows = getLocalDatabase().getAllSync<AttemptRow>(
+    'SELECT id, question_set_id, score, correct_count, total, started_at, finished_at, status FROM attempts ORDER BY finished_at DESC',
+  );
+  return rows.map(readAttempt);
+}
+
+export async function getProgress(questionSetId: string): Promise<StudyProgress | null> {
+  const row = getLocalDatabase().getFirstSync<{ progress_json: string }>(
+    'SELECT progress_json FROM study_progress WHERE question_set_id = ?', questionSetId,
+  );
+  if (!row) return null;
+  try { return JSON.parse(row.progress_json) as StudyProgress; } catch { return null; }
+}
+
+export async function listProgress(): Promise<StudyProgress[]> {
+  return getLocalDatabase().getAllSync<{ progress_json: string }>(
+    'SELECT progress_json FROM study_progress ORDER BY updated_at DESC',
+  ).flatMap((row) => {
+    try { return [JSON.parse(row.progress_json) as StudyProgress]; } catch { return []; }
+  });
+}
+
+export async function saveProgress(progress: StudyProgress): Promise<void> {
+  getLocalDatabase().runSync(
+    'INSERT OR REPLACE INTO study_progress (question_set_id, progress_json, updated_at) VALUES (?, ?, ?)',
+    progress.questionSetId, JSON.stringify(progress), progress.updatedAt,
+  );
+}
+
+export async function clearProgress(questionSetId: string): Promise<void> {
+  getLocalDatabase().runSync('DELETE FROM study_progress WHERE question_set_id = ?', questionSetId);
 }
 
 type SyncItemRow = { id: number; entity: string; entity_id: string; operation: SyncItem['operation']; payload: string; created_at: string; retry_count: number };

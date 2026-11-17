@@ -2,6 +2,10 @@
   "expo": {
     "name": "Papyrus",
     "slug": "papyrus",
+    "owner": "michaelminhs-team",
+    "extra": {
+      "eas": { "projectId": "f4872061-8848-48a7-9d26-a1dbec552c6b" }
+    },
     "version": "0.2.0",
     "orientation": "default",
     "scheme": "papyrus",

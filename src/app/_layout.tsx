@@ -1,105 +1,41 @@
-import { Ionicons } from '@expo/vector-icons';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Stack } from 'expo-router';
+import { Stack, useRouter, type ErrorBoundaryProps } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useMemo, useState, useEffect, useRef } from 'react';
-import { Animated, Platform, StyleSheet, Text, View, useColorScheme } from 'react-native';
+import { useMemo, useState, useEffect } from 'react';
+import { AccessibilityInfo, StyleSheet, Text, View, useColorScheme } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { dependencies } from '@/composition/dependencies';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { useAuthStore } from '@/core/state/useAuthStore';
+import { wrapRoot, reportFailure } from '@/core/observability/monitoring';
+import { ReleaseGate } from '@/shared/ReleaseGate';
+import { Button, Card, Screen } from '@/shared/ui';
 
-function SplashScreenOverlay({ onFinished }: { onFinished: () => void }) {
-  const fadeAnim = useRef(new Animated.Value(1)).current;
-  const scaleAnim = useRef(new Animated.Value(0.92)).current;
-  const progressAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    // Elegant scale in
-    Animated.spring(scaleAnim, {
-      toValue: 1,
-      friction: 7,
-      tension: 45,
-      useNativeDriver: Platform.OS !== 'web',
-    }).start();
-
-    // Smooth linear loading progress
-    Animated.timing(progressAnim, {
-      toValue: 180,
-      duration: 850,
-      useNativeDriver: false,
-    }).start();
-
-    const timer = setTimeout(() => {
-      Animated.parallel([
-        Animated.timing(fadeAnim, {
-          toValue: 0,
-          duration: 350,
-          useNativeDriver: Platform.OS !== 'web',
-        }),
-        Animated.timing(scaleAnim, {
-          toValue: 1.04,
-          duration: 350,
-          useNativeDriver: Platform.OS !== 'web',
-        }),
-      ]).start(() => {
-        onFinished();
-      });
-    }, 1050);
-
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [fadeAnim, scaleAnim, progressAnim, onFinished]);
-
-  return (
-    <Animated.View
-      style={[
-        StyleSheet.absoluteFill,
-        styles.splashContainer,
-        {
-          opacity: fadeAnim,
-          transform: [{ scale: scaleAnim }],
-          zIndex: 99999,
-        },
-      ]}
-      pointerEvents="none"
-    >
-      <View style={styles.splashContent}>
-        {/* Minimalist Vector Emblem */}
-        <View style={styles.brandMarkOuter}>
-          <Ionicons name="bookmarks" size={44} color="#818CF8" />
-          <View style={styles.sparkBadge}>
-            <Ionicons name="flash" size={14} color="#FFFFFF" />
-          </View>
-        </View>
-
-        <Text style={styles.splashBrand}>P A P Y R U S</Text>
-        <Text style={styles.splashSlogan}>Nền tảng Ôn tập & Đấu trường Trí tuệ</Text>
-
-        {/* Minimalist Progress Track */}
-        <View style={styles.progressTrack}>
-          <Animated.View style={[styles.progressBar, { width: progressAnim }]} />
-        </View>
-      </View>
-
-      <View style={styles.splashFooter}>
-        <Text style={styles.footerText}>v1.0.0 • Offline-First Cross-Platform</Text>
-      </View>
-    </Animated.View>
-  );
+export function ErrorBoundary({error,retry}:ErrorBoundaryProps) {
+  useEffect(()=>{reportFailure(error,'startup');},[error]);
+  return <SafeAreaProvider><Screen><Card>
+    <Text>Không mở được màn hình này. Dữ liệu đã lưu vẫn được giữ lại.</Text>
+    <Button onPress={()=>void retry()}>Thử lại / Retry</Button>
+  </Card></Screen></SafeAreaProvider>;
 }
 
-export default function RootLayout() {
-  const scheme = useColorScheme();
+function RootLayout() {
+  const router=useRouter();
+  useEffect(()=>dependencies.reminders.listen(()=>router.push('/sets')),[router]);
+  const systemScheme = useColorScheme();
+  const theme=usePapyrusStore(s=>s.theme);
+  const scheme=theme==='system'?systemScheme:theme;
+  const reduceMotion=usePapyrusStore(s=>s.reduceMotion);
+  const [systemMotion,setSystemMotion]=useState(false);
+  useEffect(()=>{void AccessibilityInfo.isReduceMotionEnabled().then(setSystemMotion);const listener=AccessibilityInfo.addEventListener('reduceMotionChanged',setSystemMotion);return ()=>listener.remove();},[]);
   const queryClient = useMemo(() => new QueryClient({ defaultOptions: { queries: { staleTime: 30_000, retry: 1 } } }), []);
   const hydrateQuestionSets = usePapyrusStore((state) => state.hydrateQuestionSets);
   const bootstrapAuth = useAuthStore((state) => state.bootstrap);
-  const [showSplash, setShowSplash] = useState(true);
+
 
   useEffect(() => {
-    void hydrateQuestionSets(dependencies.questionSets.list);
-    void bootstrapAuth(dependencies.auth);
+    void hydrateQuestionSets(dependencies.questionSets.list).catch(error=>reportFailure(error,'startup'));
+    void bootstrapAuth(dependencies.auth).catch(error=>reportFailure(error,'startup'));
   }, [bootstrapAuth, hydrateQuestionSets]);
 
   return (
@@ -107,13 +43,15 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
         <View style={styles.rootContainer}>
-          <Stack screenOptions={{ headerShown: false, animation: 'fade' }} />
-          {showSplash && <SplashScreenOverlay onFinished={() => setShowSplash(false)} />}
+          <ReleaseGate><Stack screenOptions={{ headerShown: false, animation: reduceMotion || systemMotion ? 'none' : 'default' }} /></ReleaseGate>
+
         </View>
       </QueryClientProvider>
     </SafeAreaProvider>
   );
 }
+
+export default wrapRoot(RootLayout);
 
 const styles = StyleSheet.create({
   rootContainer: {

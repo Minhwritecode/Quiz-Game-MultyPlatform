@@ -43,6 +43,16 @@ export type AttemptAnswer = {
   timeMs: number;
 };
 
+export type StudyProgress = {
+  questionSetId: string;
+  currentIndex: number;
+  selectedIndex: number | null;
+  revealed: boolean;
+  answers: AttemptAnswer[];
+  startedAt: string;
+  updatedAt: string;
+};
+
 export type SyncOperation = 'insert' | 'update' | 'delete';
 
 export type SyncItem = {
@@ -82,7 +92,8 @@ export function isValidQuestion(question: Question): boolean {
   return question.content.trim().length > 0 &&
     question.options.length === 4 &&
     question.options.every((option) => option.trim().length > 0) &&
-    new Set(question.options).size === 4 &&
+    new Set(question.options.map(option=>option.trim().toLocaleLowerCase())).size === 4 &&
+    Number.isInteger(question.correctIndex) &&
     question.correctIndex >= 0 && question.correctIndex < question.options.length;
 }
 

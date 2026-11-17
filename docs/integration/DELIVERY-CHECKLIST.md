@@ -10,8 +10,8 @@ an end-to-end acceptance gate. Checkboxes require the evidence stated below.
 | StudyWars document → AI → review | Real source input, generated questions, editable review, save | Partial: paste/gallery and review; provider integration unverified |
 | QuizPulse PDF and manual quiz | PDF text/scan detection, size limits, manual create/update | Pending |
 | Buzrr ingestion/RAG | PDF/DOCX/TXT/Markdown, traceable source spans, provider abstraction | Pending; no reference source copied |
-| Dev Quiz Battle room flow | Authenticated two-player match and score persistence | In implementation; local SQL and client integration checks required |
-| Server battle security | Owner/member/outsider/anonymous tests, hidden answers, duplicate guard | Test scripts added; execution evidence recorded after running |
+| Dev Quiz Battle room flow | Authenticated two-player match and score persistence | Local SQL/four-client API checks pass; cloud authenticated UI/device gate pending |
+| Server battle security | Owner/member/outsider/anonymous tests, hidden answers, duplicate guard | Local SQL/API tests pass; cloud grants and anonymous denial verified |
 | Battle lifecycle | Ready/countdown/round/result/final ranking, 2 then 4 players | Implemented code; end-to-end gate pending |
 | Reconnect/host transfer | Refresh restores room; 30-second hold; host transfer; offline recovery | Implemented heartbeat/restore/transfer; strict eviction pending |
 | QR/link join | Shared link, cold/warm start, locally generated QR and scanner | Link payload implemented; QR/scanner pending |
@@ -20,10 +20,10 @@ an end-to-end acceptance gate. Checkboxes require the evidence stated below.
 | Local library | CRUD/duplicate/tombstone, source persistence | Save/list/search only |
 | Study | Sequential/random/timed/incorrect-only, checkpoint resume, history | Sequential/result only; remaining modes pending |
 | Auth | Registration/login/logout/session, guest merge, OAuth callbacks | Partial; OAuth callback and guest merge pending |
-| Intake | Camera/gallery/multiple pages/paste, cancel/progress, permissions | Gallery/paste available; camera/document flow pending |
+| Intake | Camera/gallery/multiple pages/paste, cancel/progress, permissions | Camera/gallery/paste code and permission/cancel tests exist; native OCR QA and document formats pending |
 | AI | Validated output, user consent, streaming, cancel/retry/quota/rate limit | Partial; server adapter and editable review exist |
 | UI | Phone/tablet/foldable, light/dark, safe area, accessible states | Base only; visual/device evidence pending |
-| Tests | Unit/component/E2E, SQLite transactions, RLS/RPC, native smoke | Existing 11 unit tests; new SQL scripts; other gates pending |
+| Tests | Unit/component/E2E, SQLite transactions, RLS/RPC, native smoke | 16 tests / 8 Jest suites; local SQL/API smoke pass; component/E2E/native suites pending |
 | Release | CI, dependency/secret checks, signed builds, device evidence | Config scaffolds; release not verified |
 
 ## Task ledger
@@ -31,20 +31,23 @@ an end-to-end acceptance gate. Checkboxes require the evidence stated below.
 - [x] Run new battle security SQL against local Supabase and record outcome.
 - [x] Run local lifecycle test with host and player identities.
 - [x] Commit verified security changes separately from lifecycle/UI changes.
-- [ ] Verify two independent browser sessions and then four-player capacity.
-- [ ] Complete account-scoped sync before hosting locally generated sets.
-- [ ] Add QR, global leaderboard, camera/PDF intake and resume/history.
+- [x] Verify four-player capacity through independent local API clients.
+- [ ] Verify two independent browser sessions and real devices.
+- [x] Implement explicit account-set import/sync for hosting locally generated sets (local API/domain evidence).
+- [ ] Verify account sync/hosting via authenticated cloud UI.
+- [ ] Add QR, global leaderboard, PDF intake and resume/history; verify native camera.
 - [ ] Add component/E2E/native checks and update original plan by evidence.
 
 ## Environment
 
 User selected local development first. Docker Desktop and Supabase CLI are used
-for isolated local tests. Cloud project setup and Gemini secrets are deferred.
-No hosted migrations or paid provider requests are part of local verification.
+for isolated local tests. Cloud schema was subsequently deployed on 11 November
+(see deployment record below). Gemini configuration and provider calls remain
+pending. Local smoke scripts remain isolated from hosted data.
 
 ## Verification results for this delivery
 
-- TypeScript check: pass. Jest: 7 suites, 13 tests pass.
+- Latest audit: TypeScript check passes; Jest: 8 suites, 16 tests pass.
 - Architecture import check: pass. Expo web export: pass for battle changes.
 - `supabase/tests/battle_security.sql`: pass on local PostgreSQL 17 with fixtures rolled back.
 - `supabase/tests/battle_lifecycle.sql`: pass, including host lease expiry and server deadline recovery.
