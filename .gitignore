@@ -75,3 +75,6 @@ fastlane/Preview.html
 
 expo-env.d.ts
 # @end expo-cli
+
+# Unity local editor cache & tutorial project
+/Setup Guide In-Editor Tutorial/
