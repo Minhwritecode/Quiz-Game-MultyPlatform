@@ -78,3 +78,4 @@ expo-env.d.ts
 
 # Unity local editor cache & tutorial project
 /Setup Guide In-Editor Tutorial/
+/client/
