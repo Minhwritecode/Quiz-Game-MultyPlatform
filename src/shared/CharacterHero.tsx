@@ -90,7 +90,7 @@ export function CharacterHero({
                 styles.hpFill,
                 {
                   width: `${Math.max(0, Math.min(100, (hp / maxHp) * 100))}%`,
-                  backgroundColor: hp > 1 ? colors.emerald500 : colors.rose500,
+                  backgroundColor: hp > 1 ? '#10B981' : '#F43F5E',
                 },
               ]}
             />
@@ -139,12 +139,12 @@ const styles = StyleSheet.create({
   hpTrack: {
     width: 90,
     height: 7,
-    borderRadius: radii.full,
+    borderRadius: radii.pill,
     overflow: 'hidden',
   },
   hpFill: {
     height: '100%',
-    borderRadius: radii.full,
+    borderRadius: radii.pill,
   },
   spriteWrapper: {
     alignItems: 'center',
@@ -156,7 +156,7 @@ const styles = StyleSheet.create({
   auraRing: {
     position: 'absolute',
     bottom: -6,
-    borderRadius: radii.full,
+    borderRadius: radii.pill,
     opacity: 0.6,
     transform: [{ scaleX: 1.2 }],
     zIndex: -1,

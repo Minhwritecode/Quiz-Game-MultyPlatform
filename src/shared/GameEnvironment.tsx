@@ -1,11 +1,15 @@
-import { ReactNode, useEffect, useRef } from 'react';
-import { Animated, StyleSheet, View } from 'react-native';
+import React, { ReactNode, useEffect, useRef, useState } from 'react';
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { Model3DView } from './Model3DView';
 
 export type GameMode = 'survival' | 'battle' | 'match' | 'study';
 
 interface GameEnvironmentProps {
   gameMode: GameMode;
   children: ReactNode;
+  show3DByDefault?: boolean;
+  enable3DToggle?: boolean;
 }
 
 // ─── Particle/orb helper ───────────────────────────────────────────────────
@@ -92,7 +96,7 @@ function StarParticle({ left, top, delay }: { left: number; top: number; delay: 
   const opacityAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    setTimeout(() => {
+    const timer = setTimeout(() => {
       Animated.loop(
         Animated.parallel([
           Animated.sequence([
@@ -106,6 +110,7 @@ function StarParticle({ left, top, delay }: { left: number; top: number; delay: 
         ])
       ).start();
     }, delay);
+    return () => clearTimeout(timer);
   }, [floatAnim, opacityAnim, delay]);
 
   return (
@@ -161,19 +166,23 @@ function CandleFlicker({ left, top }: { left: number; top: number }) {
 
 // ─── Main Component ───────────────────────────────────────────────────────
 
-export function GameEnvironment({ gameMode, children }: GameEnvironmentProps) {
+export function GameEnvironment({
+  gameMode,
+  children,
+  show3DByDefault = false,
+  enable3DToggle = true,
+}: GameEnvironmentProps) {
+  const [show3D, setShow3D] = useState(show3DByDefault);
   const config = CONFIGS[gameMode];
 
   const renderDecor = () => {
     if (gameMode === 'survival') {
       return (
         <>
-          {/* 4 glowing cyan pillars */}
           <CyanPillar left={12} top={80} />
           <CyanPillar left={12} top={300} />
           <CyanPillar left={-4} top={160} />
           <CyanPillar left={-4} top={420} />
-          {/* Star particles */}
           {Array.from({ length: 18 }, (_, i) => (
             <StarParticle
               key={i}
@@ -182,7 +191,6 @@ export function GameEnvironment({ gameMode, children }: GameEnvironmentProps) {
               delay={i * 200}
             />
           ))}
-          {/* Arena floor glow at bottom */}
           <View
             style={{
               position: 'absolute',
@@ -205,7 +213,6 @@ export function GameEnvironment({ gameMode, children }: GameEnvironmentProps) {
     if (gameMode === 'battle') {
       return (
         <>
-          {/* Crowd dots at edges */}
           {Array.from({ length: 24 }, (_, i) => (
             <View
               key={i}
@@ -221,7 +228,6 @@ export function GameEnvironment({ gameMode, children }: GameEnvironmentProps) {
               }}
             />
           ))}
-          {/* Gold border lines */}
           <View style={{ position: 'absolute', left: 0, top: 0, right: 0, height: 3, backgroundColor: '#FBBF24', opacity: 0.6 }} />
           <View style={{ position: 'absolute', left: 0, bottom: 0, right: 0, height: 3, backgroundColor: '#FBBF24', opacity: 0.6 }} />
         </>
@@ -271,6 +277,52 @@ export function GameEnvironment({ gameMode, children }: GameEnvironmentProps) {
       {/* Decorative environment elements */}
       {renderDecor()}
 
+      {/* 3D Realm Toggle Bar */}
+      {enable3DToggle && (
+        <View style={styles.toggleRow}>
+          <Pressable
+            onPress={() => setShow3D(!show3D)}
+            style={({ pressed }) => [
+              styles.togglePill,
+              {
+                backgroundColor: show3D ? 'rgba(99, 102, 241, 0.25)' : 'rgba(255, 255, 255, 0.1)',
+                borderColor: show3D ? '#818CF8' : 'rgba(255, 255, 255, 0.2)',
+                opacity: pressed ? 0.75 : 1,
+              },
+            ]}
+          >
+            <Ionicons
+              name={show3D ? 'cube' : 'cube-outline'}
+              size={14}
+              color={show3D ? '#A5B4FC' : '#94A3B8'}
+            />
+            <Text
+              style={[
+                styles.toggleText,
+                { color: show3D ? '#E0E7FF' : '#94A3B8' },
+              ]}
+            >
+              {show3D ? '🔮 3D Realm (Active)' : '✨ Tap for 3D View'}
+            </Text>
+          </Pressable>
+        </View>
+      )}
+
+      {/* Interactive 3D Model Stage */}
+      {show3D && (
+        <View style={styles.stage3DContainer}>
+          <Model3DView
+            model={gameMode}
+            height={200}
+            autoRotate={true}
+            interactive={true}
+          />
+          <Text style={styles.stage3DHint}>
+            👆 Drag to rotate 3D realm • Pinch to zoom
+          </Text>
+        </View>
+      )}
+
       {/* Content */}
       <View style={styles.content}>{children}</View>
     </View>
@@ -318,6 +370,39 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 200,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    zIndex: 10,
+  },
+  togglePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  toggleText: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  stage3DContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    zIndex: 5,
+  },
+  stage3DHint: {
+    fontSize: 10,
+    color: '#94A3B8',
+    textAlign: 'center',
+    marginTop: 4,
+    letterSpacing: 0.4,
   },
   content: {
     flex: 1,
