@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { StyleSheet, View, ViewStyle, ActivityIndicator } from 'react-native';
 import { WebView } from 'react-native-webview';
 import {
@@ -6,9 +6,11 @@ import {
   GLB_BATTLE_COLOSSEUM_B64,
   GLB_LIBRARY_ARCHIVES_B64,
   GLB_STUDY_SANCTUARY_B64,
+  GLB_PAPYRUS_CHARACTER_B64,
 } from './models3d';
 
-export type Model3DType = 'survival' | 'battle' | 'match' | 'study';
+export type Model3DType = 'survival' | 'battle' | 'match' | 'study' | 'character';
+export type Character3DAnimation = 'Idle' | 'Cast_Spell' | 'Hit_Reaction' | 'Victory_Dance';
 
 interface Model3DViewProps {
   model: Model3DType;
@@ -17,6 +19,8 @@ interface Model3DViewProps {
   autoRotate?: boolean;
   interactive?: boolean;
   cameraOrbit?: string;
+  animationName?: Character3DAnimation | string;
+  autoplay?: boolean;
 }
 
 export function Model3DView({
@@ -26,9 +30,15 @@ export function Model3DView({
   autoRotate = true,
   interactive = true,
   cameraOrbit = '0deg 75deg 100%',
+  animationName = 'Idle',
+  autoplay = true,
 }: Model3DViewProps) {
+  const webviewRef = useRef<any>(null);
+
   const modelDataUri = useMemo(() => {
     switch (model) {
+      case 'character':
+        return GLB_PAPYRUS_CHARACTER_B64;
       case 'survival':
         return GLB_SURVIVAL_ARENA_B64;
       case 'battle':
@@ -41,7 +51,19 @@ export function Model3DView({
     }
   }, [model]);
 
+  // Zero-latency animation switching via WebView message post
+  useEffect(() => {
+    if (webviewRef.current && animationName) {
+      webviewRef.current.postMessage(
+        JSON.stringify({ type: 'SET_ANIMATION', animationName })
+      );
+    }
+  }, [animationName]);
+
   const html = useMemo(() => {
+    const isCharacter = model === 'character';
+    const effectiveOrbit = cameraOrbit || (isCharacter ? '0deg 80deg 3.5m' : '0deg 75deg 100%');
+
     return `
 <!DOCTYPE html>
 <html>
@@ -76,10 +98,13 @@ export function Model3DView({
 </head>
 <body>
   <model-viewer
+    id="viewer"
     src="${modelDataUri}"
     ${autoRotate ? 'auto-rotate' : ''}
     ${interactive ? 'camera-controls' : ''}
-    camera-orbit="${cameraOrbit}"
+    ${animationName ? `animation-name="${animationName}"` : ''}
+    ${autoplay ? 'autoplay' : ''}
+    camera-orbit="${effectiveOrbit}"
     shadow-intensity="1.5"
     exposure="1.15"
     touch-action="pan-y"
@@ -90,14 +115,44 @@ export function Model3DView({
       ✨ Loading 3D Realm...
     </div>
   </model-viewer>
+
+  <script>
+    // Listen for animation change commands without reloading WebView
+    window.addEventListener('message', function(event) {
+      try {
+        var data = JSON.parse(event.data);
+        var viewer = document.getElementById('viewer');
+        if (viewer && data.type === 'SET_ANIMATION' && data.animationName) {
+          viewer.animationName = data.animationName;
+          if (viewer.play) {
+            viewer.play();
+          }
+        }
+      } catch (err) {}
+    });
+
+    document.addEventListener('message', function(event) {
+      try {
+        var data = JSON.parse(event.data);
+        var viewer = document.getElementById('viewer');
+        if (viewer && data.type === 'SET_ANIMATION' && data.animationName) {
+          viewer.animationName = data.animationName;
+          if (viewer.play) {
+            viewer.play();
+          }
+        }
+      } catch (err) {}
+    });
+  </script>
 </body>
 </html>
     `;
-  }, [modelDataUri, autoRotate, interactive, cameraOrbit]);
+  }, [model, modelDataUri, autoRotate, interactive, cameraOrbit, animationName, autoplay]);
 
   return (
     <View style={[styles.container, { height }, style]}>
       <WebView
+        ref={webviewRef}
         originWhitelist={['*']}
         source={{ html }}
         style={styles.webview}
