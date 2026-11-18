@@ -3,6 +3,7 @@ import { Animated, Image, StyleSheet, Text, View } from 'react-native';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { usePalette } from './ui';
 import { Model3DView, Character3DAnimation } from './Model3DView';
+import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 
 export type CharacterAction = 'idle' | 'attack' | 'hurt' | 'victory';
 
@@ -37,9 +38,12 @@ export function CharacterHero({
   maxHp = 3,
   name = 'Papyrus Scholar',
   showHealthBar = false,
-  mode = '2d',
+  mode,
 }: CharacterHeroProps) {
   const palette = usePalette();
+  const globalRender3D = usePapyrusStore((state) => state.render3DMode);
+  const activeMode = mode !== undefined ? mode : globalRender3D ? '3d' : '2d';
+
   const floatAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const shakeAnim = useRef(new Animated.Value(0)).current;
@@ -49,7 +53,7 @@ export function CharacterHero({
 
   // Gentle floating animation for 2D mode
   useEffect(() => {
-    if (mode === '3d') return;
+    if (activeMode === '3d') return;
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(floatAnim, {
@@ -66,11 +70,11 @@ export function CharacterHero({
     );
     loop.start();
     return () => loop.stop();
-  }, [floatAnim, mode]);
+  }, [floatAnim, activeMode]);
 
   // Action-driven triggers for 2D mode
   useEffect(() => {
-    if (mode === '3d') return;
+    if (activeMode === '3d') return;
     if (action === 'attack') {
       Animated.sequence([
         Animated.timing(scaleAnim, { toValue: 1.15, duration: 150, useNativeDriver: true }),
@@ -89,7 +93,7 @@ export function CharacterHero({
         Animated.timing(scaleAnim, { toValue: 1.0, duration: 200, useNativeDriver: true }),
       ]).start();
     }
-  }, [action, scaleAnim, shakeAnim, mode]);
+  }, [action, scaleAnim, shakeAnim, activeMode]);
 
   return (
     <View style={styles.container}>
@@ -112,7 +116,7 @@ export function CharacterHero({
       )}
 
       {/* Render Mode: 3D Rigged WebGL or 2D Sprite */}
-      {mode === '3d' ? (
+      {activeMode === '3d' ? (
         <View style={{ width: dim * 1.5, height: height3D, alignItems: 'center', justifyContent: 'center' }}>
           <Model3DView
             model="character"

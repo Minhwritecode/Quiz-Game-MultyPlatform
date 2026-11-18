@@ -13,6 +13,8 @@ type PapyrusState = {
   reduceMotion: boolean;
   language: 'vi' | 'en';
   theme: 'system' | 'light' | 'dark';
+  render3DMode: boolean;
+  bgmMuted: boolean;
   setTheme: (theme: 'system' | 'light' | 'dark') => void;
   hydrateQuestionSets: (load: () => Promise<QuestionSet[]>) => Promise<void>;
   saveSourceDocument: (document: SourceDocument) => void;
@@ -23,39 +25,74 @@ type PapyrusState = {
   toggleReduceMotion: () => void;
   setLanguage: (language: 'vi' | 'en') => void;
   toggleLanguage: () => void;
+  toggleRender3DMode: () => void;
+  setRender3DMode: (enabled: boolean) => void;
+  toggleBgmMuted: () => void;
 };
 
-export const usePapyrusStore = create<PapyrusState>()(persist((set, get) => ({
-  questionSets: seedQuestionSets,
-  deletedSetIds: [],
-  sourceDocument: null,
-  hydrated: false,
-  haptics: true,
-  reduceMotion: false,
-  language: 'vi',
-  theme: 'system',
-  setTheme: (theme) => set({theme}),
-  hydrateQuestionSets: async (load) => {
-    const stored = await load();
-    const existingIds = new Set(stored.map((s) => s.id));
-    const merged = [...stored];
-    for (const seed of seedQuestionSets) {
-      if (!existingIds.has(seed.id) && !get().deletedSetIds.includes(seed.id)) {
-        merged.push(seed);
-      }
+export const usePapyrusStore = create<PapyrusState>()(
+  persist(
+    (set, get) => ({
+      questionSets: seedQuestionSets,
+      deletedSetIds: [],
+      sourceDocument: null,
+      hydrated: false,
+      haptics: true,
+      reduceMotion: false,
+      language: 'vi',
+      theme: 'system',
+      render3DMode: false,
+      bgmMuted: false,
+      setTheme: (theme) => set({ theme }),
+      hydrateQuestionSets: async (load) => {
+        const stored = await load();
+        const existingIds = new Set(stored.map((s) => s.id));
+        const merged = [...stored];
+        for (const seed of seedQuestionSets) {
+          if (!existingIds.has(seed.id) && !get().deletedSetIds.includes(seed.id)) {
+            merged.push(seed);
+          }
+        }
+        set({
+          questionSets: merged.filter((item) => !get().deletedSetIds.includes(item.id)),
+          hydrated: true,
+        });
+      },
+      saveSourceDocument: (document) => set({ sourceDocument: document }),
+      clearSourceDocument: () => set({ sourceDocument: null }),
+      saveQuestionSet: (questionSet) =>
+        set((state) => ({
+          deletedSetIds: state.deletedSetIds.filter((id) => id !== questionSet.id),
+          questionSets: [
+            questionSet,
+            ...state.questionSets.filter((item) => item.id !== questionSet.id),
+          ],
+        })),
+      deleteQuestionSet: (id) =>
+        set((state) => ({
+          deletedSetIds: [...new Set([...state.deletedSetIds, id])],
+          questionSets: state.questionSets.filter((item) => item.id !== id),
+        })),
+      toggleHaptics: () => set((state) => ({ haptics: !state.haptics })),
+      toggleReduceMotion: () => set((state) => ({ reduceMotion: !state.reduceMotion })),
+      setLanguage: (language) => set({ language }),
+      toggleLanguage: () => set((state) => ({ language: state.language === 'vi' ? 'en' : 'vi' })),
+      toggleRender3DMode: () => set((state) => ({ render3DMode: !state.render3DMode })),
+      setRender3DMode: (render3DMode) => set({ render3DMode }),
+      toggleBgmMuted: () => set((state) => ({ bgmMuted: !state.bgmMuted })),
+    }),
+    {
+      name: 'papyrus.preferences',
+      storage: createJSONStorage(() => AsyncStorage),
+      partialize: (state) => ({
+        deletedSetIds: state.deletedSetIds,
+        theme: state.theme,
+        language: state.language,
+        haptics: state.haptics,
+        reduceMotion: state.reduceMotion,
+        render3DMode: state.render3DMode,
+        bgmMuted: state.bgmMuted,
+      }),
     }
-    set({ questionSets: merged.filter(item => !get().deletedSetIds.includes(item.id)), hydrated: true });
-  },
-  saveSourceDocument: (document) => set({ sourceDocument: document }),
-  clearSourceDocument: () => set({ sourceDocument: null }),
-  saveQuestionSet: (questionSet) =>
-    set((state) => ({
-      deletedSetIds: state.deletedSetIds.filter(id => id !== questionSet.id),
-      questionSets: [questionSet, ...state.questionSets.filter((item) => item.id !== questionSet.id)],
-    })),
-  deleteQuestionSet: (id) => set((state) => ({ deletedSetIds: [...new Set([...state.deletedSetIds, id])], questionSets: state.questionSets.filter((item) => item.id !== id) })),
-  toggleHaptics: () => set((state) => ({ haptics: !state.haptics })),
-  toggleReduceMotion: () => set((state) => ({ reduceMotion: !state.reduceMotion })),
-  setLanguage: (language) => set({ language }),
-  toggleLanguage: () => set((state) => ({ language: state.language === 'vi' ? 'en' : 'vi' })),
-}), {name:'papyrus.preferences',storage:createJSONStorage(()=>AsyncStorage),partialize:state=>({deletedSetIds:state.deletedSetIds,theme:state.theme,language:state.language,haptics:state.haptics,reduceMotion:state.reduceMotion})}));
+  )
+);

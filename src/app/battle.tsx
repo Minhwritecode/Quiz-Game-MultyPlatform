@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { AppState, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, AppState, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { Badge, Button, Card, IconTile, Screen, usePalette } from '@/shared/ui';
@@ -12,6 +12,8 @@ import { useI18n } from '@/core/i18n';
 import { GameEnvironment } from '@/shared/GameEnvironment';
 import { CharacterAvatar } from '@/shared/CharacterAvatar';
 import { sfx } from '@/core/audio/sfx';
+import { useMembershipStore } from '@/features/membership/state/useMembershipStore';
+import { useStreakStore } from '@/features/streak/state/useStreakStore';
 
 const SCHOLAR_COLORS = ['#3B82F6', '#F59E0B', '#10B981', '#EC4899', '#8B5CF6', '#06B6D4'];
 
@@ -113,6 +115,12 @@ export default function BattleScreen() {
       appState.remove();
     };
   }, [roomId, t.battle.lostConnection, t.battle.reconnecting]);
+
+  useEffect(() => {
+    if (battle?.phase === 'finished') {
+      useStreakStore.getState().recordActivity('battle');
+    }
+  }, [battle?.phase]);
 
   const run = async (action: () => Promise<void>) => {
     if (busy) return;
@@ -329,12 +337,20 @@ export default function BattleScreen() {
                     icon="play"
                     onPress={() =>
                       void run(async () => {
+                        if (!useMembershipStore.getState().canCreateBattle()) {
+                          Alert.alert(
+                            'Đạt giới hạn tạo phòng hôm nay',
+                            'Học Giả Tập Sự được tạo tối đa 3 phòng đấu/ngày. Bạn có thể nâng cấp lên VIP để tạo phòng không giới hạn!'
+                          );
+                          return;
+                        }
                         const room = await dependencies.rooms.create({
                           setId: set.id,
                           questionCount,
                           secondsPerQuestion,
                           mode: roomMode,
                         });
+                        useMembershipStore.getState().consumeBattle();
                         await enter(room.id);
                       })
                     }

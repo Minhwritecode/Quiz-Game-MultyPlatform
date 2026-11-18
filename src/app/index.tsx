@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Badge, BrandMark, Button, Card, IconTile, Screen, SectionHeading, StatCard, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
@@ -8,6 +8,11 @@ import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { useAuthStore } from '@/core/state/useAuthStore';
 import { useI18n } from '@/core/i18n';
 import PapyrusScene from '@/shared/visuals/PapyrusScene';
+import { StreakBadge } from '@/features/streak/presentation/StreakBadge';
+import { VipBadge } from '@/features/membership/presentation/VipBadge';
+import { RenderModeToggle } from '@/shared/RenderModeToggle';
+import { SoundToggle } from '@/shared/SoundToggle';
+import { useStreakStore } from '@/features/streak/state/useStreakStore';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -27,6 +32,10 @@ export default function HomeScreen() {
     if (code.length !== 6) return;
     router.push({ pathname: '/battle', params: { code } });
   };
+
+  useEffect(() => {
+    useStreakStore.getState().refreshStreakStatus();
+  }, []);
 
   return (
     <Screen bottomNav>
@@ -48,6 +57,14 @@ export default function HomeScreen() {
             <Ionicons name="person-circle-outline" size={36} color={palette.indigo} />
           </Pressable>
         </View>
+      </View>
+
+      {/* Gamified Utility Bar: Streak 🔥, VIP 👑, 2D/3D Mode 🔮, BGM 🔊 */}
+      <View style={styles.utilityBar}>
+        <StreakBadge />
+        <VipBadge />
+        <RenderModeToggle compact />
+        <SoundToggle />
       </View>
 
       <Card color={palette.indigo} style={[styles.heroCard, isWide && styles.heroCardWide]}>
@@ -139,6 +156,7 @@ const styles = StyleSheet.create({
   topHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing.md, gap: spacing.sm },
   brandIdentity: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, flex: 1 },
   topRightControls: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  utilityBar: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap', marginBottom: spacing.sm },
   langPillButton: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: spacing.md, borderRadius: radii.pill, borderWidth: 1.5 },
   profileButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   heroCard: { padding: spacing.xl, borderRadius: radii.lg, borderWidth: 0, overflow: 'hidden', marginTop: spacing.sm },

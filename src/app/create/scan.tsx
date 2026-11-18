@@ -6,6 +6,9 @@ import { radii, spacing, typography } from '@/core/theme/tokens';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { createSourceDocument } from '@/features/scan-ocr/domain/sourceDocument';
 import { dependencies } from '@/composition/dependencies';
+import { useMembershipStore } from '@/features/membership/state/useMembershipStore';
+import { useStreakStore } from '@/features/streak/state/useStreakStore';
+import { sfx } from '@/core/audio/sfx';
 
 const { pickSourceImages, captureSourceImage, recognizeLocalImage } = dependencies.intake;
 
@@ -18,6 +21,13 @@ export default function ScanScreen() {
   const [busy, setBusy] = useState(false);
   const chooseImage = async (camera = false) => {
     if (busy) return;
+    if (!useMembershipStore.getState().canScan()) {
+      Alert.alert(
+        'Đạt giới hạn quét hôm nay',
+        'Học Giả Tập Sự được quét tối đa 3 tài liệu/ngày. Bạn có thể nâng cấp lên VIP để quét không giới hạn!'
+      );
+      return;
+    }
     setBusy(true);
     try {
       const images = await (camera ? captureSourceImage() : pickSourceImages());
@@ -30,8 +40,14 @@ export default function ScanScreen() {
         .filter(Boolean)
         .join('\n\n');
       setPicked(true);
-      if (extracted) setText((current) => [current.trim(), extracted].filter(Boolean).join('\n\n'));
-      else Alert.alert('Text not detected', 'OCR is unavailable for this platform or the image has no readable text. You can paste the notes manually.');
+      if (extracted) {
+        setText((current) => [current.trim(), extracted].filter(Boolean).join('\n\n'));
+        useMembershipStore.getState().consumeScan();
+        useStreakStore.getState().recordActivity('scan_ocr');
+        sfx.playCorrect();
+      } else {
+        Alert.alert('Text not detected', 'OCR is unavailable for this platform or the image has no readable text. You can paste the notes manually.');
+      }
     } catch (error) {
       Alert.alert('Could not read images', error instanceof Error ? error.message : 'Please choose the images again.');
     } finally {

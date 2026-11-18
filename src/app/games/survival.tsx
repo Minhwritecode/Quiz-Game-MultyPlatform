@@ -20,6 +20,9 @@ import { CharacterHero, CharacterAction } from '@/shared/CharacterHero';
 import { GameEnvironment } from '@/shared/GameEnvironment';
 import { MagicParticles } from '@/shared/MagicParticles';
 import { sfx } from '@/core/audio/sfx';
+import { RenderModeToggle } from '@/shared/RenderModeToggle';
+import { SoundToggle } from '@/shared/SoundToggle';
+import { useStreakStore } from '@/features/streak/state/useStreakStore';
 
 // ─── Color palette ────────────────────────────────────────────────────────
 const INDIGO = '#4F46E5';
@@ -411,11 +414,13 @@ export default function SurvivalGameScreen() {
         setCharacterAction('hurt');
       } else if (aliveCount === 1 && updatedUser.status === 'alive') {
         sfx.playLevelUp();
+        useStreakStore.getState().recordActivity('study_quiz');
         setIsVictory(true);
         setIsGameOver(true);
         setCharacterAction('victory');
       } else if (isLastRound) {
         sfx.playLevelUp();
+        useStreakStore.getState().recordActivity('study_quiz');
         setIsVictory(true);
         setIsGameOver(true);
         setCharacterAction('victory');
@@ -472,6 +477,9 @@ export default function SurvivalGameScreen() {
             <Badge tone="primary">
               {t.survival.round} {questionIndex + 1}/{questions.length}
             </Badge>
+            <View style={{ flex: 1 }} />
+            <RenderModeToggle compact />
+            <SoundToggle />
           </View>
 
           {/* Timer Row with Orb */}

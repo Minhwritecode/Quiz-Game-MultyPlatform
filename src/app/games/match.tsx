@@ -20,6 +20,9 @@ import { CharacterHero, CharacterAction } from '@/shared/CharacterHero';
 import { GameEnvironment } from '@/shared/GameEnvironment';
 import { MagicParticles } from '@/shared/MagicParticles';
 import { sfx } from '@/core/audio/sfx';
+import { RenderModeToggle } from '@/shared/RenderModeToggle';
+import { SoundToggle } from '@/shared/SoundToggle';
+import { useStreakStore } from '@/features/streak/state/useStreakStore';
 
 // ─── 3D Flip Card Component ───────────────────────────────────────────────
 const CYAN = '#06B6D4';
@@ -388,6 +391,7 @@ export default function MatchGameScreen() {
 
           if (nextMatched === totalPairs) {
             sfx.playLevelUp();
+            useStreakStore.getState().recordActivity('study_quiz');
             setIsGameOver(true);
             setIsTimerRunning(false);
             setCharacterAction('victory');
@@ -479,6 +483,10 @@ export default function MatchGameScreen() {
           <Text style={[typography.body, { color: 'rgba(254,243,199,0.65)', marginTop: 4 }]}>
             {t.match.subtitle}
           </Text>
+        </View>
+        <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+          <RenderModeToggle compact />
+          <SoundToggle />
         </View>
       </View>
 
