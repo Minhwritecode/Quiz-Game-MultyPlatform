@@ -19,6 +19,7 @@ import { Badge, Button, Card, Screen, TopBar, usePalette } from '@/shared/ui';
 import { CharacterHero, CharacterAction } from '@/shared/CharacterHero';
 import { GameEnvironment } from '@/shared/GameEnvironment';
 import { MagicParticles } from '@/shared/MagicParticles';
+import { sfx } from '@/core/audio/sfx';
 
 // ─── 3D Flip Card Component ───────────────────────────────────────────────
 const CYAN = '#06B6D4';
@@ -335,6 +336,8 @@ export default function MatchGameScreen() {
   const handleCardPress = (card: MatchCard) => {
     if (isEvaluating || card.state === 'matched' || card.state === 'flipped') return;
 
+    sfx.playCardFlip();
+
     // Start timer on first card tap
     if (!isTimerRunning) {
       setIsTimerRunning(true);
@@ -362,6 +365,11 @@ export default function MatchGameScreen() {
         const nextCombo = combo + 1;
         setCombo(nextCombo);
         if (nextCombo > maxCombo) setMaxCombo(nextCombo);
+        if (nextCombo >= 2) {
+          sfx.playCombo();
+        } else {
+          sfx.playCorrect();
+        }
         setCharacterAction('attack');
         setMascotAction('happy');
         setParticleTrigger((p) => p + 1);
@@ -379,6 +387,7 @@ export default function MatchGameScreen() {
           setMatchedPairs(nextMatched);
 
           if (nextMatched === totalPairs) {
+            sfx.playLevelUp();
             setIsGameOver(true);
             setIsTimerRunning(false);
             setCharacterAction('victory');
@@ -390,6 +399,7 @@ export default function MatchGameScreen() {
         }, 400);
       } else {
         // MISMATCH!
+        sfx.playWrong();
         setCombo(0);
         setCharacterAction('hurt');
         setMascotAction('sad');

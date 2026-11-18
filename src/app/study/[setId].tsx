@@ -12,6 +12,7 @@ import { useI18n } from '@/core/i18n';
 import { GameEnvironment } from '@/shared/GameEnvironment';
 import { MagicParticles } from '@/shared/MagicParticles';
 import { CharacterAvatar } from '@/shared/CharacterAvatar';
+import { sfx } from '@/core/audio/sfx';
 
 export default function StudyScreen() {
   const { setId } = useLocalSearchParams<{ setId: string }>();
@@ -122,10 +123,13 @@ export default function StudyScreen() {
       setAnswers(updatedAnswers);
       setRevealed(true);
       if (answer.isCorrect) {
+        sfx.playSpellCast();
+        sfx.playCorrect();
         setParticleTrigger((c) => c + 1);
         setExp((prev) => {
           const nextExp = prev + 25;
           if (nextExp >= 100) {
+            sfx.playLevelUp();
             setLevel((l) => l + 1);
             setLevelUpMessage(true);
             setTimeout(() => setLevelUpMessage(false), 3000);
@@ -133,6 +137,8 @@ export default function StudyScreen() {
           }
           return nextExp;
         });
+      } else {
+        sfx.playWrong();
       }
       persistProgress({ questionSetId: questionSet.id, currentIndex: index, selectedIndex: selected, revealed: true, answers: updatedAnswers, startedAt: sessionStartedAt });
       return;

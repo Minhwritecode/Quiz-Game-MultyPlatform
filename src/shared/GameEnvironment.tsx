@@ -12,10 +12,20 @@ interface GameEnvironmentProps {
   enable3DToggle?: boolean;
 }
 
-// ─── Particle/orb helper ───────────────────────────────────────────────────
+// ─── Shared Animated Helpers ───────────────────────────────────────────────
 
-function FloatingOrb({ color, size, startX, startY, duration }: {
-  color: string; size: number; startX: number; startY: number; duration: number;
+function FloatingOrb({
+  color,
+  size,
+  startX,
+  startY,
+  duration,
+}: {
+  color: string;
+  size: number;
+  startX: number;
+  startY: number;
+  duration: number;
 }) {
   const anim = useRef(new Animated.Value(0)).current;
   const opacityAnim = useRef(new Animated.Value(0.3)).current;
@@ -36,7 +46,7 @@ function FloatingOrb({ color, size, startX, startY, duration }: {
     ).start();
   }, [anim, opacityAnim, duration]);
 
-  const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [0, -40] });
+  const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [0, -35] });
 
   return (
     <Animated.View
@@ -54,38 +64,6 @@ function FloatingOrb({ color, size, startX, startY, duration }: {
         shadowRadius: size,
         shadowOpacity: 0.8,
         elevation: 10,
-      }}
-    />
-  );
-}
-
-function CyanPillar({ left, top }: { left: number; top: number }) {
-  const glowAnim = useRef(new Animated.Value(0.5)).current;
-
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(glowAnim, { toValue: 1, duration: 1500, useNativeDriver: true }),
-        Animated.timing(glowAnim, { toValue: 0.5, duration: 1500, useNativeDriver: true }),
-      ])
-    ).start();
-  }, [glowAnim]);
-
-  return (
-    <Animated.View
-      style={{
-        position: 'absolute',
-        left,
-        top,
-        width: 8,
-        height: 80,
-        borderRadius: 4,
-        backgroundColor: '#06B6D4',
-        opacity: glowAnim,
-        shadowColor: '#06B6D4',
-        shadowRadius: 12,
-        shadowOpacity: 1,
-        elevation: 20,
       }}
     />
   );
@@ -122,49 +100,262 @@ function StarParticle({ left, top, delay }: { left: number; top: number; delay: 
         width: 3,
         height: 3,
         borderRadius: 1.5,
-        backgroundColor: '#E0F7FF',
+        backgroundColor: '#FFFFFF',
         opacity: opacityAnim,
         transform: [{ translateY: floatAnim }],
+        shadowColor: '#38BDF8',
+        shadowRadius: 6,
+        shadowOpacity: 1,
+        elevation: 6,
       }}
     />
   );
 }
 
 function CandleFlicker({ left, top }: { left: number; top: number }) {
-  const flicker = useRef(new Animated.Value(1)).current;
+  const flicker = useRef(new Animated.Value(0.7)).current;
 
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
-        Animated.timing(flicker, { toValue: 0.6, duration: 100 + Math.random() * 100, useNativeDriver: true }),
-        Animated.timing(flicker, { toValue: 1, duration: 100 + Math.random() * 100, useNativeDriver: true }),
-        Animated.timing(flicker, { toValue: 0.8, duration: 150, useNativeDriver: true }),
-        Animated.timing(flicker, { toValue: 1, duration: 200, useNativeDriver: true }),
+        Animated.timing(flicker, { toValue: 1.0, duration: 250, useNativeDriver: true }),
+        Animated.timing(flicker, { toValue: 0.55, duration: 180, useNativeDriver: true }),
+        Animated.timing(flicker, { toValue: 0.85, duration: 320, useNativeDriver: true }),
+        Animated.timing(flicker, { toValue: 0.65, duration: 200, useNativeDriver: true }),
       ])
     ).start();
   }, [flicker]);
 
   return (
-    <Animated.View
-      style={{
-        position: 'absolute',
-        left,
-        top,
-        width: 10,
-        height: 20,
-        borderRadius: 5,
-        backgroundColor: '#F97316',
-        opacity: flicker,
-        shadowColor: '#F97316',
-        shadowRadius: 10,
-        shadowOpacity: 0.9,
-        elevation: 15,
-      }}
-    />
+    <View style={{ position: 'absolute', left, top, alignItems: 'center' }}>
+      {/* Sconce bracket */}
+      <View style={{ width: 14, height: 4, backgroundColor: '#78350F', borderRadius: 2 }} />
+      <View style={{ width: 8, height: 18, backgroundColor: '#FEF3C7', borderRadius: 2 }} />
+      {/* Flame */}
+      <Animated.View
+        style={{
+          width: 8,
+          height: 14,
+          borderRadius: 4,
+          backgroundColor: '#F59E0B',
+          opacity: flicker,
+          marginTop: -6,
+          shadowColor: '#F59E0B',
+          shadowRadius: 10,
+          shadowOpacity: 0.95,
+          elevation: 12,
+        }}
+      />
+    </View>
   );
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────
+// ─── 4 Environment Architectural Backdrops ─────────────────────────────────
+
+/** Game 1: Đỉnh Tháp Hư Không (Celestial Spire) */
+function CelestialSpireBackdrop() {
+  const pulseAnim = useRef(new Animated.Value(0.4)).current;
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 0.9, duration: 2000, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 0.4, duration: 2000, useNativeDriver: true }),
+      ])
+    ).start();
+  }, [pulseAnim]);
+
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      {/* Cosmic Nebula Core */}
+      <Animated.View
+        style={{
+          position: 'absolute',
+          top: 40,
+          alignSelf: 'center',
+          width: 280,
+          height: 280,
+          borderRadius: 140,
+          backgroundColor: 'rgba(79, 70, 229, 0.15)',
+          opacity: pulseAnim,
+          shadowColor: '#4F46E5',
+          shadowRadius: 40,
+          shadowOpacity: 0.8,
+        }}
+      />
+      {/* 4 Monolith Rune Pillars */}
+      <View style={[styles.monolithPillar, { left: 8, top: 120 }]} />
+      <View style={[styles.monolithPillar, { left: 8, top: 380 }]} />
+      <View style={[styles.monolithPillar, { right: 8, top: 120 }]} />
+      <View style={[styles.monolithPillar, { right: 8, top: 380 }]} />
+
+      {/* Floating Star Dust */}
+      {Array.from({ length: 16 }, (_, i) => (
+        <StarParticle
+          key={i}
+          left={15 + ((i * 37) % 330)}
+          top={80 + ((i * 53) % 480)}
+          delay={i * 150}
+        />
+      ))}
+
+      {/* Spire Dais Base Glow */}
+      <View
+        style={{
+          position: 'absolute',
+          bottom: 15,
+          left: '8%',
+          right: '8%',
+          height: 4,
+          borderRadius: 2,
+          backgroundColor: '#06B6D4',
+          shadowColor: '#06B6D4',
+          shadowRadius: 16,
+          shadowOpacity: 0.9,
+          elevation: 16,
+        }}
+      />
+    </View>
+  );
+}
+
+/** Game 2: Đấu Trường La Mã Tri Thức (Colosseum of Wisdom) */
+function ColosseumBackdrop() {
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      {/* Roman Archways Silhouette */}
+      <View style={styles.colosseumArchesRow}>
+        {Array.from({ length: 5 }, (_, i) => (
+          <View key={i} style={styles.stoneArch}>
+            <View style={styles.archCurve} />
+            <View style={styles.archPillarLeft} />
+            <View style={styles.archPillarRight} />
+          </View>
+        ))}
+      </View>
+
+      {/* Academy Battle Banners */}
+      <View style={[styles.academyBanner, { left: 24, backgroundColor: '#4F46E5' }]}>
+        <Text style={styles.bannerRune}>✦</Text>
+      </View>
+      <View style={[styles.academyBanner, { right: 24, backgroundColor: '#FBBF24' }]}>
+        <Text style={[styles.bannerRune, { color: '#78350F' }]}>⚜</Text>
+      </View>
+
+      {/* Marble Arena Circle Trim */}
+      <View
+        style={{
+          position: 'absolute',
+          bottom: 20,
+          alignSelf: 'center',
+          width: 300,
+          height: 80,
+          borderRadius: 150,
+          borderWidth: 1.5,
+          borderColor: 'rgba(251, 191, 36, 0.35)',
+          backgroundColor: 'rgba(254, 243, 199, 0.05)',
+        }}
+      />
+    </View>
+  );
+}
+
+/** Game 3: Mê Cung Thư Viện Cổ (The Grand Papyrus Archives) */
+function ArchivesBackdrop() {
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      {/* Towering Bookshelves Top Arch */}
+      <View style={styles.bookshelfHeader}>
+        {Array.from({ length: 12 }, (_, i) => (
+          <View
+            key={i}
+            style={[
+              styles.grimoireSpine,
+              {
+                height: 28 + (i % 3) * 6,
+                backgroundColor: i % 3 === 0 ? '#7C2D12' : i % 2 === 0 ? '#1E1B4B' : '#78350F',
+                borderLeftColor: '#FDE68A',
+              },
+            ]}
+          />
+        ))}
+      </View>
+
+      {/* Wall Candle Sconces */}
+      <CandleFlicker left={12} top={120} />
+      <CandleFlicker left={12} top={280} />
+      <CandleFlicker left={12} top={440} />
+      <CandleFlicker left={340} top={120} />
+      <CandleFlicker left={340} top={280} />
+      <CandleFlicker left={340} top={440} />
+
+      {/* Warm Golden Glow Backdrop */}
+      <View
+        style={{
+          position: 'absolute',
+          top: 100,
+          alignSelf: 'center',
+          width: 240,
+          height: 240,
+          borderRadius: 120,
+          backgroundColor: 'rgba(245, 158, 11, 0.08)',
+        }}
+      />
+    </View>
+  );
+}
+
+/** Game 4: Vườn Thiền Tri Thức (Sanctuary of Scholars) */
+function SanctuaryBackdrop() {
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      {/* Light Waterfall Beams */}
+      <View style={styles.waterfallBeams}>
+        {Array.from({ length: 4 }, (_, i) => (
+          <View
+            key={i}
+            style={[
+              styles.lightBeam,
+              {
+                left: 60 + i * 65,
+                opacity: 0.15 + (i % 2) * 0.1,
+              },
+            ]}
+          />
+        ))}
+      </View>
+
+      {/* Floating Spirit Orbs */}
+      {Array.from({ length: 6 }, (_, i) => (
+        <FloatingOrb
+          key={i}
+          color={i % 2 === 0 ? '#34D399' : '#38BDF8'}
+          size={12 + (i % 3) * 6}
+          startX={25 + ((i * 55) % 310)}
+          startY={90 + ((i * 70) % 380)}
+          duration={2200 + i * 350}
+        />
+      ))}
+
+      {/* Zen Garden Floating Dais Glow */}
+      <View
+        style={{
+          position: 'absolute',
+          bottom: 25,
+          alignSelf: 'center',
+          width: 220,
+          height: 18,
+          borderRadius: 9,
+          backgroundColor: 'rgba(52, 211, 153, 0.25)',
+          shadowColor: '#34D399',
+          shadowRadius: 16,
+          shadowOpacity: 0.8,
+        }}
+      />
+    </View>
+  );
+}
+
+// ─── Main Component ────────────────────────────────────────────────────────
 
 export function GameEnvironment({
   gameMode,
@@ -175,109 +366,31 @@ export function GameEnvironment({
   const [show3D, setShow3D] = useState(show3DByDefault);
   const config = CONFIGS[gameMode];
 
-  const renderDecor = () => {
-    if (gameMode === 'survival') {
-      return (
-        <>
-          <CyanPillar left={12} top={80} />
-          <CyanPillar left={12} top={300} />
-          <CyanPillar left={-4} top={160} />
-          <CyanPillar left={-4} top={420} />
-          {Array.from({ length: 18 }, (_, i) => (
-            <StarParticle
-              key={i}
-              left={20 + (i * 23) % 320}
-              top={100 + (i * 47) % 500}
-              delay={i * 200}
-            />
-          ))}
-          <View
-            style={{
-              position: 'absolute',
-              bottom: 0,
-              left: '10%',
-              right: '10%',
-              height: 6,
-              borderRadius: 3,
-              backgroundColor: '#06B6D4',
-              shadowColor: '#06B6D4',
-              shadowRadius: 20,
-              shadowOpacity: 0.8,
-              elevation: 20,
-            }}
-          />
-        </>
-      );
+  const renderBackdropArt = () => {
+    switch (gameMode) {
+      case 'survival':
+        return <CelestialSpireBackdrop />;
+      case 'battle':
+        return <ColosseumBackdrop />;
+      case 'match':
+        return <ArchivesBackdrop />;
+      case 'study':
+        return <SanctuaryBackdrop />;
+      default:
+        return null;
     }
-
-    if (gameMode === 'battle') {
-      return (
-        <>
-          {Array.from({ length: 24 }, (_, i) => (
-            <View
-              key={i}
-              style={{
-                position: 'absolute',
-                left: (i % 6) * 50 + 10,
-                top: i < 12 ? 10 : 650,
-                width: 8,
-                height: 8,
-                borderRadius: 4,
-                backgroundColor: `hsl(${i * 15}, 70%, 60%)`,
-                opacity: 0.5,
-              }}
-            />
-          ))}
-          <View style={{ position: 'absolute', left: 0, top: 0, right: 0, height: 3, backgroundColor: '#FBBF24', opacity: 0.6 }} />
-          <View style={{ position: 'absolute', left: 0, bottom: 0, right: 0, height: 3, backgroundColor: '#FBBF24', opacity: 0.6 }} />
-        </>
-      );
-    }
-
-    if (gameMode === 'match') {
-      return (
-        <>
-          {Array.from({ length: 8 }, (_, i) => (
-            <CandleFlicker
-              key={i}
-              left={i < 4 ? 8 : 350}
-              top={80 + (i % 4) * 120}
-            />
-          ))}
-        </>
-      );
-    }
-
-    if (gameMode === 'study') {
-      return (
-        <>
-          {Array.from({ length: 6 }, (_, i) => (
-            <FloatingOrb
-              key={i}
-              color={i % 2 === 0 ? '#4ADE80' : '#38BDF8'}
-              size={12 + (i * 5) % 18}
-              startX={30 + (i * 60) % 300}
-              startY={60 + (i * 80) % 400}
-              duration={2000 + i * 400}
-            />
-          ))}
-        </>
-      );
-    }
-
-    return null;
   };
 
   return (
     <View style={[styles.container, { backgroundColor: config.bgColor }]}>
-      {/* Gradient overlay layers */}
+      {/* Gradient Top & Bottom Ambience */}
       <View style={[styles.gradientTop, { backgroundColor: config.gradientTop }]} />
       <View style={[styles.gradientBottom, { backgroundColor: config.gradientBottom }]} />
 
-      {/* Decorative environment elements */}
-      {renderDecor()}
+      {/* Rich Architectural Landscape Backdrop */}
+      {renderBackdropArt()}
 
-      {/* 3D Realm Toggle Bar */}
+      {/* 3D Realm Interactive Toggle Bar */}
       {enable3DToggle && (
         <View style={styles.toggleRow}>
           <Pressable
@@ -285,8 +398,8 @@ export function GameEnvironment({
             style={({ pressed }) => [
               styles.togglePill,
               {
-                backgroundColor: show3D ? 'rgba(99, 102, 241, 0.25)' : 'rgba(255, 255, 255, 0.1)',
-                borderColor: show3D ? '#818CF8' : 'rgba(255, 255, 255, 0.2)',
+                backgroundColor: show3D ? 'rgba(99, 102, 241, 0.3)' : 'rgba(255, 255, 255, 0.12)',
+                borderColor: show3D ? '#818CF8' : 'rgba(255, 255, 255, 0.25)',
                 opacity: pressed ? 0.75 : 1,
               },
             ]}
@@ -299,7 +412,7 @@ export function GameEnvironment({
             <Text
               style={[
                 styles.toggleText,
-                { color: show3D ? '#E0E7FF' : '#94A3B8' },
+                { color: show3D ? '#C7D2FE' : '#94A3B8' },
               ]}
             >
               {show3D ? '🔮 3D Realm (Active)' : '✨ Tap for 3D View'}
@@ -323,7 +436,7 @@ export function GameEnvironment({
         </View>
       )}
 
-      {/* Content */}
+      {/* Main Game UI Content */}
       <View style={styles.content}>{children}</View>
     </View>
   );
@@ -331,24 +444,24 @@ export function GameEnvironment({
 
 const CONFIGS: Record<GameMode, { bgColor: string; gradientTop: string; gradientBottom: string }> = {
   survival: {
-    bgColor: '#0F172A',
-    gradientTop: 'rgba(79, 70, 229, 0.25)',
-    gradientBottom: 'rgba(6, 182, 212, 0.08)',
+    bgColor: '#0B0F19',
+    gradientTop: 'rgba(79, 70, 229, 0.35)',
+    gradientBottom: 'rgba(6, 182, 212, 0.12)',
   },
   battle: {
-    bgColor: '#FEF9F0',
-    gradientTop: 'rgba(251, 191, 36, 0.3)',
-    gradientBottom: 'rgba(245, 158, 11, 0.1)',
+    bgColor: '#171109',
+    gradientTop: 'rgba(245, 158, 11, 0.3)',
+    gradientBottom: 'rgba(124, 58, 237, 0.2)',
   },
   match: {
-    bgColor: '#1C0A00',
-    gradientTop: 'rgba(146, 64, 14, 0.4)',
-    gradientBottom: 'rgba(69, 26, 3, 0.6)',
+    bgColor: '#1A0B02',
+    gradientTop: 'rgba(180, 83, 9, 0.4)',
+    gradientBottom: 'rgba(69, 26, 3, 0.7)',
   },
   study: {
-    bgColor: '#0C2340',
-    gradientTop: 'rgba(22, 101, 52, 0.4)',
-    gradientBottom: 'rgba(56, 189, 248, 0.15)',
+    bgColor: '#061727',
+    gradientTop: 'rgba(16, 185, 129, 0.35)',
+    gradientBottom: 'rgba(14, 165, 233, 0.2)',
   },
 };
 
@@ -362,14 +475,116 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: 200,
+    height: 240,
   },
   gradientBottom: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    height: 200,
+    height: 240,
+  },
+  monolithPillar: {
+    position: 'absolute',
+    width: 6,
+    height: 80,
+    borderRadius: 3,
+    backgroundColor: '#06B6D4',
+    shadowColor: '#06B6D4',
+    shadowRadius: 14,
+    shadowOpacity: 0.9,
+    elevation: 14,
+  },
+  colosseumArchesRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    position: 'absolute',
+    top: 20,
+    left: 10,
+    right: 10,
+    opacity: 0.25,
+  },
+  stoneArch: {
+    width: 48,
+    height: 52,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderWidth: 2,
+    borderColor: '#FDE68A',
+    alignItems: 'center',
+  },
+  archCurve: {
+    width: 32,
+    height: 32,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    borderWidth: 1.5,
+    borderColor: '#FDE68A',
+    marginTop: 4,
+  },
+  archPillarLeft: {
+    position: 'absolute',
+    bottom: 0,
+    left: 4,
+    width: 3,
+    height: 16,
+    backgroundColor: '#FDE68A',
+  },
+  archPillarRight: {
+    position: 'absolute',
+    bottom: 0,
+    right: 4,
+    width: 3,
+    height: 16,
+    backgroundColor: '#FDE68A',
+  },
+  academyBanner: {
+    position: 'absolute',
+    top: 80,
+    width: 22,
+    height: 54,
+    borderRadius: 3,
+    alignItems: 'center',
+    paddingTop: 4,
+    shadowColor: '#000',
+    shadowRadius: 6,
+    shadowOpacity: 0.5,
+  },
+  bannerRune: {
+    color: '#FFF',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  bookshelfHeader: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 4,
+    position: 'absolute',
+    top: 6,
+    left: 10,
+    right: 10,
+    opacity: 0.35,
+  },
+  grimoireSpine: {
+    width: 18,
+    borderTopLeftRadius: 2,
+    borderTopRightRadius: 2,
+    borderLeftWidth: 1.5,
+  },
+  waterfallBeams: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 300,
+  },
+  lightBeam: {
+    position: 'absolute',
+    top: 0,
+    width: 14,
+    height: 260,
+    backgroundColor: '#6EE7B7',
+    transform: [{ rotate: '8deg' }],
   },
   toggleRow: {
     flexDirection: 'row',

@@ -19,6 +19,7 @@ import { Badge, Button, Card, Screen, TopBar, usePalette } from '@/shared/ui';
 import { CharacterHero, CharacterAction } from '@/shared/CharacterHero';
 import { GameEnvironment } from '@/shared/GameEnvironment';
 import { MagicParticles } from '@/shared/MagicParticles';
+import { sfx } from '@/core/audio/sfx';
 
 // ─── Color palette ────────────────────────────────────────────────────────
 const INDIGO = '#4F46E5';
@@ -341,6 +342,8 @@ export default function SurvivalGameScreen() {
       userChoice === currentQuestion.correctIndex;
 
     if (isUserCorrect) {
+      sfx.playSpellCast();
+      sfx.playCorrect();
       setCorrectAnswersCount((c) => c + 1);
       setCharacterAction('attack');
       // Trigger beam and particles
@@ -356,6 +359,8 @@ export default function SurvivalGameScreen() {
         Animated.timing(scoreDisplayAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
       ]).start();
     } else {
+      sfx.playWrong();
+      sfx.playCrystalBreak();
       setCharacterAction('hurt');
       // Break a heart
       const curLives = userPlayer?.lives ?? 3;
@@ -405,10 +410,12 @@ export default function SurvivalGameScreen() {
         setIsGameOver(true);
         setCharacterAction('hurt');
       } else if (aliveCount === 1 && updatedUser.status === 'alive') {
+        sfx.playLevelUp();
         setIsVictory(true);
         setIsGameOver(true);
         setCharacterAction('victory');
       } else if (isLastRound) {
+        sfx.playLevelUp();
         setIsVictory(true);
         setIsGameOver(true);
         setCharacterAction('victory');

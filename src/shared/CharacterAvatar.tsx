@@ -9,6 +9,8 @@ interface CharacterAvatarProps {
   action?: AvatarAction;
   size?: number;
   showName?: boolean;
+  isDisconnected?: boolean;
+  reconnectCountdown?: number;
 }
 
 export function CharacterAvatar({
@@ -17,14 +19,34 @@ export function CharacterAvatar({
   action = 'idle',
   size = 56,
   showName = true,
+  isDisconnected = false,
+  reconnectCountdown = 30,
 }: CharacterAvatarProps) {
   const bounceAnim = useRef(new Animated.Value(0)).current;
   const shakeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const glowAnim = useRef(new Animated.Value(0.3)).current;
+  const freezeAnim = useRef(new Animated.Value(isDisconnected ? 1 : 0)).current;
 
-  // Idle float
+  // Active theme color (petrified stone gray + crystal frost when disconnected)
+  const activeColor = isDisconnected ? '#64748B' : color;
+  const skinColor = isDisconnected ? '#94A3B8' : '#FEF3C7';
+  const runeGlow = isDisconnected ? '#38BDF8' : activeColor;
+
   useEffect(() => {
+    Animated.timing(freezeAnim, {
+      toValue: isDisconnected ? 1 : 0,
+      duration: 400,
+      useNativeDriver: false,
+    }).start();
+  }, [isDisconnected, freezeAnim]);
+
+  // Idle float (only when connected)
+  useEffect(() => {
+    if (isDisconnected) {
+      bounceAnim.setValue(0);
+      return;
+    }
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(bounceAnim, { toValue: -4, duration: 1000, useNativeDriver: true }),
@@ -41,11 +63,15 @@ export function CharacterAvatar({
     );
     glowLoop.start();
 
-    return () => { loop.stop(); glowLoop.stop(); };
-  }, [bounceAnim, glowAnim]);
+    return () => {
+      loop.stop();
+      glowLoop.stop();
+    };
+  }, [bounceAnim, glowAnim, isDisconnected]);
 
   // Action triggers
   useEffect(() => {
+    if (isDisconnected) return;
     if (action === 'attack') {
       Animated.sequence([
         Animated.timing(scaleAnim, { toValue: 1.3, duration: 100, useNativeDriver: true }),
@@ -66,15 +92,14 @@ export function CharacterAvatar({
         Animated.timing(scaleAnim, { toValue: 1.0, duration: 150, useNativeDriver: true }),
       ]).start();
     }
-  }, [action, scaleAnim, shakeAnim]);
+  }, [action, scaleAnim, shakeAnim, isDisconnected]);
 
   const hatSize = size * 0.45;
   const bodySize = size * 0.65;
-  const staffHeight = size * 0.9;
 
   return (
     <View style={styles.wrapper}>
-      {/* Glow aura */}
+      {/* Glow aura / Crystal Frost Shimmer */}
       <Animated.View
         style={[
           styles.aura,
@@ -82,8 +107,8 @@ export function CharacterAvatar({
             width: size * 1.4,
             height: size * 1.4,
             borderRadius: (size * 1.4) / 2,
-            backgroundColor: color,
-            opacity: glowAnim,
+            backgroundColor: runeGlow,
+            opacity: isDisconnected ? 0.4 : glowAnim,
           },
         ]}
       />
@@ -107,9 +132,11 @@ export function CharacterAvatar({
             {
               width: hatSize,
               height: hatSize * 0.8,
-              backgroundColor: color,
+              backgroundColor: activeColor,
               borderTopLeftRadius: hatSize / 2,
               borderTopRightRadius: hatSize / 2,
+              borderWidth: isDisconnected ? 1 : 0,
+              borderColor: '#38BDF8',
             },
           ]}
         />
@@ -122,29 +149,35 @@ export function CharacterAvatar({
               width: size,
               height: size,
               borderRadius: size / 2,
-              backgroundColor: '#FEF3C7',
+              backgroundColor: skinColor,
               borderWidth: 2.5,
-              borderColor: color,
+              borderColor: isDisconnected ? '#38BDF8' : activeColor,
             },
           ]}
         >
-          {/* Eyes */}
-          <View style={styles.eyes}>
-            <View style={[styles.eye, { backgroundColor: color }]} />
-            <View style={[styles.eye, { backgroundColor: color }]} />
-          </View>
-          {/* Mouth */}
-          <View
-            style={[
-              styles.mouth,
-              {
-                borderColor: color,
-                width: size * 0.35,
-                borderBottomLeftRadius: 8,
-                borderBottomRightRadius: 8,
-              },
-            ]}
-          />
+          {isDisconnected ? (
+            <Text style={{ fontSize: size * 0.38 }}>🧊</Text>
+          ) : (
+            <>
+              {/* Eyes */}
+              <View style={styles.eyes}>
+                <View style={[styles.eye, { backgroundColor: activeColor }]} />
+                <View style={[styles.eye, { backgroundColor: activeColor }]} />
+              </View>
+              {/* Mouth */}
+              <View
+                style={[
+                  styles.mouth,
+                  {
+                    borderColor: activeColor,
+                    width: size * 0.35,
+                    borderBottomLeftRadius: 8,
+                    borderBottomRightRadius: 8,
+                  },
+                ]}
+              />
+            </>
+          )}
         </View>
 
         {/* Body / robe */}
@@ -155,26 +188,36 @@ export function CharacterAvatar({
               width: bodySize,
               height: bodySize,
               borderRadius: bodySize * 0.3,
-              backgroundColor: color,
+              backgroundColor: activeColor,
               marginTop: -4,
+              borderWidth: isDisconnected ? 1 : 0,
+              borderColor: '#38BDF8',
             },
           ]}
         />
       </Animated.View>
 
+      {/* Reconnect Stone Badge */}
+      {isDisconnected ? (
+        <View style={styles.stoneBadge}>
+          <Text style={styles.stoneBadgeText}>🗿 Hóa đá ({reconnectCountdown}s)</Text>
+        </View>
+      ) : null}
+
       {showName && (
-        <Text style={[styles.name, { color }]} numberOfLines={1}>
+        <Text style={[styles.name, { color: activeColor }]} numberOfLines={1}>
           {name}
         </Text>
       )}
 
-      {/* Shadow ellipse */}
+      {/* Pedestal shadow */}
       <View
         style={[
           styles.shadow,
           {
-            width: size * 0.8,
-            backgroundColor: color,
+            width: size * 0.85,
+            backgroundColor: isDisconnected ? '#38BDF8' : activeColor,
+            opacity: isDisconnected ? 0.35 : 0.15,
           },
         ]}
       />
@@ -220,6 +263,22 @@ const styles = StyleSheet.create({
   body: {
     opacity: 0.9,
   },
+  stoneBadge: {
+    backgroundColor: 'rgba(30, 41, 59, 0.9)',
+    borderWidth: 1,
+    borderColor: '#38BDF8',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    marginTop: 4,
+    zIndex: 3,
+  },
+  stoneBadgeText: {
+    color: '#38BDF8',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
   name: {
     fontSize: 11,
     fontWeight: '800',
@@ -231,7 +290,6 @@ const styles = StyleSheet.create({
   shadow: {
     height: 6,
     borderRadius: 3,
-    opacity: 0.15,
     marginTop: 2,
   },
 });

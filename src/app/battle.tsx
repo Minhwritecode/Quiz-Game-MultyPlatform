@@ -11,6 +11,7 @@ import { radii, spacing, typography } from '@/core/theme/tokens';
 import { useI18n } from '@/core/i18n';
 import { GameEnvironment } from '@/shared/GameEnvironment';
 import { CharacterAvatar } from '@/shared/CharacterAvatar';
+import { sfx } from '@/core/audio/sfx';
 
 const SCHOLAR_COLORS = ['#3B82F6', '#F59E0B', '#10B981', '#EC4899', '#8B5CF6', '#06B6D4'];
 
@@ -394,6 +395,8 @@ export default function BattleScreen() {
                       action={action}
                       size={48}
                       showName={true}
+                      isDisconnected={!p.connected}
+                      reconnectCountdown={30}
                     />
                     {p.userId === battle.hostId && (
                       <View style={styles.hostCrown}>
@@ -471,6 +474,7 @@ export default function BattleScreen() {
                     disabled={busy || battle.answered || remainingSeconds === 0 || battle.phase !== 'question_open'}
                     onPress={() =>
                       void run(async () => {
+                        sfx.playSpellCast();
                         await dependencies.battle.answer(roomId!, question.position, index);
                         setBattle(await dependencies.battle.snapshot(roomId!));
                       })
@@ -529,6 +533,7 @@ export default function BattleScreen() {
                       action={battle.phase === 'finished' && i === 0 ? 'victory' : 'idle'}
                       size={36}
                       showName={false}
+                      isDisconnected={!p.connected}
                     />
                   </View>
                   <View style={{ flex: 1 }}>
