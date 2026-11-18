@@ -10,6 +10,7 @@ import { useAuthStore } from '@/core/state/useAuthStore';
 import { wrapRoot, reportFailure } from '@/core/observability/monitoring';
 import { ReleaseGate } from '@/shared/ReleaseGate';
 import { Button, Card, Screen } from '@/shared/ui';
+import { sfx } from '@/core/audio/sfx';
 
 export function ErrorBoundary({error,retry}:ErrorBoundaryProps) {
   useEffect(()=>{reportFailure(error,'startup');},[error]);
@@ -31,6 +32,16 @@ function RootLayout() {
   const queryClient = useMemo(() => new QueryClient({ defaultOptions: { queries: { staleTime: 30_000, retry: 1 } } }), []);
   const hydrateQuestionSets = usePapyrusStore((state) => state.hydrateQuestionSets);
   const bootstrapAuth = useAuthStore((state) => state.bootstrap);
+  const bgmMuted = usePapyrusStore((state) => state.bgmMuted);
+
+  useEffect(() => {
+    sfx.setBgmMuted(bgmMuted);
+    if (!bgmMuted) {
+      sfx.playBGM();
+    } else {
+      sfx.stopBGM();
+    }
+  }, [bgmMuted]);
 
 
   useEffect(() => {

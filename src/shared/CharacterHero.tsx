@@ -4,6 +4,7 @@ import { radii, spacing, typography } from '@/core/theme/tokens';
 import { usePalette } from './ui';
 import { Model3DView, Character3DAnimation } from './Model3DView';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
+import { useMembershipStore } from '@/features/membership/state/useMembershipStore';
 
 export type CharacterAction = 'idle' | 'attack' | 'hurt' | 'victory';
 
@@ -42,6 +43,7 @@ export function CharacterHero({
 }: CharacterHeroProps) {
   const palette = usePalette();
   const globalRender3D = usePapyrusStore((state) => state.render3DMode);
+  const isVip = useMembershipStore((state) => state.tier === 'archmage');
   const activeMode = mode !== undefined ? mode : globalRender3D ? '3d' : '2d';
 
   const floatAnim = useRef(new Animated.Value(0)).current;
@@ -100,7 +102,9 @@ export function CharacterHero({
       {/* Name and Health Bar */}
       {showHealthBar && (
         <View style={styles.header}>
-          <Text style={[typography.caption, { color: palette.ink, fontWeight: '700' }]}>{name}</Text>
+          <Text style={[typography.caption, { color: palette.ink, fontWeight: '700' }]}>
+            {isVip ? `👑 ${name}` : name}
+          </Text>
           <View style={[styles.hpTrack, { backgroundColor: palette.paperMuted }]}>
             <View
               style={[
@@ -118,6 +122,11 @@ export function CharacterHero({
       {/* Render Mode: 3D Rigged WebGL or 2D Sprite */}
       {activeMode === '3d' ? (
         <View style={{ width: dim * 1.5, height: height3D, alignItems: 'center', justifyContent: 'center' }}>
+          {isVip && (
+            <View style={{ position: 'absolute', top: 4, zIndex: 10, backgroundColor: '#FEF3C7', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12, borderWidth: 1, borderColor: '#F59E0B' }}>
+              <Text style={{ fontSize: 10, fontWeight: '700', color: '#B45309' }}>👑 VIP ARCHMAGE</Text>
+            </View>
+          )}
           <Model3DView
             model="character"
             height={height3D}
@@ -144,13 +153,27 @@ export function CharacterHero({
             },
           ]}
         >
+          {isVip && (
+            <View style={{ position: 'absolute', top: -14, zIndex: 10, backgroundColor: '#FEF3C7', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 10, borderWidth: 1, borderColor: '#F59E0B' }}>
+              <Text style={{ fontSize: 9, fontWeight: '700', color: '#B45309' }}>👑 VIP</Text>
+            </View>
+          )}
           <Image
             source={CHARACTER_FRAMES[action] || CHARACTER_FRAMES.idle}
             style={[styles.spriteImage, { width: dim, height: dim }]}
             resizeMode="cover"
           />
           {/* Glowing Aura Ring */}
-          <View style={[styles.auraRing, { width: dim * 0.8, height: 12, backgroundColor: palette.indigoTint }]} />
+          <View
+            style={[
+              styles.auraRing,
+              {
+                width: dim * 0.8,
+                height: 12,
+                backgroundColor: isVip ? 'rgba(245, 158, 11, 0.45)' : palette.indigoTint,
+              },
+            ]}
+          />
         </Animated.View>
       )}
     </View>

@@ -22,6 +22,7 @@ export default function BattleScreen() {
   const palette = usePalette();
   const { language, t } = useI18n();
   const user = useAuthStore((s) => s.user);
+  const isVip = useMembershipStore((state) => state.tier === 'archmage');
   const params = useLocalSearchParams<{ code?: string }>();
   const [code, setCode] = useState(params.code ?? '');
   const [roomId, setRoomId] = useState<string | null>(null);
@@ -413,6 +414,7 @@ export default function BattleScreen() {
                       showName={true}
                       isDisconnected={!p.connected}
                       reconnectCountdown={30}
+                      hasGoldenAura={p.userId === user?.id && isVip}
                     />
                     {p.userId === battle.hostId && (
                       <View style={styles.hostCrown}>
@@ -550,11 +552,12 @@ export default function BattleScreen() {
                       size={36}
                       showName={false}
                       isDisconnected={!p.connected}
+                      hasGoldenAura={p.userId === user?.id && isVip}
                     />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={[typography.body, { color: palette.ink, fontWeight: '700' }]}>
-                      {p.name} {p.userId === battle.hostId && (language === 'vi' ? '(Chủ phòng)' : '(Host)')} {p.userId === user?.id && (language === 'vi' ? '(Bạn)' : '(You)')}
+                      {p.name} {p.userId === battle.hostId && (language === 'vi' ? '(Chủ phòng)' : '(Host)')} {p.userId === user?.id && (language === 'vi' ? (isVip ? '(Bạn 👑 VIP)' : '(Bạn)') : (isVip ? '(You 👑 VIP)' : '(You)'))}
                     </Text>
                     <Text style={[typography.caption, { color: palette.inkMuted }]}>
                       {p.connected
