@@ -139,12 +139,17 @@ export default function HomeScreen() {
         <QuickAction icon="skull-outline" tint="danger" title={t.survival.title} description={t.survival.subtitle} onPress={() => router.push('/games/survival')} palette={palette} />
         <QuickAction icon="extension-puzzle-outline" tint="reward" title={t.home.featMatchTitle} description={t.home.featMatchSub} onPress={() => router.push('/games/match')} palette={palette} />
         <QuickAction icon="cloud-done-outline" tint="primary" title={t.home.featSyncTitle} description={t.home.featSyncSub} onPress={() => router.push('/sync')} palette={palette} />
+        {/* NEW: Multiplayer features từ client/ */}
+        <QuickAction icon="sparkles-outline" tint="reward" title="🤖 AI Quiz" description="Tạo quiz từ chủ đề hoặc PDF" onPress={() => router.push('/ai-quiz')} palette={palette} />
+        <QuickAction icon="people-outline" tint="success" title="🎮 Multiplayer" description="Tạo / Tham gia phòng quiz real-time" onPress={() => router.push('/multiplayer/join')} palette={palette} />
+        <QuickAction icon="library-outline" tint="primary" title="📚 Quiz Library" description="Thư viện quiz & tạo thủ công" onPress={() => router.push('/quiz-library')} palette={palette} />
+        <QuickAction icon="rocket-outline" tint="reward" title="🌐 Showcase & FAQ" description="Giới thiệu tính năng & Hỏi đáp" onPress={() => router.push('/landing')} palette={palette} />
       </View>
     </Screen>
   );
 }
 
-function QuickAction({ icon, tint, title, description, onPress, palette }: { icon: 'create-outline' | 'scan-outline' | 'skull-outline' | 'extension-puzzle-outline' | 'cloud-done-outline'; tint: 'primary' | 'success' | 'danger' | 'reward'; title: string; description: string; onPress: () => void; palette: ReturnType<typeof usePalette> }) {
+function QuickAction({ icon, tint, title, description, onPress, palette }: { icon: 'create-outline' | 'scan-outline' | 'skull-outline' | 'extension-puzzle-outline' | 'cloud-done-outline' | 'sparkles-outline' | 'people-outline' | 'library-outline' | 'rocket-outline'; tint: 'primary' | 'success' | 'danger' | 'reward'; title: string; description: string; onPress: () => void; palette: ReturnType<typeof usePalette> }) {
   return <Card onPress={onPress} style={styles.quickCard}>
     <IconTile icon={icon} tint={tint} />
     <Text style={[typography.title, { color: palette.ink, marginTop: spacing.md }]}>{title}</Text>
