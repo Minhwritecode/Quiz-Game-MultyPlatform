@@ -7,6 +7,7 @@ import {
   getLocalDateString,
   getDaysDifference,
 } from '../domain/models';
+import { useMembershipStore } from '@/features/membership/state/useMembershipStore';
 
 interface StreakState extends StreakData {
   refreshStreakStatus: () => void;
@@ -27,10 +28,24 @@ export const useStreakStore = create<StreakState>()(
       brokenStreakDays: 0,
       brokenAtDate: null,
       recoveryQuestAvailable: false,
+      lastFreezeGrantDate: null,
 
       refreshStreakStatus: () => {
         const state = get();
         const today = getLocalDateString();
+
+        // Weekly VIP Streak Freeze auto-grant (2 shields per week, max 5)
+        const isVip = useMembershipStore.getState().tier === 'archmage';
+        if (isVip) {
+          const lastGrant = state.lastFreezeGrantDate;
+          const daysSinceGrant = lastGrant ? getDaysDifference(lastGrant, today) : 999;
+          if (daysSinceGrant >= 7 && state.streakFreezeCount < 5) {
+            set((prev) => ({
+              streakFreezeCount: Math.min(5, prev.streakFreezeCount + 2),
+              lastFreezeGrantDate: today,
+            }));
+          }
+        }
 
         if (!state.lastActiveDate) {
           set({

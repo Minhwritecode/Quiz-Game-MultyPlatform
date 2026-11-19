@@ -15,6 +15,7 @@ export interface StreakData {
   brokenStreakDays: number; // Previous streak length that can be restored
   brokenAtDate: string | null; // Date when the streak broke
   recoveryQuestAvailable: boolean; // True if within 24h recovery window
+  lastFreezeGrantDate?: string | null; // Date of last weekly freeze grant
 }
 
 export type StreakActivityType = 'scan_ocr' | 'study_quiz' | 'battle';

@@ -23,6 +23,7 @@ import { sfx } from '@/core/audio/sfx';
 import { RenderModeToggle } from '@/shared/RenderModeToggle';
 import { SoundToggle } from '@/shared/SoundToggle';
 import { useStreakStore } from '@/features/streak/state/useStreakStore';
+import { useMembershipStore } from '@/features/membership/state/useMembershipStore';
 
 // ─── Color palette ────────────────────────────────────────────────────────
 const INDIGO = '#4F46E5';
@@ -214,6 +215,7 @@ export default function SurvivalGameScreen() {
   const router = useRouter();
   const { setId } = useLocalSearchParams<{ setId?: string }>();
   const palette = usePalette();
+  const isVip = useMembershipStore((state) => state.tier === 'archmage');
   const { t, language } = useI18n();
   const { width } = useWindowDimensions();
 
@@ -376,7 +378,8 @@ export default function SurvivalGameScreen() {
       if (c.id === 'user') {
         if (c.lives <= 0) return c;
         const newLives = isUserCorrect ? c.lives : Math.max(0, c.lives - 1);
-        const newScore = isUserCorrect ? c.score + 1000 + secondsLeft * 50 : c.score;
+        const basePoints = 1000 + secondsLeft * 50;
+        const newScore = isUserCorrect ? c.score + Math.round(basePoints * (isVip ? 2 : 1)) : c.score;
         return {
           ...c,
           lives: newLives,
@@ -617,7 +620,7 @@ export default function SurvivalGameScreen() {
               },
             ]}
           >
-            ⭐ {userPlayer?.score ?? 0} pts
+            ⭐ {userPlayer?.score ?? 0} pts {isVip ? '👑 ×2' : ''}
           </Animated.Text>
         </View>
 
@@ -769,9 +772,11 @@ export default function SurvivalGameScreen() {
                   <View>{renderHearts(userPlayer?.lives ?? 0)}</View>
                 </View>
                 <View style={[styles.statRowItem, { borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.1)', paddingTop: 10 }]}>
-                  <Text style={[typography.title, { color: INDIGO }]}>Điểm sinh tồn (XP)</Text>
+                  <Text style={[typography.title, { color: INDIGO }]}>
+                    {isVip ? 'Điểm sinh tồn (XP 👑 ×2 VIP)' : 'Điểm sinh tồn (XP)'}
+                  </Text>
                   <Text style={[typography.display, { color: GOLD, fontSize: 24 }]}>
-                    +{roundsSurvived * 40 + (isVictory ? 200 : 0)} XP
+                    +{(roundsSurvived * 40 + (isVictory ? 200 : 0)) * (isVip ? 2 : 1)} XP
                   </Text>
                 </View>
               </View>

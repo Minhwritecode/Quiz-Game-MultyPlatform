@@ -2,6 +2,7 @@ import React, { ReactNode, useEffect, useRef, useState } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Model3DView } from './Model3DView';
+import { Model3DErrorBoundary } from './Model3DErrorBoundary';
 
 export type GameMode = 'survival' | 'battle' | 'match' | 'study';
 
@@ -424,12 +425,14 @@ export function GameEnvironment({
       {/* Interactive 3D Model Stage */}
       {show3D && (
         <View style={styles.stage3DContainer}>
-          <Model3DView
-            model={gameMode}
-            height={200}
-            autoRotate={true}
-            interactive={true}
-          />
+          <Model3DErrorBoundary>
+            <Model3DView
+              model={gameMode}
+              height={200}
+              autoRotate={true}
+              interactive={true}
+            />
+          </Model3DErrorBoundary>
           <Text style={styles.stage3DHint}>
             👆 Drag to rotate 3D realm • Pinch to zoom
           </Text>

@@ -1,13 +1,7 @@
-import React, { useEffect, useMemo, useRef } from 'react';
-import { StyleSheet, View, ViewStyle, ActivityIndicator } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { StyleSheet, View, ViewStyle, ActivityIndicator, Text } from 'react-native';
 import { WebView } from 'react-native-webview';
-import {
-  GLB_SURVIVAL_ARENA_B64,
-  GLB_BATTLE_COLOSSEUM_B64,
-  GLB_LIBRARY_ARCHIVES_B64,
-  GLB_STUDY_SANCTUARY_B64,
-  GLB_PAPYRUS_CHARACTER_B64,
-} from './models3d';
+import { loadModelDataUri } from './modelLoader';
 
 export type Model3DType = 'survival' | 'battle' | 'match' | 'study' | 'character';
 export type Character3DAnimation = 'Idle' | 'Cast_Spell' | 'Hit_Reaction' | 'Victory_Dance';
@@ -34,21 +28,28 @@ export function Model3DView({
   autoplay = true,
 }: Model3DViewProps) {
   const webviewRef = useRef<any>(null);
+  const [modelDataUri, setModelDataUri] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState(false);
 
-  const modelDataUri = useMemo(() => {
-    switch (model) {
-      case 'character':
-        return GLB_PAPYRUS_CHARACTER_B64;
-      case 'survival':
-        return GLB_SURVIVAL_ARENA_B64;
-      case 'battle':
-        return GLB_BATTLE_COLOSSEUM_B64;
-      case 'match':
-        return GLB_LIBRARY_ARCHIVES_B64;
-      case 'study':
-      default:
-        return GLB_STUDY_SANCTUARY_B64;
-    }
+  useEffect(() => {
+    let active = true;
+    setModelDataUri(null);
+    setLoadError(false);
+
+    loadModelDataUri(model)
+      .then((uri) => {
+        if (active) setModelDataUri(uri);
+      })
+      .catch((err) => {
+        if (active) {
+          console.warn('[Model3DView] Error loading model:', err);
+          setLoadError(true);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
   }, [model]);
 
   // Zero-latency animation switching via WebView message post
@@ -151,23 +152,38 @@ export function Model3DView({
 
   return (
     <View style={[styles.container, { height }, style]}>
-      <WebView
-        ref={webviewRef}
-        originWhitelist={['*']}
-        source={{ html }}
-        style={styles.webview}
-        scrollEnabled={false}
-        bounces={false}
-        showsHorizontalScrollIndicator={false}
-        showsVerticalScrollIndicator={false}
-        allowsInlineMediaPlayback={true}
-        renderLoading={() => (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="small" color="#06B6D4" />
-          </View>
-        )}
-        startInLoadingState={true}
-      />
+      {loadError ? (
+        <View style={styles.loadingContainer}>
+          <Text style={{ color: '#94A3B8', fontSize: 13, fontWeight: '600' }}>
+            ⚠️ 3D không khả dụng
+          </Text>
+        </View>
+      ) : !modelDataUri ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="small" color="#06B6D4" />
+          <Text style={{ color: '#38BDF8', fontSize: 12, marginTop: 8 }}>
+            ✨ Đang tải 3D Realm...
+          </Text>
+        </View>
+      ) : (
+        <WebView
+          ref={webviewRef}
+          originWhitelist={['*']}
+          source={{ html }}
+          style={styles.webview}
+          scrollEnabled={false}
+          bounces={false}
+          showsHorizontalScrollIndicator={false}
+          showsVerticalScrollIndicator={false}
+          allowsInlineMediaPlayback={true}
+          renderLoading={() => (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="small" color="#06B6D4" />
+            </View>
+          )}
+          startInLoadingState={true}
+        />
+      )}
     </View>
   );
 }

@@ -3,6 +3,7 @@ import { Animated, Image, StyleSheet, Text, View } from 'react-native';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { usePalette } from './ui';
 import { Model3DView, Character3DAnimation } from './Model3DView';
+import { Model3DErrorBoundary } from './Model3DErrorBoundary';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { useMembershipStore } from '@/features/membership/state/useMembershipStore';
 
@@ -127,15 +128,17 @@ export function CharacterHero({
               <Text style={{ fontSize: 10, fontWeight: '700', color: '#B45309' }}>👑 VIP ARCHMAGE</Text>
             </View>
           )}
-          <Model3DView
-            model="character"
-            height={height3D}
-            animationName={ACTION_TO_3D_ANIMATION[action]}
-            autoRotate={false}
-            interactive={true}
-            cameraOrbit="0deg 82deg 3.6m"
-            style={styles.model3dBox}
-          />
+          <Model3DErrorBoundary>
+            <Model3DView
+              model="character"
+              height={height3D}
+              animationName={ACTION_TO_3D_ANIMATION[action]}
+              autoRotate={false}
+              interactive={true}
+              cameraOrbit="0deg 82deg 3.6m"
+              style={styles.model3dBox}
+            />
+          </Model3DErrorBoundary>
         </View>
       ) : (
         /* Floating Animated Character Sprite */
