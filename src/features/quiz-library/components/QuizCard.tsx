@@ -8,9 +8,10 @@ interface QuizCardProps {
   quiz: QuizItem;
   onDelete: (id: string) => void;
   onStartLive: (quiz: QuizItem) => void;
+  onReview?: (quiz: QuizItem) => void;
 }
 
-export function QuizCard({ quiz, onDelete, onStartLive }: QuizCardProps) {
+export function QuizCard({ quiz, onDelete, onStartLive, onReview }: QuizCardProps) {
   const palette = usePalette();
   const router = useRouter();
 
@@ -46,13 +47,25 @@ export function QuizCard({ quiz, onDelete, onStartLive }: QuizCardProps) {
       </View>
 
       <View style={[styles.actions, { borderTopColor: palette.paperMuted }]}>
-        <Button
-          variant="reward"
-          icon="play"
-          onPress={() => onStartLive(quiz)}
-        >
-          Bắt đầu Live
-        </Button>
+        <View style={styles.actionLeft}>
+          <Button
+            variant="reward"
+            icon="play"
+            onPress={() => onStartLive(quiz)}
+          >
+            Bắt đầu Live
+          </Button>
+
+          {onReview ? (
+            <Button
+              variant="secondary"
+              icon="eye-outline"
+              onPress={() => onReview(quiz)}
+            >
+              Xem lại
+            </Button>
+          ) : null}
+        </View>
 
         <Button
           variant="ghost"
@@ -87,5 +100,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: spacing.sm,
     borderTopWidth: 1,
+  },
+  actionLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
 });

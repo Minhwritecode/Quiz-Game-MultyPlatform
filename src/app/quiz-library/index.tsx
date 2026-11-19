@@ -6,6 +6,7 @@ import { Button, Card, EmptyState, Screen, TopBar, usePalette } from '@/shared/u
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { useQuizStore } from '@/features/quiz-library/state/useQuizStore';
 import { QuizCard } from '@/features/quiz-library/components/QuizCard';
+import { QuestionReviewModal } from '@/features/quiz-library/components/QuestionReviewModal';
 import type { QuizItem } from '@/features/quiz-library/domain/models';
 
 export default function QuizLibraryScreen() {
@@ -13,6 +14,7 @@ export default function QuizLibraryScreen() {
   const palette = usePalette();
   const { quizzes, isLoading, loadQuizzes, deleteQuiz } = useQuizStore();
   const [search, setSearch] = useState('');
+  const [reviewingQuiz, setReviewingQuiz] = useState<QuizItem | null>(null);
 
   useEffect(() => {
     void loadQuizzes();
@@ -24,6 +26,7 @@ export default function QuizLibraryScreen() {
   );
 
   const handleStartLive = (quiz: QuizItem) => {
+    setReviewingQuiz(null);
     const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
     router.push({
       pathname: '/multiplayer/host/[roomCode]',
@@ -89,6 +92,7 @@ export default function QuizLibraryScreen() {
             quiz={item}
             onDelete={deleteQuiz}
             onStartLive={handleStartLive}
+            onReview={(quiz) => setReviewingQuiz(quiz)}
           />
         )}
         ListEmptyComponent={
@@ -102,6 +106,14 @@ export default function QuizLibraryScreen() {
             </View>
           ) : undefined
         }
+      />
+
+      {/* QUESTION REVIEW MODAL FROM STUDYWARS */}
+      <QuestionReviewModal
+        visible={!!reviewingQuiz}
+        quiz={reviewingQuiz}
+        onClose={() => setReviewingQuiz(null)}
+        onGoLive={handleStartLive}
       />
     </Screen>
   );

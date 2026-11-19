@@ -146,6 +146,74 @@ export default function LandingShowcaseScreen() {
           </View>
         </Card>
 
+        {/* STUDYWARS INTERACTIVE BATTLE PREVIEW */}
+        <Card style={styles.previewCard}>
+          <View style={styles.previewHeader}>
+            <Text style={[typography.caption, { color: palette.indigo, fontWeight: '800' }]}>
+              Sinh học · Vòng 01
+            </Text>
+            <Badge tone="success">● Trận đấu mô phỏng</Badge>
+          </View>
+
+          <Text style={[typography.title, { color: palette.ink, fontSize: 18, marginVertical: spacing.xs }]}>
+            {'Bào quan nào được ví như "nhà máy năng lượng" của tế bào?'}
+          </Text>
+
+          <View style={styles.previewOptions}>
+            <View style={[styles.previewOpt, { borderColor: '#EF4444' }]}>
+              <Text style={{ color: '#EF4444', fontWeight: '900' }}>▲ A</Text>
+              <Text style={[typography.caption, { color: palette.ink }]}>Nhân tế bào</Text>
+            </View>
+            <View style={[styles.previewOpt, { borderColor: '#10B981', backgroundColor: 'rgba(16, 185, 129, 0.12)' }]}>
+              <Text style={{ color: '#10B981', fontWeight: '900' }}>◆ B</Text>
+              <Text style={[typography.caption, { color: '#10B981', fontWeight: '700' }]}>Ty thể (Mitochondria) ✓</Text>
+            </View>
+            <View style={[styles.previewOpt, { borderColor: '#F59E0B' }]}>
+              <Text style={{ color: '#F59E0B', fontWeight: '900' }}>● C</Text>
+              <Text style={[typography.caption, { color: palette.ink }]}>Ribosome</Text>
+            </View>
+            <View style={[styles.previewOpt, { borderColor: '#3B82F6' }]}>
+              <Text style={{ color: '#3B82F6', fontWeight: '900' }}>■ D</Text>
+              <Text style={[typography.caption, { color: palette.ink }]}>Bộ máy Golgi</Text>
+            </View>
+          </View>
+
+          <View style={[styles.previewFooter, { borderTopColor: palette.paperMuted }]}>
+            <Ionicons name="flash" size={16} color="#F59E0B" />
+            <Text style={[typography.caption, { color: palette.inkMuted, flex: 1 }]}>
+              Trả lời càng nhanh, điểm ghi được càng cao (tối đa 1,000 đ/câu).
+            </Text>
+          </View>
+        </Card>
+
+        {/* 3-STEP STUDYWARS JOURNEY */}
+        <Text style={[typography.title, { color: palette.ink, fontSize: 20, marginVertical: spacing.md }]}>
+          Quy trình 3 bước từ ghi chú đến phòng đấu
+        </Text>
+        <View style={styles.stepsWrap}>
+          <Card style={styles.stepCard}>
+            <Text style={[styles.stepNum, { color: palette.indigo }]}>01</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[typography.title, { color: palette.ink, fontSize: 16 }]}>Nạp tài liệu học</Text>
+              <Text style={[typography.caption, { color: palette.inkMuted }]}>Gõ chủ đề, dán ghi chú hoặc tải file PDF để AI phân tích ý chính.</Text>
+            </View>
+          </Card>
+          <Card style={styles.stepCard}>
+            <Text style={[styles.stepNum, { color: palette.indigo }]}>02</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[typography.title, { color: palette.ink, fontSize: 16 }]}>Mở phòng thi đấu</Text>
+              <Text style={[typography.caption, { color: palette.inkMuted }]}>Xem lại câu hỏi, lấy mã phòng 6 ký tự và rủ bạn bè cùng tham gia.</Text>
+            </View>
+          </Card>
+          <Card style={styles.stepCard}>
+            <Text style={[styles.stepNum, { color: palette.indigo }]}>03</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[typography.title, { color: palette.ink, fontSize: 16 }]}>Chơi để nhớ sâu</Text>
+              <Text style={[typography.caption, { color: palette.inkMuted }]}>Đua tốc độ, xem giải thích chi tiết đáp án và leo bục vinh danh.</Text>
+            </View>
+          </Card>
+        </View>
+
         {/* FEATURE CARDS */}
         <Text style={[typography.title, { color: palette.ink, fontSize: 20, marginVertical: spacing.md }]}>
           Tại sao chọn nền tảng này?
@@ -265,6 +333,53 @@ const styles = StyleSheet.create({
   featureCard: {
     padding: spacing.md,
     borderRadius: radii.md,
+  },
+  previewCard: {
+    padding: spacing.md,
+    borderRadius: radii.lg,
+    marginBottom: spacing.md,
+  },
+  previewHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  previewOptions: {
+    gap: spacing.xs,
+    marginVertical: spacing.sm,
+  },
+  previewOpt: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: radii.md,
+    borderWidth: 1.5,
+  },
+  previewFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingTop: spacing.xs,
+    borderTopWidth: 1,
+    marginTop: spacing.xs,
+  },
+  stepsWrap: {
+    gap: spacing.xs,
+    marginBottom: spacing.md,
+  },
+  stepCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radii.md,
+  },
+  stepNum: {
+    fontSize: 22,
+    fontWeight: '900',
+    minWidth: 32,
   },
   featIconWrap: {
     width: 48,

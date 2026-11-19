@@ -14,6 +14,8 @@ import { radii, spacing, typography } from '@/core/theme/tokens';
 import { gameApi } from '@/features/multiplayer/services/game.api';
 import { socket, SOCKET_EVENTS } from '@/features/multiplayer/services/socket';
 import { useMultiplayerStore } from '@/features/multiplayer/state/useMultiplayerStore';
+import { OPTION_SHAPES, calculateSpeedPoints } from '@/features/multiplayer/domain/shapes';
+import { PlayerRevealModal } from '@/features/multiplayer/components/PlayerRevealModal';
 import type { CurrentQuestionData, LeaderboardPlayer } from '@/features/multiplayer/domain/models';
 
 export default function MultiplayerQuestionScreen() {
@@ -23,22 +25,27 @@ export default function MultiplayerQuestionScreen() {
   const setLeaderboard = useMultiplayerStore((state) => state.setLeaderboard);
   const setFinalResults = useMultiplayerStore((state) => state.setFinalResults);
 
-  const [questionData, setQuestionData] = useState<CurrentQuestionData | null>(null);
+  const [questionData, setQuestionData] = useState<CurrentQuestionData & { explanation?: string } | null>(null);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
   const [correctAnswer, setCorrectAnswer] = useState<number | null>(null);
-  const [remainingTime, setRemainingTime] = useState(15);
+  const [remainingTime, setRemainingTime] = useState(20);
   const [isPaused, setIsPaused] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [answeredCount, setAnsweredCount] = useState(1);
+  const [showRevealModal, setShowRevealModal] = useState(false);
+  const [earnedPoints, setEarnedPoints] = useState(0);
+  const [totalScore, setTotalScore] = useState(0);
 
   const fetchQuestion = useCallback(async () => {
     if (!roomCode) return;
     setIsLoading(true);
     setSelectedAnswer(null);
     setCorrectAnswer(null);
+    setShowRevealModal(false);
     try {
       const data = await gameApi.getCurrentQuestion(roomCode);
       setQuestionData(data);
-      setRemainingTime(data.remainingTime || 15);
+      setRemainingTime(data.remainingTime || 20);
     } catch {
       // Fallback
     } finally {
@@ -53,7 +60,7 @@ export default function MultiplayerQuestionScreen() {
       void gameApi.getCurrentQuestion(roomCode).then((data) => {
         if (mounted && data) {
           setQuestionData(data);
-          setRemainingTime(data.remainingTime || 15);
+          setRemainingTime(data.remainingTime || 20);
           setIsLoading(false);
         }
       });
@@ -80,8 +87,13 @@ export default function MultiplayerQuestionScreen() {
     }
     socket.emit(SOCKET_EVENTS.JOIN_ROOM, roomCode);
 
-    const onQuestionEnded = (payload: { correctAnswer: number }) => {
+    const onQuestionEnded = (payload: { correctAnswer: number; explanation?: string }) => {
       setCorrectAnswer(payload.correctAnswer);
+      const isCorrect = selectedAnswer === payload.correctAnswer;
+      const pts = calculateSpeedPoints(isCorrect, 20 - remainingTime, 20);
+      setEarnedPoints(pts);
+      setTotalScore((prev) => prev + pts);
+      setShowRevealModal(true);
     };
 
     const onLeaderboardUpdated = (payload: { leaderboard: LeaderboardPlayer[] }) => {
@@ -130,11 +142,12 @@ export default function MultiplayerQuestionScreen() {
       socket.off(SOCKET_EVENTS.QUIZ_RESUMED, onResume);
       socket.off(SOCKET_EVENTS.QUIZ_FINISHED, onQuizFinished);
     };
-  }, [roomCode, fetchQuestion, router, setLeaderboard, setFinalResults]);
+  }, [roomCode, fetchQuestion, router, selectedAnswer, remainingTime, setLeaderboard, setFinalResults]);
 
   const handleSelectAnswer = (index: number) => {
     if (selectedAnswer !== null || correctAnswer !== null) return;
     setSelectedAnswer(index);
+    setAnsweredCount((prev) => prev + 1);
     if (roomCode) {
       gameApi.submitAnswer(roomCode, index);
     }
@@ -171,7 +184,9 @@ export default function MultiplayerQuestionScreen() {
             <Text style={[typography.title, { color: palette.ink, fontSize: 16 }]}>
               Câu {questionData.index + 1} / {questionData.totalQuestions}
             </Text>
-            <Text style={[typography.caption, { color: palette.inkMuted }]}>Thời gian thực</Text>
+            <Text style={[typography.caption, { color: palette.inkMuted }]}>
+              ⚡ Điểm tối đa: 1,000 đ
+            </Text>
           </View>
 
           {/* TIMER PILL */}
@@ -213,31 +228,32 @@ export default function MultiplayerQuestionScreen() {
           </Text>
         </Card>
 
-        {/* 4 CHOICES */}
+        {/* 4 CHOICES WITH STUDYWARS GEOMETRIC SHAPES */}
         <View style={styles.optionsWrap}>
           {questionData.options.map((option, idx) => {
-            let borderColor = palette.paperMuted;
+            const shape = OPTION_SHAPES[idx % 4] ?? {
+              symbol: '▲',
+              name: 'Option',
+              color: '#6366F1',
+              tint: 'rgba(99, 102, 241, 0.15)',
+              border: '#4F46E5',
+            };
+            const isSelected = selectedAnswer === idx;
+            const isCorrect = correctAnswer !== null && idx === correctAnswer;
+            const isWrong = correctAnswer !== null && isSelected && selectedAnswer !== correctAnswer;
+
             let bgColor = palette.paperRaised;
-            let textColor = palette.ink;
+            let borderColor = shape.border;
 
-            // When selected before reveal
-            if (correctAnswer === null && selectedAnswer === idx) {
-              borderColor = palette.indigo;
-              bgColor = palette.indigo;
-              textColor = '#FFFFFF';
-            }
-
-            // When correct answer is revealed
-            if (correctAnswer !== null) {
-              if (idx === correctAnswer) {
-                borderColor = '#10B981';
-                bgColor = '#10B981';
-                textColor = '#FFFFFF';
-              } else if (selectedAnswer === idx && selectedAnswer !== correctAnswer) {
-                borderColor = '#EF4444';
-                bgColor = '#EF4444';
-                textColor = '#FFFFFF';
-              }
+            if (isSelected && correctAnswer === null) {
+              bgColor = shape.tint;
+              borderColor = shape.color;
+            } else if (isCorrect) {
+              bgColor = '#10B981';
+              borderColor = '#059669';
+            } else if (isWrong) {
+              bgColor = '#EF4444';
+              borderColor = '#DC2626';
             }
 
             return (
@@ -250,46 +266,64 @@ export default function MultiplayerQuestionScreen() {
                   { borderColor, backgroundColor: bgColor },
                 ]}
               >
-                <View style={[styles.optLetter, { backgroundColor: 'rgba(0,0,0,0.15)' }]}>
-                  <Text style={[styles.optLetterText, { color: textColor }]}>
+                {/* GEOMETRIC SHAPE TILE */}
+                <View style={[styles.shapeBadge, { backgroundColor: shape.color }]}>
+                  <Text style={styles.shapeSymbol}>{shape.symbol}</Text>
+                </View>
+
+                <View style={styles.optContent}>
+                  <Text style={[styles.letterLabel, { color: palette.inkMuted }]}>
                     {String.fromCharCode(65 + idx)}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.optText,
+                      { color: isCorrect || isWrong ? '#FFFFFF' : palette.ink },
+                    ]}
+                  >
+                    {option}
                   </Text>
                 </View>
 
-                <Text style={[styles.optText, { color: textColor }]}>
-                  {option}
-                </Text>
-
-                {correctAnswer !== null && idx === correctAnswer && (
-                  <Ionicons name="checkmark-circle" size={24} color="#FFFFFF" />
+                {isCorrect && (
+                  <Ionicons name="checkmark-circle" size={26} color="#FFFFFF" />
                 )}
-                {correctAnswer !== null && selectedAnswer === idx && selectedAnswer !== correctAnswer && (
-                  <Ionicons name="close-circle" size={24} color="#FFFFFF" />
+                {isWrong && (
+                  <Ionicons name="close-circle" size={26} color="#FFFFFF" />
                 )}
               </Pressable>
             );
           })}
         </View>
 
-        {/* STATUS FOOTER */}
-        {selectedAnswer !== null && correctAnswer === null && (
-          <View style={styles.feedbackRow}>
-            <Ionicons name="checkmark-done" size={20} color={palette.indigo} />
-            <Text style={[typography.caption, { color: palette.indigo, fontWeight: '700' }]}>
-              Đã ghi nhận câu trả lời! Đang đợi hết giờ câu hỏi...
-            </Text>
-          </View>
-        )}
-
-        {correctAnswer !== null && (
-          <View style={styles.feedbackRow}>
-            <Ionicons name="information-circle" size={20} color="#10B981" />
-            <Text style={[typography.caption, { color: '#10B981', fontWeight: '700' }]}>
-              Đã hiển thị đáp án chính xác! Đang chuẩn bị chuyển bảng xếp hạng...
-            </Text>
-          </View>
-        )}
+        {/* LIVE RESPONSE INDICATOR */}
+        <View style={styles.feedbackRow}>
+          <Ionicons name="radio-outline" size={16} color={palette.indigo} />
+          <Text style={[typography.caption, { color: palette.inkMuted }]}>
+            Đã có {answeredCount} câu trả lời được ghi nhận
+          </Text>
+        </View>
       </ScrollView>
+
+      {/* STUDYWARS PLAYER REVEAL MODAL */}
+      <PlayerRevealModal
+        visible={showRevealModal}
+        wasCorrect={selectedAnswer === correctAnswer}
+        didNotAnswer={selectedAnswer === null}
+        pointsEarned={earnedPoints}
+        totalScore={totalScore}
+        explanation={
+          questionData.explanation ||
+          'Kiến thức quan trọng: Hãy ghi nhớ đáp án chính xác để bứt phá ở các vòng sau!'
+        }
+        onDismiss={() => {
+          setShowRevealModal(false);
+          router.push({
+            pathname: '/multiplayer/leaderboard/[roomCode]',
+            params: { roomCode },
+          });
+        }}
+      />
     </Screen>
   );
 }
@@ -362,22 +396,31 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     gap: spacing.md,
   },
-  optLetter: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  shapeBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  optLetterText: {
+  shapeSymbol: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '900',
+  },
+  optContent: {
+    flex: 1,
+  },
+  letterLabel: {
+    fontSize: 11,
     fontWeight: '800',
-    fontSize: 14,
+    letterSpacing: 0.5,
   },
   optText: {
-    flex: 1,
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
     lineHeight: 22,
+    marginTop: 2,
   },
   feedbackRow: {
     flexDirection: 'row',
