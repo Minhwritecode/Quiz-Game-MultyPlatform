@@ -155,7 +155,7 @@ export default function MultiplayerQuestionScreen() {
 
   if (isLoading || !questionData) {
     return (
-      <Screen>
+      <Screen scroll={false}>
         <TopBar title="Đang tải câu hỏi..." />
         <View style={styles.loadingCenter}>
           <ActivityIndicator size="large" color={palette.indigo} />
@@ -174,7 +174,7 @@ export default function MultiplayerQuestionScreen() {
   const isTimeCritical = remainingTime <= 5;
 
   return (
-    <Screen>
+    <Screen scroll={false}>
       <TopBar title={`Phòng: ${roomCode}`} />
 
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
@@ -329,7 +329,7 @@ export default function MultiplayerQuestionScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { paddingBottom: 60 },
+  container: { width: '100%', maxWidth: 720, alignSelf: 'center', paddingBottom: 60 },
   loadingCenter: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   topStatus: {
     flexDirection: 'row',
@@ -410,6 +410,7 @@ const styles = StyleSheet.create({
   },
   optContent: {
     flex: 1,
+    minWidth: 0,
   },
   letterLabel: {
     fontSize: 11,
@@ -421,6 +422,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     lineHeight: 22,
     marginTop: 2,
+    flexShrink: 1,
   },
   feedbackRow: {
     flexDirection: 'row',

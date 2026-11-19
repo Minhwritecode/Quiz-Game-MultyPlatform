@@ -129,7 +129,7 @@ export default function AiQuizScreen() {
   };
 
   return (
-    <Screen>
+    <Screen scroll={false}>
       <TopBar title="AI Quiz Generator" />
 
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
@@ -198,7 +198,11 @@ export default function AiQuizScreen() {
                     style={[styles.dropZone, { borderColor: palette.indigo, backgroundColor: palette.paperRaised }]}
                   >
                     <Ionicons name="cloud-upload-outline" size={42} color={palette.indigo} />
-                    <Text style={[typography.title, { color: palette.ink, marginTop: spacing.sm }]}>
+                    <Text
+                      numberOfLines={1}
+                      ellipsizeMode="middle"
+                      style={[typography.title, { color: palette.ink, marginTop: spacing.sm, maxWidth: '90%', textAlign: 'center' }]}
+                    >
                       {pdfFile ? pdfFile.name : 'Nhấn để chọn file PDF'}
                     </Text>
                     <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
@@ -350,7 +354,7 @@ export default function AiQuizScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { paddingBottom: 60 },
+  container: { width: '100%', maxWidth: 720, alignSelf: 'center', paddingBottom: 60 },
   headerBox: { alignItems: 'center', marginBottom: spacing.lg },
   sparkIconWrap: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
   tabsWrap: { flexDirection: 'row', borderRadius: radii.pill, borderWidth: 1, padding: 4, marginBottom: spacing.lg },
@@ -361,7 +365,7 @@ const styles = StyleSheet.create({
   input: { minHeight: 48, borderWidth: 1, borderRadius: radii.md, paddingHorizontal: spacing.md, marginTop: spacing.xs, fontSize: 15 },
   dropZone: { borderWidth: 2, borderStyle: 'dashed', borderRadius: radii.lg, padding: spacing.xl, alignItems: 'center', justifyContent: 'center', marginTop: spacing.xs },
   choiceRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.xs },
-  choiceChip: { paddingHorizontal: spacing.md, paddingVertical: 10, borderRadius: radii.md, borderWidth: 1 },
+  choiceChip: { paddingHorizontal: spacing.md, paddingVertical: 10, borderRadius: radii.md, borderWidth: 1, minWidth: 72, alignItems: 'center' },
   choiceChipText: { fontWeight: '700', fontSize: 14 },
   submitBtn: { marginTop: spacing.md },
   loadingBox: { alignItems: 'center', marginTop: spacing.lg },

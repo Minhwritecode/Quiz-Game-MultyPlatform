@@ -118,107 +118,110 @@ export default function HostRoomScreen() {
   };
 
   return (
-    <Screen>
+    <Screen scroll={false}>
       <TopBar title="Chủ phòng Live (Host)" />
 
       <View style={styles.container}>
-        {/* ROOM CODE DISPLAY CARD */}
-        <Card style={styles.codeCard}>
-          <Text style={[typography.caption, { color: palette.inkMuted, fontWeight: '700', letterSpacing: 1 }]}>
-            MÃ PHÒNG CHIA SẺ
-          </Text>
-
-          <Text style={[styles.codeText, { color: palette.indigo }]}>{roomCode}</Text>
-
-          <View style={styles.codeSubRow}>
-            <Badge tone="success">
-              {room?.status === 'waiting'
-                ? 'Đang chờ người chơi'
-                : room?.status === 'live'
-                ? 'Đang diễn ra'
-                : 'Tạm dừng'}
-            </Badge>
-            <Badge tone="primary">{room?.players.length || 0} Người tham gia</Badge>
-          </View>
-
-          <View style={styles.shareRow}>
-            <View style={styles.flexBtn}>
-              <Button variant="secondary" icon="share-social-outline" onPress={handleShare}>
-                Chia sẻ mã
-              </Button>
-            </View>
-            <View style={styles.flexBtn}>
-              <Button
-                variant="ghost"
-                icon="qr-code-outline"
-                onPress={() => Alert.alert('Mã QR', `Mã QR liên kết tới phòng: ${roomCode}`)}
-              >
-                Mã QR
-              </Button>
-            </View>
-          </View>
-        </Card>
-
-        {/* HOST CONTROLS */}
-        <View style={styles.controlsRow}>
-          {room?.status === 'waiting' && (
-            <View style={styles.flexBtn}>
-              <Button icon="rocket-outline" variant="reward" onPress={handleStart}>
-                🚀 Bắt đầu Quiz
-              </Button>
-            </View>
-          )}
-
-          {room?.status === 'live' && (
-            <>
-              <View style={styles.flexBtn}>
-                <Button icon="pause-outline" variant="secondary" onPress={handlePause}>
-                  ⏸ Tạm dừng
-                </Button>
-              </View>
-              <View style={styles.flexBtn}>
-                <Button icon="stop-outline" variant="ghost" onPress={handleEnd}>
-                  🛑 Kết thúc
-                </Button>
-              </View>
-            </>
-          )}
-
-          {room?.status === 'paused' && (
-            <>
-              <View style={styles.flexBtn}>
-                <Button icon="play-outline" variant="reward" onPress={handleResume}>
-                  ▶ Tiếp tục
-                </Button>
-              </View>
-              <View style={styles.flexBtn}>
-                <Button icon="stop-outline" variant="ghost" onPress={handleEnd}>
-                  🛑 Kết thúc
-                </Button>
-              </View>
-            </>
-          )}
-        </View>
-
-        {/* PARTICIPANTS LIST */}
-        <View style={styles.sectionHeader}>
-          <Text style={[typography.title, { color: palette.ink }]}>
-            Danh sách người chơi ({room?.players.length || 0})
-          </Text>
-        </View>
-
         <FlatList
           data={room?.players || []}
           keyExtractor={(item) => item.playerId}
           contentContainerStyle={{ paddingBottom: 60 }}
-          renderItem={({ item, index }) => (
+          ListHeaderComponent={
+            <>
+              {/* ROOM CODE DISPLAY CARD */}
+              <Card style={styles.codeCard}>
+                <Text style={[typography.caption, { color: palette.inkMuted, fontWeight: '700', letterSpacing: 1 }]}>
+                  MÃ PHÒNG CHIA SẺ
+                </Text>
+
+                <Text style={[styles.codeText, { color: palette.indigo }]}>{roomCode}</Text>
+
+                <View style={styles.codeSubRow}>
+                  <Badge tone="success">
+                    {room?.status === 'waiting'
+                      ? 'Đang chờ người chơi'
+                      : room?.status === 'live'
+                      ? 'Đang diễn ra'
+                      : 'Tạm dừng'}
+                  </Badge>
+                  <Badge tone="primary">{room?.players.length || 0} Người tham gia</Badge>
+                </View>
+
+                <View style={styles.shareRow}>
+                  <View style={styles.flexBtn}>
+                    <Button variant="secondary" icon="share-social-outline" onPress={handleShare}>
+                      Chia sẻ mã
+                    </Button>
+                  </View>
+                  <View style={styles.flexBtn}>
+                    <Button
+                      variant="ghost"
+                      icon="qr-code-outline"
+                      onPress={() => Alert.alert('Mã QR', `Mã QR liên kết tới phòng: ${roomCode}`)}
+                    >
+                      Mã QR
+                    </Button>
+                  </View>
+                </View>
+              </Card>
+
+              {/* HOST CONTROLS */}
+              <View style={styles.controlsRow}>
+                {room?.status === 'waiting' && (
+                  <View style={styles.flexBtn}>
+                    <Button icon="rocket-outline" variant="reward" onPress={handleStart}>
+                      🚀 Bắt đầu Quiz
+                    </Button>
+                  </View>
+                )}
+
+                {room?.status === 'live' && (
+                  <>
+                    <View style={styles.flexBtn}>
+                      <Button icon="pause-outline" variant="secondary" onPress={handlePause}>
+                        ⏸ Tạm dừng
+                      </Button>
+                    </View>
+                    <View style={styles.flexBtn}>
+                      <Button icon="stop-outline" variant="ghost" onPress={handleEnd}>
+                        🛑 Kết thúc
+                      </Button>
+                    </View>
+                  </>
+                )}
+
+                {room?.status === 'paused' && (
+                  <>
+                    <View style={styles.flexBtn}>
+                      <Button icon="play-outline" variant="reward" onPress={handleResume}>
+                        ▶ Tiếp tục
+                      </Button>
+                    </View>
+                    <View style={styles.flexBtn}>
+                      <Button icon="stop-outline" variant="ghost" onPress={handleEnd}>
+                        🛑 Kết thúc
+                      </Button>
+                    </View>
+                  </>
+                )}
+              </View>
+
+              {/* PARTICIPANTS LIST HEADER */}
+              <View style={styles.sectionHeader}>
+                <Text style={[typography.title, { color: palette.ink }]}>
+                  Danh sách người chơi ({room?.players.length || 0})
+                </Text>
+              </View>
+            </>
+          }
+          renderItem={({ item }) => (
             <Card style={styles.playerCard}>
               <View style={styles.playerLeft}>
                 <View style={[styles.avatarWrap, { backgroundColor: palette.indigo }]}>
                   <Text style={styles.avatarText}>{item.nickname.charAt(0).toUpperCase()}</Text>
                 </View>
-                <View>
-                  <Text style={[typography.title, { color: palette.ink, fontSize: 16 }]}>
+                <View style={styles.playerInfo}>
+                  <Text style={[typography.title, { color: palette.ink, fontSize: 16 }]} numberOfLines={1}>
                     {item.nickname} {item.isHost ? '👑 (Host)' : ''}
                   </Text>
                   <Text style={[typography.caption, { color: palette.inkMuted }]}>
@@ -247,7 +250,7 @@ export default function HostRoomScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, width: '100%', maxWidth: 680, alignSelf: 'center' },
   codeCard: {
     padding: spacing.xl,
     borderRadius: radii.lg,
@@ -264,18 +267,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.xs,
     marginBottom: spacing.md,
+    flexWrap: 'wrap',
+    justifyContent: 'center',
   },
   shareRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.sm,
+    width: '100%',
   },
   controlsRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.sm,
     marginBottom: spacing.md,
+    width: '100%',
   },
   flexBtn: {
     flex: 1,
+    minWidth: 140,
   },
   sectionHeader: {
     marginBottom: spacing.xs,
@@ -292,6 +302,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+    flex: 1,
+    minWidth: 0,
+  },
+  playerInfo: {
+    flex: 1,
+    minWidth: 0,
   },
   avatarWrap: {
     width: 36,

@@ -139,6 +139,9 @@ const styles = StyleSheet.create({
   keyboardWrap: {
     flex: 1,
     justifyContent: 'center',
+    width: '100%',
+    maxWidth: 480,
+    alignSelf: 'center',
     paddingBottom: 40,
   },
   headerBox: {

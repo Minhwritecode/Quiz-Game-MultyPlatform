@@ -27,26 +27,27 @@ export default function MultiplayerResultsScreen() {
   };
 
   return (
-    <Screen>
+    <Screen scroll={false}>
       <TopBar title="Kết quả chung cuộc" />
 
       <View style={styles.container}>
-        <View style={styles.header}>
-          <View style={[styles.trophyWrap, { backgroundColor: '#FEF3C7' }]}>
-            <Text style={{ fontSize: 44 }}>🏆</Text>
-          </View>
-          <Text style={[typography.heading, { color: palette.ink, marginTop: spacing.sm, textAlign: 'center' }]}>
-            Trận đấu Hoàn tất!
-          </Text>
-          <Text style={[typography.body, { color: palette.inkMuted, textAlign: 'center', marginTop: 2 }]}>
-            Bảng vàng vinh danh những người chơi xuất sắc nhất
-          </Text>
-        </View>
-
         <FlatList
           data={displayResults}
           keyExtractor={(item) => item.playerId}
           contentContainerStyle={{ paddingBottom: 60 }}
+          ListHeaderComponent={
+            <View style={styles.header}>
+              <View style={[styles.trophyWrap, { backgroundColor: '#FEF3C7' }]}>
+                <Text style={{ fontSize: 44 }}>🏆</Text>
+              </View>
+              <Text style={[typography.heading, { color: palette.ink, marginTop: spacing.sm, textAlign: 'center' }]}>
+                Trận đấu Hoàn tất!
+              </Text>
+              <Text style={[typography.body, { color: palette.inkMuted, textAlign: 'center', marginTop: 2 }]}>
+                Bảng vàng vinh danh những người chơi xuất sắc nhất
+              </Text>
+            </View>
+          }
           renderItem={({ item, index }) => {
             const isTop1 = index === 0;
             const isTop2 = index === 1;
@@ -65,8 +66,8 @@ export default function MultiplayerResultsScreen() {
                   <Text style={styles.medal}>
                     {isTop1 ? '🥇' : isTop2 ? '🥈' : isTop3 ? '🥉' : '🎯'}
                   </Text>
-                  <View>
-                    <Text style={[typography.title, { color: palette.ink, fontSize: 16 }]}>
+                  <View style={styles.playerMeta}>
+                    <Text style={[typography.title, { color: palette.ink, fontSize: 16 }]} numberOfLines={1}>
                       {item.nickname}
                     </Text>
                     <Text style={[typography.caption, { color: palette.inkMuted }]}>
@@ -104,7 +105,7 @@ export default function MultiplayerResultsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, width: '100%', maxWidth: 680, alignSelf: 'center' },
   header: { alignItems: 'center', marginVertical: spacing.md },
   trophyWrap: {
     width: 80,
@@ -125,6 +126,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
+    flex: 1,
+    minWidth: 0,
+    marginRight: spacing.sm,
+  },
+  playerMeta: {
+    flex: 1,
+    minWidth: 0,
   },
   medal: {
     fontSize: 28,

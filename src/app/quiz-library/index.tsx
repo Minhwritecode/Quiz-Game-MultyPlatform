@@ -35,78 +35,87 @@ export default function QuizLibraryScreen() {
   };
 
   return (
-    <Screen>
+    <Screen scroll={false}>
       <TopBar title="Thư viện Quiz của tôi" />
 
-      {/* Action Header */}
-      <View style={styles.topActions}>
-        <Button
-          icon="sparkles"
-          variant="reward"
-          onPress={() => router.push('/ai-quiz')}
-        >
-          Tạo bằng AI
-        </Button>
-        <Button
-          icon="create-outline"
-          variant="secondary"
-          onPress={() => router.push('/quiz-editor/create')}
-        >
-          Tạo thủ công
-        </Button>
-      </View>
+      <View style={styles.container}>
+        <FlatList
+          data={filteredQuizzes}
+          keyExtractor={(item) => item.id}
+          refreshControl={
+            <RefreshControl
+              refreshing={isLoading}
+              onRefresh={() => void loadQuizzes()}
+              tintColor={palette.indigo}
+            />
+          }
+          contentContainerStyle={styles.listContent}
+          ListHeaderComponent={
+            <>
+              {/* Action Header */}
+              <View style={styles.topActions}>
+                <View style={styles.actionBtn}>
+                  <Button
+                    icon="sparkles"
+                    variant="reward"
+                    onPress={() => router.push('/ai-quiz')}
+                  >
+                    Tạo bằng AI
+                  </Button>
+                </View>
+                <View style={styles.actionBtn}>
+                  <Button
+                    icon="create-outline"
+                    variant="secondary"
+                    onPress={() => router.push('/quiz-editor/create')}
+                  >
+                    Tạo thủ công
+                  </Button>
+                </View>
+              </View>
 
-      {/* Search Input */}
-      <View style={[styles.searchBox, { backgroundColor: palette.paperRaised, borderColor: palette.paperMuted }]}>
-        <Ionicons name="search-outline" size={20} color={palette.inkMuted} />
-        <TextInput
-          value={search}
-          onChangeText={setSearch}
-          placeholder="Tìm kiếm quiz theo tiêu đề hoặc mô tả..."
-          placeholderTextColor={palette.inkMuted}
-          style={[styles.searchInput, { color: palette.ink }]}
+              {/* Search Input */}
+              <View style={[styles.searchBox, { backgroundColor: palette.paperRaised, borderColor: palette.paperMuted }]}>
+                <Ionicons name="search-outline" size={20} color={palette.inkMuted} />
+                <TextInput
+                  value={search}
+                  onChangeText={setSearch}
+                  placeholder="Tìm kiếm quiz theo tiêu đề hoặc mô tả..."
+                  placeholderTextColor={palette.inkMuted}
+                  style={[styles.searchInput, { color: palette.ink }]}
+                />
+                {search ? (
+                  <Ionicons
+                    name="close-circle"
+                    size={18}
+                    color={palette.inkMuted}
+                    onPress={() => setSearch('')}
+                  />
+                ) : null}
+              </View>
+            </>
+          }
+          renderItem={({ item }) => (
+            <QuizCard
+              quiz={item}
+              onDelete={deleteQuiz}
+              onStartLive={handleStartLive}
+              onReview={(quiz) => setReviewingQuiz(quiz)}
+            />
+          )}
+          ListEmptyComponent={
+            !isLoading ? (
+              <View style={styles.emptyCard}>
+                <EmptyState
+                  icon="library-outline"
+                  title="Chưa có quiz nào"
+                  message="Bạn có thể tự tay soạn câu hỏi hoặc để AI tạo tự động chỉ trong vài giây."
+                />
+              </View>
+            ) : undefined
+          }
         />
-        {search ? (
-          <Ionicons
-            name="close-circle"
-            size={18}
-            color={palette.inkMuted}
-            onPress={() => setSearch('')}
-          />
-        ) : null}
       </View>
-
-      <FlatList
-        data={filteredQuizzes}
-        keyExtractor={(item) => item.id}
-        refreshControl={
-          <RefreshControl
-            refreshing={isLoading}
-            onRefresh={() => void loadQuizzes()}
-            tintColor={palette.indigo}
-          />
-        }
-        contentContainerStyle={styles.listContent}
-        renderItem={({ item }) => (
-          <QuizCard
-            quiz={item}
-            onDelete={deleteQuiz}
-            onStartLive={handleStartLive}
-            onReview={(quiz) => setReviewingQuiz(quiz)}
-          />
-        )}
-        ListEmptyComponent={
-          !isLoading ? (
-            <View style={styles.emptyCard}>
-              <EmptyState
-                icon="library-outline"
-                title="Chưa có quiz nào"
-                message="Bạn có thể tự tay soạn câu hỏi hoặc để AI tạo tự động chỉ trong vài giây."
-              />
-            </View>
-          ) : undefined
-        }
-      />
 
       {/* QUESTION REVIEW MODAL FROM STUDYWARS */}
       <QuestionReviewModal
@@ -120,10 +129,16 @@ export default function QuizLibraryScreen() {
 }
 
 const styles = StyleSheet.create({
+  container: { flex: 1, width: '100%', maxWidth: 760, alignSelf: 'center' },
   topActions: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.sm,
     marginBottom: spacing.md,
+  },
+  actionBtn: {
+    flex: 1,
+    minWidth: 140,
   },
   searchBox: {
     flexDirection: 'row',

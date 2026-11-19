@@ -135,7 +135,7 @@ export default function CreateQuizScreen() {
   };
 
   return (
-    <Screen>
+    <Screen scroll={false}>
       <TopBar title="Soạn Quiz thủ công" />
 
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
@@ -296,6 +296,9 @@ export default function CreateQuizScreen() {
 
 const styles = StyleSheet.create({
   container: {
+    width: '100%',
+    maxWidth: 760,
+    alignSelf: 'center',
     paddingBottom: 60,
   },
   card: {
@@ -321,11 +324,13 @@ const styles = StyleSheet.create({
   },
   diffRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.sm,
     marginTop: 4,
   },
   diffChip: {
     flex: 1,
+    minWidth: 72,
     alignItems: 'center',
     paddingVertical: 10,
     borderRadius: radii.md,
@@ -337,8 +342,10 @@ const styles = StyleSheet.create({
   },
   qHeader: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: spacing.xs,
     marginBottom: spacing.xs,
   },
   removeBtn: {

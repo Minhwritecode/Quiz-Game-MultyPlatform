@@ -6,6 +6,7 @@ import {
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -65,6 +66,8 @@ const HIGHLIGHT_FEATURES = [
 export default function LandingShowcaseScreen() {
   const router = useRouter();
   const palette = usePalette();
+  const { width } = useWindowDimensions();
+  const isWide = width >= 768;
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
   const [quickRoomCode, setQuickRoomCode] = useState('');
 
@@ -78,7 +81,7 @@ export default function LandingShowcaseScreen() {
   };
 
   return (
-    <Screen>
+    <Screen scroll={false}>
       <TopBar title="Giới thiệu & Mở rộng" />
 
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
@@ -190,7 +193,7 @@ export default function LandingShowcaseScreen() {
         <Text style={[typography.title, { color: palette.ink, fontSize: 20, marginVertical: spacing.md }]}>
           Quy trình 3 bước từ ghi chú đến phòng đấu
         </Text>
-        <View style={styles.stepsWrap}>
+        <View style={[styles.stepsWrap, isWide && styles.stepsWrapWide]}>
           <Card style={styles.stepCard}>
             <Text style={[styles.stepNum, { color: palette.indigo }]}>01</Text>
             <View style={{ flex: 1 }}>
@@ -219,7 +222,7 @@ export default function LandingShowcaseScreen() {
           Tại sao chọn nền tảng này?
         </Text>
 
-        <View style={styles.featuresGrid}>
+        <View style={[styles.featuresGrid, isWide && styles.featuresGridWide]}>
           {HIGHLIGHT_FEATURES.map((feat, i) => (
             <Card key={i} style={styles.featureCard}>
               <View style={[styles.featIconWrap, { backgroundColor: palette.paperRaised }]}>
@@ -286,7 +289,7 @@ export default function LandingShowcaseScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { paddingBottom: 60 },
+  container: { width: '100%', maxWidth: 960, alignSelf: 'center', paddingBottom: 60 },
   heroCard: {
     padding: spacing.xl,
     borderRadius: radii.lg,
@@ -313,12 +316,14 @@ const styles = StyleSheet.create({
   },
   joinInputRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.sm,
     alignItems: 'center',
     marginTop: spacing.xs,
   },
   quickInput: {
     flex: 1,
+    minWidth: 160,
     minHeight: 44,
     borderWidth: 1,
     borderRadius: radii.md,
@@ -330,9 +335,15 @@ const styles = StyleSheet.create({
   featuresGrid: {
     gap: spacing.sm,
   },
+  featuresGridWide: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
   featureCard: {
     padding: spacing.md,
     borderRadius: radii.md,
+    flex: 1,
+    minWidth: 260,
   },
   previewCard: {
     padding: spacing.md,
@@ -369,12 +380,17 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     marginBottom: spacing.md,
   },
+  stepsWrapWide: {
+    flexDirection: 'row',
+  },
   stepCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
     padding: spacing.md,
     borderRadius: radii.md,
+    flex: 1,
+    minWidth: 220,
   },
   stepNum: {
     fontSize: 22,

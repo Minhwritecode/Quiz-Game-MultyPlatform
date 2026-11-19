@@ -176,7 +176,7 @@ const styles = StyleSheet.create({
   joinText: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, flex: 1, minWidth: 240 },
   joinCopy: { flex: 1 },
   joinControls: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm, flex: 1, justifyContent: 'flex-end' },
-  codeInput: { minWidth: 160, flex: 1, maxWidth: 260, minHeight: 48, borderWidth: 1, borderRadius: radii.md, paddingHorizontal: spacing.md, fontSize: 16, fontWeight: '700', letterSpacing: 1.5 },
+  codeInput: { minWidth: 120, flex: 1, maxWidth: 260, minHeight: 48, borderWidth: 1, borderRadius: radii.md, paddingHorizontal: spacing.md, fontSize: 16, fontWeight: '700', letterSpacing: 1.5 },
   emptyCard: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.md },
   setCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.sm, padding: spacing.md, borderRadius: radii.md },
   setCopy: { flex: 1, minWidth: 100 },

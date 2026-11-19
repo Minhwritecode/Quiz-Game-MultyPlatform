@@ -52,42 +52,45 @@ export default function LobbyRoomScreen() {
   }, [roomCode, router]);
 
   return (
-    <Screen>
+    <Screen scroll={false}>
       <TopBar title="Phòng chờ trận đấu" />
 
       <View style={styles.container}>
-        <Card style={styles.statusCard}>
-          <ActivityIndicator size="large" color={palette.indigo} />
-          <Text style={[typography.heading, { color: palette.ink, marginTop: spacing.md, textAlign: 'center' }]}>
-            Đang chờ chủ phòng bắt đầu...
-          </Text>
-          <Text style={[typography.body, { color: palette.inkMuted, textAlign: 'center', marginTop: 4 }]}>
-            Bạn đã vào phòng thi đấu mã: <Text style={{ color: palette.indigo, fontWeight: '800' }}>{roomCode}</Text>
-          </Text>
-
-          <View style={styles.badgeRow}>
-            <Badge tone="reward">Biệt danh: {nickname || 'Người chơi'}</Badge>
-            <Badge tone="success">Đã sẵn sàng ⚡</Badge>
-          </View>
-        </Card>
-
-        <View style={styles.sectionHeader}>
-          <Text style={[typography.title, { color: palette.ink }]}>
-            Người chơi trong phòng ({room?.players.length || 1})
-          </Text>
-        </View>
-
         <FlatList
           data={room?.players || [{ playerId: 'me', nickname: nickname || 'Bạn', score: 0 }]}
           keyExtractor={(item) => item.playerId}
           contentContainerStyle={{ paddingBottom: 60 }}
+          ListHeaderComponent={
+            <>
+              <Card style={styles.statusCard}>
+                <ActivityIndicator size="large" color={palette.indigo} />
+                <Text style={[typography.heading, { color: palette.ink, marginTop: spacing.md, textAlign: 'center' }]}>
+                  Đang chờ chủ phòng bắt đầu...
+                </Text>
+                <Text style={[typography.body, { color: palette.inkMuted, textAlign: 'center', marginTop: 4 }]}>
+                  Bạn đã vào phòng thi đấu mã: <Text style={{ color: palette.indigo, fontWeight: '800' }}>{roomCode}</Text>
+                </Text>
+
+                <View style={styles.badgeRow}>
+                  <Badge tone="reward">Biệt danh: {nickname || 'Người chơi'}</Badge>
+                  <Badge tone="success">Đã sẵn sàng ⚡</Badge>
+                </View>
+              </Card>
+
+              <View style={styles.sectionHeader}>
+                <Text style={[typography.title, { color: palette.ink }]}>
+                  Người chơi trong phòng ({room?.players.length || 1})
+                </Text>
+              </View>
+            </>
+          }
           renderItem={({ item }) => (
             <Card style={styles.playerCard}>
               <View style={styles.playerLeft}>
                 <View style={[styles.avatarWrap, { backgroundColor: palette.indigo }]}>
                   <Text style={styles.avatarText}>{item.nickname.charAt(0).toUpperCase()}</Text>
                 </View>
-                <Text style={[typography.title, { color: palette.ink, fontSize: 16 }]}>
+                <Text style={[typography.title, { color: palette.ink, fontSize: 16, flex: 1 }]} numberOfLines={1}>
                   {item.nickname}
                 </Text>
               </View>
@@ -101,7 +104,7 @@ export default function LobbyRoomScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, width: '100%', maxWidth: 680, alignSelf: 'center' },
   statusCard: {
     padding: spacing.xl,
     borderRadius: radii.lg,
@@ -113,6 +116,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     marginTop: spacing.md,
     flexWrap: 'wrap',
+    justifyContent: 'center',
   },
   sectionHeader: {
     marginBottom: spacing.xs,
@@ -129,6 +133,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+    flex: 1,
+    minWidth: 0,
+    marginRight: spacing.sm,
   },
   avatarWrap: {
     width: 36,

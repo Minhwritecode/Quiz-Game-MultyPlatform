@@ -113,12 +113,15 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.75)',
     justifyContent: 'center',
-    padding: spacing.xl,
+    alignItems: 'center',
+    padding: spacing.lg,
   },
   card: {
     padding: spacing.xl,
     borderRadius: radii.lg,
     alignItems: 'center',
+    width: '100%',
+    maxWidth: 460,
   },
   symbolWrap: {
     width: 64,
@@ -144,6 +147,7 @@ const styles = StyleSheet.create({
   statItem: {
     alignItems: 'center',
     flex: 1,
+    minWidth: 0,
   },
   statValue: {
     fontSize: 18,

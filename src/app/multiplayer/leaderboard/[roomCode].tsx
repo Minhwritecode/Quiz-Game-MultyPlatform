@@ -63,24 +63,25 @@ export default function MultiplayerLeaderboardScreen() {
   };
 
   return (
-    <Screen>
+    <Screen scroll={false}>
       <TopBar title="Bảng xếp hạng trực tiếp" />
 
       <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={{ fontSize: 44 }}>🏆</Text>
-          <Text style={[typography.heading, { color: palette.ink, marginTop: spacing.xs }]}>
-            Bảng Điểm Vòng Này
-          </Text>
-          <Text style={[typography.caption, { color: palette.inkMuted }]}>
-            Cập nhật tức thì sau mỗi câu hỏi
-          </Text>
-        </View>
-
         <FlatList
           data={displayList}
           keyExtractor={(item) => item.playerId}
           contentContainerStyle={{ paddingBottom: 60 }}
+          ListHeaderComponent={
+            <View style={styles.header}>
+              <Text style={{ fontSize: 44 }}>🏆</Text>
+              <Text style={[typography.heading, { color: palette.ink, marginTop: spacing.xs }]}>
+                Bảng Điểm Vòng Này
+              </Text>
+              <Text style={[typography.caption, { color: palette.inkMuted }]}>
+                Cập nhật tức thì sau mỗi câu hỏi
+              </Text>
+            </View>
+          }
           renderItem={({ item, index }) => {
             const isTop1 = index === 0;
             const isTop2 = index === 1;
@@ -97,7 +98,7 @@ export default function MultiplayerLeaderboardScreen() {
                   <Text style={styles.medalText}>
                     {isTop1 ? '🥇' : isTop2 ? '🥈' : isTop3 ? '🥉' : `#${index + 1}`}
                   </Text>
-                  <Text style={[typography.title, { color: palette.ink, fontSize: 16 }]}>
+                  <Text style={[typography.title, { color: palette.ink, fontSize: 16, flex: 1 }]} numberOfLines={1}>
                     {item.nickname}
                   </Text>
                 </View>
@@ -128,7 +129,7 @@ export default function MultiplayerLeaderboardScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, width: '100%', maxWidth: 680, alignSelf: 'center' },
   header: { alignItems: 'center', marginVertical: spacing.md },
   rankCard: {
     flexDirection: 'row',
@@ -142,6 +143,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
+    flex: 1,
+    minWidth: 0,
+    marginRight: spacing.sm,
   },
   medalText: {
     fontSize: 24,
