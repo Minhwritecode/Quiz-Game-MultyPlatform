@@ -12,6 +12,7 @@ import {
   type DuelCategoryId,
 } from '../domain/elo';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
+import { syncDuelResultToCloud } from '@/features/profile/data/profileCloudSync';
 import { sfx } from '@/core/audio/sfx';
 import { ReportQuestionButton } from '@/shared/ReportQuestionButton';
 import { LiveReactionsBar } from './LiveReactionsBar';
@@ -128,6 +129,19 @@ export function RankedDuelArena({
             finishHandledRef.current = true;
             const outcome = nextMy > nextOpp ? 1 : nextMy === nextOpp ? 0.5 : 0;
             const delta = recordCategoryElo(category, outcome, opponent.elo, rated);
+            const updatedElo = usePapyrusStore.getState().categoryElos[category] ?? usePapyrusStore.getState().eloRating;
+            void syncDuelResultToCloud({
+              categoryId: category,
+              rated,
+              opponentName: opponent.name,
+              opponentElo: opponent.elo,
+              challengerScore: nextMy,
+              opponentScore: nextOpp,
+              outcome,
+              eloDelta: delta,
+              nextElo: updatedElo,
+              inviteCode,
+            });
             setLastDelta(delta);
             onMatchFinished(nextMy, outcome === 1);
           }

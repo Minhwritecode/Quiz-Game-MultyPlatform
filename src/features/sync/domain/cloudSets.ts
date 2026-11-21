@@ -1,7 +1,32 @@
 import { z } from 'zod';
 import type { QuestionSet } from '@/core/domain/models';
 
-const question = z.object({id:z.string().uuid(),content:z.string().min(1),options:z.array(z.string().min(1)).length(4),correctIndex:z.number().int().min(0).max(3),explanation:z.string(),position:z.number().int().nonnegative()});
+const questionTypeSchema = z.enum(['multiple_choice', 'true_false', 'poll', 'word_cloud', 'rating', 'open_text']);
+const question = z.object({
+  id: z.string().uuid(),
+  content: z.string().min(1),
+  options: z.array(z.string().min(1)),
+  correctIndex: z.number().int().min(0),
+  explanation: z.string(),
+  position: z.number().int().nonnegative(),
+  questionType: questionTypeSchema.optional(),
+  multiSelect: z.boolean().optional(),
+  correctIndices: z.array(z.number().int().min(0)).optional(),
+  ratingMax: z.union([z.literal(5), z.literal(10)]).optional(),
+  ratingLabels: z.object({ low: z.string(), high: z.string() }).optional(),
+  codeSnippet: z.string().optional(),
+}).superRefine((q, ctx) => {
+  const kind = q.questionType ?? 'multiple_choice';
+  if (kind === 'multiple_choice' && (q.options.length !== 4 || q.correctIndex > 3)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Multiple-choice questions require 4 options and correctIndex 0..3.' });
+  }
+  if (kind === 'true_false' && (q.options.length !== 2 || q.correctIndex > 1)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'True/False questions require 2 options and correctIndex 0..1.' });
+  }
+  if (kind === 'poll' && q.options.length < 2) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Poll questions require at least 2 options.' });
+  }
+});
 export const cloudSetSchema=z.object({id:z.string().uuid(),title:z.string(),subject:z.string(),questions:z.array(question),revision:z.string().regex(/^\d+$/),updatedAt:z.string(),deleted:z.boolean()});
 export type CloudSet=z.infer<typeof cloudSetSchema>;
 export type PendingSet={mutationId:string;baseRevision:string;document:CloudSet;failures:number;retryAt:number;conflict?:CloudSet};

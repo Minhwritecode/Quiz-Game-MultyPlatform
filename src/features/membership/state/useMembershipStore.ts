@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UserTier, TIER_CONFIGS, TierPrivileges } from '../domain/models';
 import { getLocalDateString } from '@/features/streak/domain/models';
+import { syncUserProgressToCloud } from '@/features/profile/data/profileCloudSync';
 
 interface MembershipState {
   tier: UserTier;
@@ -90,16 +91,20 @@ export const useMembershipStore = create<MembershipState>()(
 
       upgradeToVip: () => {
         set({ tier: 'archmage' });
+        void syncUserProgressToCloud({ membershipTier: 'archmage' });
       },
 
       downgradeToApprentice: () => {
         set({ tier: 'apprentice' });
+        void syncUserProgressToCloud({ membershipTier: 'apprentice' });
       },
 
       toggleTier: () => {
-        set((prev) => ({
-          tier: prev.tier === 'apprentice' ? 'archmage' : 'apprentice',
-        }));
+        set((prev) => {
+          const next = prev.tier === 'apprentice' ? 'archmage' : 'apprentice';
+          void syncUserProgressToCloud({ membershipTier: next });
+          return { tier: next };
+        });
       },
     }),
     {

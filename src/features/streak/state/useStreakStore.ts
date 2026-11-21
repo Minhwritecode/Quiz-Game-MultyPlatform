@@ -8,6 +8,7 @@ import {
   getDaysDifference,
 } from '../domain/models';
 import { useMembershipStore } from '@/features/membership/state/useMembershipStore';
+import { syncUserProgressToCloud } from '@/features/profile/data/profileCloudSync';
 
 interface StreakState extends StreakData {
   refreshStreakStatus: () => void;
@@ -117,6 +118,13 @@ export const useStreakStore = create<StreakState>()(
           status: 'active',
           brokenStreakDays: 0,
           recoveryQuestAvailable: false,
+        });
+
+        void syncUserProgressToCloud({
+          currentStreak: newStreak,
+          longestStreak: longest,
+          streakFreezeCount: state.streakFreezeCount,
+          lastActiveDate: today,
         });
 
         return { streakUpdated: true, newStreak };

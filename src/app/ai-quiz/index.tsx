@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -18,15 +18,21 @@ import { useAiQuizStore } from '@/features/ai-quiz/state/useAiQuizStore';
 import type { QuizDifficulty } from '@/features/ai-quiz/domain/models';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { useQuizStore } from '@/features/quiz-library/state/useQuizStore';
-import {
-  buildCitedQuizFromSpace,
-  useKnowledgeSpacesStore,
-} from '@/features/ai-quiz/state/useKnowledgeSpacesStore';
+import { useKnowledgeSpacesStore } from '@/features/ai-quiz/state/useKnowledgeSpacesStore';
 
 export default function AiQuizScreen() {
   const router = useRouter();
   const palette = usePalette();
-  const { generatedQuiz, isLoading, generateFromTopic, generateFromPdf, clearCurrentQuiz } = useAiQuizStore();
+  const {
+    generatedQuiz,
+    isLoading,
+    tokenBalance,
+    refreshTokenBalance,
+    generateFromTopic,
+    generateFromSpace,
+    generateFromPdf,
+    clearCurrentQuiz,
+  } = useAiQuizStore();
   const saveQuestionSet = usePapyrusStore((state) => state.saveQuestionSet);
   const saveToLibrary = useQuizStore((state) => state.addQuiz);
 
@@ -37,16 +43,23 @@ export default function AiQuizScreen() {
   const [includeCodeSnippet, setIncludeCodeSnippet] = useState(false);
   const [pdfFile, setPdfFile] = useState<{ uri: string; name: string; size?: number } | null>(null);
 
-  // Knowledge Spaces (RAG multi-document workspace)
+  // Knowledge Spaces (RAG multi-document workspace synced with Supabase pgvector)
   const spaces = useKnowledgeSpacesStore((s) => s.spaces);
   const createSpace = useKnowledgeSpacesStore((s) => s.createSpace);
   const addDocument = useKnowledgeSpacesStore((s) => s.addDocument);
   const removeDocument = useKnowledgeSpacesStore((s) => s.removeDocument);
+  const syncSpacesFromCloud = useKnowledgeSpacesStore((s) => s.syncFromCloud);
   const [selectedSpaceId, setSelectedSpaceId] = useState<string>(() => spaces[0]?.id ?? '');
   const [newSpaceName, setNewSpaceName] = useState('');
+  const [ragFocusPrompt, setRagFocusPrompt] = useState('');
   const [noteTitle, setNoteTitle] = useState('');
   const [noteExcerpt, setNoteExcerpt] = useState('');
   const activeSpace = spaces.find((s) => s.id === selectedSpaceId) ?? spaces[0] ?? null;
+
+  useEffect(() => {
+    void refreshTokenBalance();
+    void syncSpacesFromCloud();
+  }, [refreshTokenBalance, syncSpacesFromCloud]);
 
   const handlePickDocument = async () => {
     try {
@@ -86,11 +99,19 @@ export default function AiQuizScreen() {
         Alert.alert('Chưa có Kho tri thức', 'Hãy tạo một Kho tri thức và thêm tài liệu trước.');
         return;
       }
-      const quiz = buildCitedQuizFromSpace(activeSpace, difficulty, questionCount, includeCodeSnippet);
-      useAiQuizStore.setState((state) => ({
-        generatedQuiz: quiz,
-        history: [quiz, ...state.history],
-      }));
+      try {
+        await generateFromSpace({
+          spaceId: activeSpace.cloudId,
+          spaceName: activeSpace.name,
+          documents: activeSpace.documents.map((d) => ({ name: d.name, content: d.excerpt })),
+          prompt: ragFocusPrompt.trim() || undefined,
+          difficulty,
+          questions: questionCount,
+          includeCodeSnippet,
+        });
+      } catch {
+        Alert.alert('Lỗi', 'Không thể sinh quiz RAG lúc này. Vui lòng thử lại.');
+      }
     } else {
       if (!pdfFile) {
         Alert.alert('Chưa chọn PDF', 'Vui lòng chọn một file PDF tài liệu.');
@@ -157,7 +178,10 @@ export default function AiQuizScreen() {
 
   return (
     <Screen scroll={false}>
-      <TopBar title="AI Quiz Generator" />
+      <TopBar
+        title="AI Quiz Generator"
+        action={tokenBalance !== null ? <Badge tone="reward">⚡ {tokenBalance} AI Token</Badge> : undefined}
+      />
 
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         {!generatedQuiz ? (
@@ -322,6 +346,15 @@ export default function AiQuizScreen() {
                       + Tạo
                     </Button>
                   </View>
+
+                  {/* Optional RAG Focus Prompt (Query Planner locator e.g. "Chương 2, mục 1") */}
+                  <TextInput
+                    value={ragFocusPrompt}
+                    onChangeText={setRagFocusPrompt}
+                    placeholder="Yêu cầu trọng tâm (VD: Tập trung vào Chương 2, chỉ hỏi phần thuật toán)..."
+                    placeholderTextColor={palette.inkMuted}
+                    style={[styles.input, { marginTop: 0, marginBottom: spacing.sm, color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paperRaised }]}
+                  />
 
                   {/* Active Space Documents + Add Doc */}
                   {activeSpace && (
@@ -531,6 +564,15 @@ export default function AiQuizScreen() {
                     </Text>
                   ))}
                 </View>
+                {q.citations && q.citations.length > 0 ? (
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: spacing.xs }}>
+                    {q.citations.map((cit, cIdx) => (
+                      <Badge key={`${cit.label}-${cIdx}`} tone="primary">
+                        [{cit.label}] {cit.documentName}{cit.pageNumber ? ` · Tr.${cit.pageNumber}` : ''}
+                      </Badge>
+                    ))}
+                  </View>
+                ) : null}
               </View>
             ))}
 

@@ -3,7 +3,6 @@ import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Button, Card, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
-import { supabase } from '@/core/network/supabase';
 import { useModerationStore } from '@/features/moderation/state/useModerationStore';
 
 const REPORT_REASONS = [
@@ -28,25 +27,12 @@ export function ReportQuestionButton({ questionKey, questionContent }: ReportQue
   const submitReport = async () => {
     if (busy || reported) return;
     setBusy(true);
-    useModerationStore.getState().addLocalReport({
-      questionRef: questionKey,
-      questionPreview: questionContent.slice(0, 240),
-      reason: selectedReason as 'wrong_answer' | 'typo_format' | 'inappropriate' | 'duplicate',
-    });
     try {
-      if (supabase) {
-        const { data } = await supabase.auth.getUser();
-        if (data.user) {
-          await supabase.from('question_reports').insert({
-            reporter_id: data.user.id,
-            question_ref: questionKey,
-            question_preview: questionContent.slice(0, 240),
-            reason: selectedReason,
-          });
-        }
-      }
-    } catch {
-      // Best-effort network submit; always acknowledge locally so UX never breaks offline
+      await useModerationStore.getState().submitReport({
+        questionRef: questionKey,
+        questionPreview: questionContent.slice(0, 240),
+        reason: selectedReason as 'wrong_answer' | 'typo_format' | 'inappropriate' | 'duplicate',
+      });
     } finally {
       setReported(true);
       setBusy(false);

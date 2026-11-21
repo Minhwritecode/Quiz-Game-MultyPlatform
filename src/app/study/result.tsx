@@ -12,7 +12,7 @@ import {
   formatMsSeconds,
   formatStudyReportSummary,
 } from '@/features/study/domain/sessionReport';
-import { exportStudyPdfReport } from '@/features/study/domain/sessionPdf';
+import { exportStudyPdfReport } from '@/features/study/data/sessionPdf';
 
 export default function StudyResultScreen() {
   const { setId, attemptId } = useLocalSearchParams<{ setId: string; attemptId?: string }>();

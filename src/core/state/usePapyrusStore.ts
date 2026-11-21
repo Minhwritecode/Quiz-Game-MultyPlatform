@@ -4,6 +4,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { seedQuestionSets } from '@/core/data/seed';
 import type { QuestionSet, SourceDocument } from '@/core/domain/models';
 import { computeNextElo, ELO_INITIAL, type EloMatchOutcome } from '@/features/room-battle/domain/elo';
+import {
+  fetchCloudProfileSnapshot,
+  syncUserProgressToCloud,
+} from '@/features/profile/data/profileCloudSync';
 
 type PapyrusState = {
   questionSets: QuestionSet[];
@@ -27,6 +31,7 @@ type PapyrusState = {
   categoryElos: Record<string, number>;
   recordGameResult: (score: number, isWin: boolean, opponentElo?: number) => void;
   recordCategoryElo: (categoryId: string, outcome: EloMatchOutcome, opponentElo: number, rated: boolean) => number;
+  hydrateCloudProfile: () => Promise<void>;
   setTheme: (theme: 'system' | 'light' | 'dark') => void;
   hydrateQuestionSets: (load: () => Promise<QuestionSet[]>) => Promise<void>;
   saveSourceDocument: (document: SourceDocument) => void;
@@ -63,7 +68,7 @@ export const usePapyrusStore = create<PapyrusState>()(
       eloPeak: ELO_INITIAL,
       lastEloDelta: 0,
       categoryElos: {},
-      recordGameResult: (score, isWin, opponentElo) =>
+      recordGameResult: (score, isWin, opponentElo) => {
         set((state) => {
           const opp = opponentElo ?? state.eloRating;
           const { nextRating, delta } = computeNextElo(
@@ -72,16 +77,27 @@ export const usePapyrusStore = create<PapyrusState>()(
             isWin ? 1 : 0,
             state.gamesPlayed
           );
+          const nextGames = state.gamesPlayed + 1;
+          const nextTotal = state.totalScore + score;
+          const nextBest = Math.max(state.bestScore, score);
+          const nextWins = state.wins + (isWin ? 1 : 0);
+          void syncUserProgressToCloud({
+            gamesPlayed: nextGames,
+            totalScore: nextTotal,
+            bestScore: nextBest,
+            wins: nextWins,
+          });
           return {
-            gamesPlayed: state.gamesPlayed + 1,
-            totalScore: state.totalScore + score,
-            bestScore: Math.max(state.bestScore, score),
-            wins: state.wins + (isWin ? 1 : 0),
+            gamesPlayed: nextGames,
+            totalScore: nextTotal,
+            bestScore: nextBest,
+            wins: nextWins,
             eloRating: nextRating,
             eloPeak: Math.max(state.eloPeak, nextRating),
             lastEloDelta: delta,
           };
-        }),
+        });
+      },
       recordCategoryElo: (categoryId, outcome, opponentElo, rated) => {
         if (!rated) return 0;
         const state = get();
@@ -94,6 +110,19 @@ export const usePapyrusStore = create<PapyrusState>()(
           lastEloDelta: delta,
         });
         return delta;
+      },
+      hydrateCloudProfile: async () => {
+        const snapshot = await fetchCloudProfileSnapshot();
+        if (!snapshot) return;
+        set((state) => ({
+          eloRating: snapshot.eloRating,
+          eloPeak: Math.max(state.eloPeak, snapshot.eloPeak),
+          gamesPlayed: Math.max(state.gamesPlayed, snapshot.gamesPlayed),
+          totalScore: Math.max(state.totalScore, snapshot.totalScore),
+          bestScore: Math.max(state.bestScore, snapshot.bestScore),
+          wins: Math.max(state.wins, snapshot.wins),
+          categoryElos: { ...state.categoryElos, ...snapshot.categoryElos },
+        }));
       },
       setTheme: (theme) => set({ theme }),
       hydrateQuestionSets: async (load) => {

@@ -3,6 +3,8 @@ export type GeneratedQuestion = {
   options: string[];
   correct_index: number;
   explanation: string;
+  code_snippet?: string;
+  source_labels?: string[];
 };
 
 type UnknownRecord = Record<string, unknown>;
@@ -31,13 +33,24 @@ export function normaliseQuestions(value: unknown, expectedCount: number): Gener
     const options = Array.isArray(item.options) ? item.options.map(asText) : [];
     const correctIndex = typeof item.correct_index === "number" ? item.correct_index : -1;
     const explanation = asText(item.explanation);
+    const codeSnippet = asText(item.code_snippet ?? item.codeSnippet);
+    const sourceLabels = Array.isArray(item.source_labels)
+      ? item.source_labels.map(asText).filter(Boolean)
+      : undefined;
     const key = content.toLocaleLowerCase();
     const valid = content.length > 0 && options.length === 4 &&
       options.every(Boolean) && new Set(options.map((option) => option.toLocaleLowerCase())).size === 4 &&
       Number.isInteger(correctIndex) && correctIndex >= 0 && correctIndex < 4 && explanation.length > 0;
     if (!valid || seen.has(key)) continue;
     seen.add(key);
-    questions.push({ content, options, correct_index: correctIndex, explanation });
+    questions.push({
+      content,
+      options,
+      correct_index: correctIndex,
+      explanation,
+      ...(codeSnippet ? { code_snippet: codeSnippet } : {}),
+      ...(sourceLabels && sourceLabels.length > 0 ? { source_labels: sourceLabels } : {}),
+    });
   }
 
   if (questions.length !== expectedCount) {

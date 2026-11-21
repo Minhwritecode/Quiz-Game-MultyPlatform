@@ -52,7 +52,7 @@ jobs:
         run: supabase start
       - name: SQL permission, lifecycle and account cleanup tests
         run: |
-          for file in supabase/tests/battle_security.sql supabase/tests/battle_lifecycle.sql supabase/tests/account_cleanup.sql; do
+          for file in supabase/tests/battle_security.sql supabase/tests/battle_lifecycle.sql supabase/tests/account_cleanup.sql supabase/tests/platform_and_rag.sql; do
             docker exec -i supabase_db_papyrus-local psql -U postgres -d postgres -v ON_ERROR_STOP=1 < "$file"
           done
       - name: Start local functions and validate auth boundaries

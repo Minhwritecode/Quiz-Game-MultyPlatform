@@ -61,6 +61,15 @@ export const battleRepository = {
   async heartbeat(id:string,ready?:boolean) {await rpc('battle_heartbeat',{target:id,p_ready:ready??null});},
   async leave(id:string) {await rpc('battle_leave',{target:id});},
   async answer(id:string,position:number,index:number) {await rpc('submit_answer',{p_room_id:id,p_position:position,p_chosen_index:index});},
+  async sendReaction(id:string,emoji:string) {await rpc('send_room_reaction',{p_room_id:id,p_emoji:emoji});},
+  async updateSettings(id:string,settings:{readTimeSec?:number;reactionsEnabled?:boolean}) {
+    await rpc('update_room_settings',{
+      p_room_id:id,
+      p_read_time_sec:settings.readTimeSec??null,
+      p_reactions_enabled:settings.reactionsEnabled??null,
+    });
+  },
+  async kickPlayer(id:string,targetUserId:string) {await rpc('kick_room_player',{p_room_id:id,p_target_user_id:targetUserId});},
   subscribe(id:string,onChange:()=>void) {
     const client=supabase;
     if(!client) return ()=>undefined;

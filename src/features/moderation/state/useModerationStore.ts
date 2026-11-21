@@ -19,6 +19,7 @@ interface ModerationState {
   reports: QuestionReportItem[];
   loading: boolean;
   addLocalReport: (item: Omit<QuestionReportItem, 'id' | 'status' | 'createdAt' | 'source'>) => void;
+  submitReport: (item: Omit<QuestionReportItem, 'id' | 'status' | 'createdAt' | 'source'>) => Promise<void>;
   updateStatus: (id: string, status: ModerationStatus) => Promise<void>;
   syncFromCloud: () => Promise<void>;
 }
@@ -55,6 +56,55 @@ export const useModerationStore = create<ModerationState>()(
           ],
         })),
 
+      submitReport: async (item) => {
+        const localId = `rep-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+        const createdAt = new Date().toISOString();
+        set((state) => ({
+          reports: [
+            {
+              ...item,
+              id: localId,
+              status: 'open',
+              createdAt,
+              source: 'local',
+            },
+            ...state.reports,
+          ],
+        }));
+
+        if (!supabase) return;
+        try {
+          const { data: userData } = await supabase.auth.getUser();
+          if (!userData.user) return;
+          const { data: inserted } = await supabase
+            .from('question_reports')
+            .insert({
+              reporter_id: userData.user.id,
+              question_ref: item.questionRef,
+              question_preview: item.questionPreview.slice(0, 240),
+              reason: item.reason,
+            })
+            .select('id, created_at')
+            .single();
+          if (inserted?.id) {
+            set((state) => ({
+              reports: state.reports.map((r) =>
+                r.id === localId
+                  ? {
+                      ...r,
+                      id: String(inserted.id),
+                      createdAt: String(inserted.created_at ?? createdAt),
+                      source: 'cloud',
+                    }
+                  : r
+              ),
+            }));
+          }
+        } catch {
+          // Best-effort cloud submit; local entry stays available
+        }
+      },
+
       updateStatus: async (id, status) => {
         const target = get().reports.find((r) => r.id === id);
         set((state) => ({
@@ -62,7 +112,14 @@ export const useModerationStore = create<ModerationState>()(
         }));
         if (target?.source === 'cloud' && supabase) {
           try {
-            await supabase.from('question_reports').update({ status }).eq('id', id);
+            const { error } = await supabase.rpc('review_question_report', {
+              p_report_id: id,
+              p_status: status,
+              p_note: '',
+            });
+            if (error) {
+              await supabase.from('question_reports').update({ status }).eq('id', id);
+            }
           } catch {
             // Keep optimistic local update
           }

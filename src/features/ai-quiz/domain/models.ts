@@ -1,10 +1,20 @@
 export type QuizDifficulty = 'easy' | 'medium' | 'hard';
 
+export interface QuestionCitation {
+  label: string;
+  documentName: string;
+  headingPath?: string;
+  pageNumber?: number;
+  excerpt?: string;
+}
+
 export interface GeneratedQuestion {
   question: string;
   options: string[];
   correctAnswer: number;
+  explanation?: string;
   codeSnippet?: string;
+  citations?: QuestionCitation[];
 }
 
 export interface GeneratedQuiz {
@@ -12,7 +22,10 @@ export interface GeneratedQuiz {
   title: string;
   description: string;
   difficulty: QuizDifficulty;
-  source: 'topic' | 'pdf' | 'manual';
+  source: 'topic' | 'pdf' | 'manual' | 'rag';
+  provider?: string;
+  runId?: string;
+  tokenBalance?: number;
   questions: GeneratedQuestion[];
   createdAt: string;
 }
@@ -22,4 +35,16 @@ export interface GenerateTopicPayload {
   difficulty: QuizDifficulty;
   questions: number;
   includeCodeSnippet?: boolean;
+  language?: 'vi' | 'en';
+}
+
+export interface GenerateRagPayload {
+  spaceId?: string;
+  spaceName: string;
+  documents: Array<{ name: string; content: string }>;
+  prompt?: string;
+  difficulty: QuizDifficulty;
+  questions: number;
+  includeCodeSnippet?: boolean;
+  language?: 'vi' | 'en';
 }

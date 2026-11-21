@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -64,7 +64,14 @@ export default function ProfileScreen() {
   const eloPeak = usePapyrusStore((s) => s.eloPeak);
   const lastEloDelta = usePapyrusStore((s) => s.lastEloDelta);
   const categoryElos = usePapyrusStore((s) => s.categoryElos);
+  const hydrateCloudProfile = usePapyrusStore((s) => s.hydrateCloudProfile);
   const eloTier = getEloTier(eloRating);
+
+  useEffect(() => {
+    if (user?.id) {
+      void hydrateCloudProfile();
+    }
+  }, [user?.id, hydrateCloudProfile]);
 
   const [name, setName] = useState(user?.displayName ?? '');
   const [busy, setBusy] = useState(false);

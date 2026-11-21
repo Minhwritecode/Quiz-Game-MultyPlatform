@@ -1,5 +1,5 @@
 import { Platform, Share } from 'react-native';
-import { formatMsSeconds, type SessionAnalyticsReport } from './sessionReport';
+import { formatMsSeconds, type SessionAnalyticsReport } from '../domain/sessionReport';
 
 function escapeHtml(text: string): string {
   return text

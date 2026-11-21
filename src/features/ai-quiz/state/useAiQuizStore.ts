@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { GeneratedQuiz, QuizDifficulty } from '../domain/models';
+import type { GeneratedQuiz, GenerateRagPayload, QuizDifficulty } from '../domain/models';
 import { aiQuizApi } from '../services/aiQuiz.api';
 
 interface AiQuizState {
@@ -7,12 +7,15 @@ interface AiQuizState {
   history: GeneratedQuiz[];
   isLoading: boolean;
   error: string | null;
+  tokenBalance: number | null;
+  refreshTokenBalance: () => Promise<void>;
   generateFromTopic: (
     topic: string,
     difficulty: QuizDifficulty,
     questions: number,
     includeCodeSnippet?: boolean
   ) => Promise<GeneratedQuiz>;
+  generateFromSpace: (payload: GenerateRagPayload) => Promise<GeneratedQuiz>;
   generateFromPdf: (fileUri: string, fileName: string, difficulty: QuizDifficulty, questions: number) => Promise<GeneratedQuiz>;
   clearCurrentQuiz: () => void;
 }
@@ -22,6 +25,14 @@ export const useAiQuizStore = create<AiQuizState>((set) => ({
   history: [],
   isLoading: false,
   error: null,
+  tokenBalance: null,
+
+  refreshTokenBalance: async () => {
+    const balance = await aiQuizApi.fetchTokenBalance();
+    if (balance !== null) {
+      set({ tokenBalance: balance });
+    }
+  },
 
   generateFromTopic: async (topic, difficulty, questions, includeCodeSnippet = false) => {
     set({ isLoading: true, error: null });
@@ -30,11 +41,30 @@ export const useAiQuizStore = create<AiQuizState>((set) => ({
       set((state) => ({
         generatedQuiz: quiz,
         history: [quiz, ...state.history],
+        tokenBalance: typeof quiz.tokenBalance === 'number' ? quiz.tokenBalance : state.tokenBalance,
         isLoading: false,
       }));
       return quiz;
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Lỗi khi tạo quiz bằng AI';
+      set({ error: message, isLoading: false });
+      throw err;
+    }
+  },
+
+  generateFromSpace: async (payload) => {
+    set({ isLoading: true, error: null });
+    try {
+      const quiz = await aiQuizApi.generateFromSpace(payload);
+      set((state) => ({
+        generatedQuiz: quiz,
+        history: [quiz, ...state.history],
+        tokenBalance: typeof quiz.tokenBalance === 'number' ? quiz.tokenBalance : state.tokenBalance,
+        isLoading: false,
+      }));
+      return quiz;
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Lỗi khi tạo quiz RAG từ Kho tri thức';
       set({ error: message, isLoading: false });
       throw err;
     }
