@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Badge, Button, Card, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
@@ -46,6 +46,9 @@ export function VipCheckoutModal({
     try {
       const result = await processBillingCheckout(selectedPlan, provider);
       if (result.ok) {
+        if (result.checkoutUrl) {
+          void Linking.openURL(result.checkoutUrl).catch(() => undefined);
+        }
         const refreshed = await fetchBillingHistory();
         setHistory(refreshed);
         Alert.alert(

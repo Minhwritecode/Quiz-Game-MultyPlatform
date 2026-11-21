@@ -70,16 +70,48 @@ export async function processBillingCheckout(
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       if (sessionData.session) {
-        const { data: created, error: createErr } = await supabase.rpc(
-          'create_billing_checkout_session',
-          {
-            p_plan_id: planId,
-            p_provider: provider,
+        // 1a. Invoke `billing-checkout` Edge Function (uses STRIPE_SECRET_KEY on server when configured)
+        let stripeCheckoutUrl: string | null = null;
+        let edgeSubId: string | null = null;
+        try {
+          const { data: edgeData, error: edgeErr } = await supabase.functions.invoke(
+            'billing-checkout',
+            {
+              body: {
+                action: 'create_session',
+                plan_id: planId,
+                provider,
+              },
+            }
+          );
+          if (!edgeErr && edgeData) {
+            if (typeof edgeData.checkoutUrl === 'string' && edgeData.checkoutUrl.startsWith('http')) {
+              stripeCheckoutUrl = edgeData.checkoutUrl;
+            }
+            if (edgeData.subscriptionId) {
+              edgeSubId = String(edgeData.subscriptionId);
+            }
           }
-        );
+        } catch {
+          // Edge function optional fallback to direct RPC
+        }
 
-        if (!createErr && created?.subscriptionId) {
-          const subId = String(created.subscriptionId);
+        // 1b. Create session via RPC if Edge Function wasn't reachable
+        let subId = edgeSubId;
+        if (!subId) {
+          const { data: created, error: createErr } = await supabase.rpc(
+            'create_billing_checkout_session',
+            {
+              p_plan_id: planId,
+              p_provider: provider,
+            }
+          );
+          if (!createErr && created?.subscriptionId) {
+            subId = String(created.subscriptionId);
+          }
+        }
+
+        if (subId) {
           const { data: confirmed, error: confirmErr } = await supabase.rpc(
             'confirm_billing_payment',
             {
@@ -97,6 +129,7 @@ export async function processBillingCheckout(
             }
             return {
               ok: true,
+              checkoutUrl: stripeCheckoutUrl,
               membershipTier: confirmed.membershipTier === 'archmage' ? 'archmage' : 'apprentice',
               tokenBalance: Number(confirmed.tokenBalance ?? 150),
               subscriptionId: subId,
