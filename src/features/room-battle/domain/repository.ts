@@ -9,12 +9,19 @@ export type RoomRecord = {
   status: RoomPhase;
   questionCount: number;
   secondsPerQuestion: number;
+  maxPlayers?: number;
   startedAt: string | null;
   createdAt: string;
 };
 
 export type RoomRepository = {
-  create(input: { setId: string; questionCount: number; secondsPerQuestion: number; mode: RoomRecord['mode'] }): Promise<RoomRecord>;
+  create(input: {
+    setId: string;
+    questionCount: number;
+    secondsPerQuestion: number;
+    mode: RoomRecord['mode'];
+    maxPlayers?: number;
+  }): Promise<RoomRecord>;
   join(code: string): Promise<RoomRecord>;
   subscribe(roomId: string, onRoomChanged: (room: RoomRecord) => void): () => void;
 };

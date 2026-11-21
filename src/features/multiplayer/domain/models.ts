@@ -18,12 +18,15 @@ export interface RoomData {
       question: string;
       options: string[];
       correctAnswer?: number;
+      codeSnippet?: string;
     }>;
   };
   status: RoomStatus;
   currentQuestionIndex: number;
   players: RoomPlayer[];
   remainingTime?: number;
+  maxPlayers?: number;
+  timeLimit?: number;
 }
 
 export interface CurrentQuestionData {
@@ -32,6 +35,7 @@ export interface CurrentQuestionData {
   question: string;
   options: string[];
   remainingTime: number;
+  codeSnippet?: string;
 }
 
 export interface LeaderboardPlayer {

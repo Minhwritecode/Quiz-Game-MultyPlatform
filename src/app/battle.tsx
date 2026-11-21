@@ -16,6 +16,7 @@ import { useMembershipStore } from '@/features/membership/state/useMembershipSto
 import { useStreakStore } from '@/features/streak/state/useStreakStore';
 
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
+import { TurnPvpArena } from '@/features/room-battle/components/TurnPvpArena';
 
 const SCHOLAR_COLORS = ['#3B82F6', '#F59E0B', '#10B981', '#EC4899', '#8B5CF6', '#06B6D4'];
 
@@ -86,12 +87,14 @@ export default function BattleScreen() {
   const [roomId, setRoomId] = useState<string | null>(null);
   const [battle, setBattle] = useState<Battle | null>(null);
   const [sets, setSets] = useState<{ id: string; title: string }[]>([]);
-  const [roomMode, setRoomMode] = useState<'survival' | 'speed'>('survival');
+  const [roomMode, setRoomMode] = useState<'survival' | 'speed' | 'turn_pvp'>('survival');
+  const [turnPvpActive, setTurnPvpActive] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const [questionCount, setQuestionCount] = useState(10);
   const [secondsPerQuestion, setSecondsPerQuestion] = useState(15);
+  const [maxPlayers, setMaxPlayers] = useState(4);
   const [showConfetti, setShowConfetti] = useState(false);
   const recordedRef = useRef(false);
 
@@ -249,8 +252,24 @@ export default function BattleScreen() {
         </View>
       )}
 
+      {/* Turn-Based PvP Mode Active */}
+      {turnPvpActive ? (
+        <TurnPvpArena
+          playerName={user?.displayName || 'Bạn'}
+          secondsPerQuestion={secondsPerQuestion}
+          totalRounds={Math.min(Math.max(3, questionCount), 8)}
+          maxPlayers={maxPlayers}
+          onFinish={(score, isWin) => {
+            recordGameResult(score, isWin);
+            setShowConfetti(true);
+            setTimeout(() => setShowConfetti(false), 3000);
+          }}
+          onExit={() => setTurnPvpActive(false)}
+        />
+      ) : null}
+
       {/* Not Signed In */}
-      {!user && (
+      {!turnPvpActive && !user && (
         <Card style={styles.notAuthCard}>
           <IconTile icon="lock-closed-outline" tint="primary" />
           <Text style={[typography.title, { color: palette.ink, marginTop: spacing.md }]}>
@@ -258,19 +277,22 @@ export default function BattleScreen() {
           </Text>
           <Text style={[typography.body, { color: palette.inkMuted, textAlign: 'center', marginTop: 4 }]}>
             {language === 'vi'
-              ? 'Tính năng thi đấu thời gian thực yêu cầu tài khoản để lưu bảng điểm và tranh tài cùng bạn bè.'
-              : 'Realtime battle arena requires an account to store match history and compete with friends.'}
+              ? 'Tính năng thi đấu thời gian thực yêu cầu tài khoản để lưu bảng điểm, hoặc bạn có thể thử ngay PvP theo lượt bên dưới.'
+              : 'Realtime battle arena requires an account to store match history, or try Turn-Based PvP immediately.'}
           </Text>
-          <View style={{ marginTop: spacing.lg, width: '100%' }}>
+          <View style={{ marginTop: spacing.lg, width: '100%', gap: spacing.sm }}>
             <Button icon="log-in-outline" onPress={() => router.push('/auth')} fullWidth>
               {language === 'vi' ? 'Đăng nhập ngay' : 'Sign in now'}
+            </Button>
+            <Button variant="reward" icon="swap-horizontal" onPress={() => setTurnPvpActive(true)} fullWidth>
+              {language === 'vi' ? 'Chơi ngay PvP theo lượt' : 'Play Turn-Based PvP'}
             </Button>
           </View>
         </Card>
       )}
 
       {/* Lobby - Join or Create */}
-      {user && !roomId && (
+      {!turnPvpActive && user && !roomId && (
         <View style={styles.lobbySections}>
           {/* Instant Survival Arena Card */}
           <Card style={{ backgroundColor: palette.dangerTint, borderColor: palette.dangerBorder, marginBottom: spacing.sm }}>
@@ -338,7 +360,7 @@ export default function BattleScreen() {
             </Text>
 
             {/* Mode Selector Pill Buttons */}
-            <View style={{ flexDirection: 'row', gap: 8, marginVertical: spacing.md }}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginVertical: spacing.md }}>
               <Pressable
                 onPress={() => setRoomMode('survival')}
                 style={[
@@ -358,6 +380,7 @@ export default function BattleScreen() {
                       color: roomMode === 'survival' ? palette.danger : palette.ink,
                     },
                   ]}
+                  numberOfLines={1}
                 >
                   {t.survival.modeSurvival}
                 </Text>
@@ -382,16 +405,102 @@ export default function BattleScreen() {
                       color: roomMode === 'speed' ? palette.indigo : palette.ink,
                     },
                   ]}
+                  numberOfLines={1}
                 >
                   {t.survival.modeSpeed}
                 </Text>
               </Pressable>
+
+              <Pressable
+                onPress={() => setRoomMode('turn_pvp')}
+                style={[
+                  styles.modePill,
+                  {
+                    backgroundColor: roomMode === 'turn_pvp' ? palette.goldTint : palette.paper,
+                    borderColor: roomMode === 'turn_pvp' ? palette.gold : palette.paperMuted,
+                  },
+                ]}
+              >
+                <Ionicons name="swap-horizontal" size={16} color={roomMode === 'turn_pvp' ? palette.gold : palette.inkMuted} />
+                <Text
+                  style={[
+                    typography.caption,
+                    {
+                      fontWeight: '700',
+                      color: roomMode === 'turn_pvp' ? palette.gold : palette.ink,
+                    },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {language === 'vi' ? 'PvP theo lượt' : 'Turn PvP'}
+                </Text>
+              </Pressable>
             </View>
 
-            <Text style={[typography.caption, { color: palette.inkMuted }]}>{language === 'vi' ? 'Số câu hỏi / Thời gian mỗi câu' : 'Question count / Seconds per question'}</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginVertical: 8 }}>{[5, 10, 15].map(value => <Button key={value} variant={questionCount === value ? 'primary' : 'secondary'} onPress={() => setQuestionCount(value)}>{String(value)}</Button>)}</View>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>{[10, 15, 30].map(value => <Button key={value} variant={secondsPerQuestion === value ? 'primary' : 'secondary'} onPress={() => setSecondsPerQuestion(value)}>{value}s</Button>)}</View>
-            {sets.length === 0 ? (
+            {/* Structured Match Config: Questions / Time / Max Players (2-10) */}
+            <Text style={[typography.caption, { color: palette.inkMuted, fontWeight: '700' }]}>
+              {language === 'vi' ? 'Số câu hỏi' : 'Question count'}
+            </Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6, marginBottom: 12 }}>
+              {[5, 10, 15].map((value) => (
+                <Button key={value} variant={questionCount === value ? 'primary' : 'secondary'} onPress={() => setQuestionCount(value)}>
+                  {String(value)}
+                </Button>
+              ))}
+            </View>
+
+            <Text style={[typography.caption, { color: palette.inkMuted, fontWeight: '700' }]}>
+              {language === 'vi' ? 'Thời gian mỗi câu' : 'Seconds per question'}
+            </Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6, marginBottom: 12 }}>
+              {[10, 15, 30].map((value) => (
+                <Button key={value} variant={secondsPerQuestion === value ? 'primary' : 'secondary'} onPress={() => setSecondsPerQuestion(value)}>
+                  {value}s
+                </Button>
+              ))}
+            </View>
+
+            <View style={[styles.stepperRow, { backgroundColor: palette.paper, borderColor: palette.paperMuted }]}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={[typography.caption, { color: palette.ink, fontWeight: '700' }]}>
+                  {language === 'vi' ? 'Số người chơi tối đa' : 'Max players'}
+                </Text>
+                <Text style={[typography.caption, { color: palette.inkMuted }]}>
+                  {language === 'vi' ? 'Tùy chỉnh từ 2 đến 10 người' : 'Configurable from 2 to 10 players'}
+                </Text>
+              </View>
+              <View style={styles.stepperControls}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Giảm số người tối đa"
+                  onPress={() => setMaxPlayers((p) => Math.max(2, p - 1))}
+                  disabled={maxPlayers <= 2}
+                  style={[styles.stepBtn, { backgroundColor: palette.paperMuted, opacity: maxPlayers <= 2 ? 0.45 : 1 }]}
+                >
+                  <Ionicons name="remove" size={18} color={palette.ink} />
+                </Pressable>
+                <Text style={[typography.title, { color: palette.indigo, minWidth: 28, textAlign: 'center' }]}>
+                  {maxPlayers}
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Tăng số người tối đa"
+                  onPress={() => setMaxPlayers((p) => Math.min(10, p + 1))}
+                  disabled={maxPlayers >= 10}
+                  style={[styles.stepBtn, { backgroundColor: palette.paperMuted, opacity: maxPlayers >= 10 ? 0.45 : 1 }]}
+                >
+                  <Ionicons name="add" size={18} color={palette.ink} />
+                </Pressable>
+              </View>
+            </View>
+
+            {roomMode === 'turn_pvp' ? (
+              <View style={{ marginTop: spacing.md }}>
+                <Button variant="reward" icon="swap-horizontal" onPress={() => setTurnPvpActive(true)} fullWidth>
+                  {language === 'vi' ? 'Bắt đầu PvP chọn chủ đề theo lượt' : 'Start Turn-Based PvP Match'}
+                </Button>
+              </View>
+            ) : sets.length === 0 ? (
               <View style={styles.noSetsNotice}>
                 <Text style={[typography.caption, { color: palette.inkMuted }]}>
                   {language === 'vi'
@@ -424,13 +533,14 @@ export default function BattleScreen() {
                           questionCount,
                           secondsPerQuestion,
                           mode: roomMode,
+                          maxPlayers,
                         });
                         useMembershipStore.getState().consumeBattle();
                         await enter(room.id);
                       })
                     }
                   >
-                    {language === 'vi' ? `Tạo phòng: ${set.title}` : `Host: ${set.title}`}
+                    {language === 'vi' ? `Tạo phòng (${maxPlayers} người): ${set.title}` : `Host (${maxPlayers}P): ${set.title}`}
                   </Button>
                 ))}
               </View>
@@ -458,13 +568,18 @@ export default function BattleScreen() {
             <Text style={[typography.display, { color: palette.white, letterSpacing: 6, fontSize: 40 }]}>
               {battle.code}
             </Text>
-            <Badge tone="reward">
-              {battle.phase === 'waiting'
-                ? (language === 'vi' ? 'ĐANG CHỜ NGƯỜI CHƠI' : 'WAITING FOR PLAYERS')
-                : battle.phase === 'question_open'
-                ? (language === 'vi' ? 'ĐANG THI ĐẤU' : 'LIVE BATTLE')
-                : (language === 'vi' ? 'KẾT THÚC' : 'FINISHED')}
-            </Badge>
+            <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', justifyContent: 'center' }}>
+              <Badge tone="reward">
+                {battle.phase === 'waiting'
+                  ? (language === 'vi' ? 'ĐANG CHỜ NGƯỜI CHƠI' : 'WAITING FOR PLAYERS')
+                  : battle.phase === 'question_open'
+                  ? (language === 'vi' ? 'ĐANG THI ĐẤU' : 'LIVE BATTLE')
+                  : (language === 'vi' ? 'KẾT THÚC' : 'FINISHED')}
+              </Badge>
+              <Badge tone="primary">
+                {battle.players.length}/{battle.maxPlayers ?? maxPlayers} {language === 'vi' ? 'người' : 'players'}
+              </Badge>
+            </View>
 
             {/* 3D Colosseum Scholars Arena Display */}
             <View style={styles.arenaScholarsRow}>
@@ -714,7 +829,8 @@ const styles = StyleSheet.create({
   lobbySections: { gap: spacing.md, marginBottom: spacing.xl },
   cardSection: { padding: spacing.lg, borderRadius: radii.md },
   modePill: {
-    flex: 1,
+    flexGrow: 1,
+    minWidth: 100,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -723,6 +839,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: radii.sm,
     borderWidth: 1.5,
+  },
+  stepperRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    marginBottom: spacing.md,
+  },
+  stepperControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  stepBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   pinInput: {
     minHeight: 56,

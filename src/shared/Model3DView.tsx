@@ -3,7 +3,7 @@ import { StyleSheet, View, ViewStyle, ActivityIndicator, Text } from 'react-nati
 import { WebView } from 'react-native-webview';
 import { loadModelDataUri } from './modelLoader';
 
-export type Model3DType = 'survival' | 'battle' | 'match' | 'study' | 'character';
+export type Model3DType = 'survival' | 'battle' | 'match' | 'study' | 'character' | 'questEmblem';
 export type Character3DAnimation = 'Idle' | 'Cast_Spell' | 'Hit_Reaction' | 'Victory_Dance';
 
 interface Model3DViewProps {

@@ -11,6 +11,7 @@ type RoomRow = {
   status: RoomRecord['status'];
   question_count: number;
   seconds_per_question: number;
+  max_players?: number;
   started_at: string | null;
   created_at: string;
 };
@@ -25,6 +26,7 @@ function mapRoom(row: RoomRow): RoomRecord {
     status: row.status,
     questionCount: row.question_count,
     secondsPerQuestion: row.seconds_per_question,
+    maxPlayers: row.max_players ?? 4,
     startedAt: row.started_at,
     createdAt: row.created_at,
   };
@@ -72,14 +74,25 @@ export const battleRepository = {
 export const roomRepository: RoomRepository = {
   async create(input) {
     if (!supabase) throw new Error('Supabase is not configured.');
-    const { data, error } = await supabase.rpc('create_room', {
+    const clampedMax = Math.min(10, Math.max(2, input.maxPlayers ?? 4));
+    const withMax = await supabase.rpc('create_room', {
+      p_set_id: input.setId,
+      p_question_count: input.questionCount,
+      p_seconds_per_question: input.secondsPerQuestion,
+      p_mode: input.mode,
+      p_max_players: clampedMax,
+    });
+    if (!withMax.error) return mapRoom(firstRow(withMax.data));
+
+    // Backward-compatible fallback if older 4-arg create_room RPC is deployed
+    const legacy = await supabase.rpc('create_room', {
       p_set_id: input.setId,
       p_question_count: input.questionCount,
       p_seconds_per_question: input.secondsPerQuestion,
       p_mode: input.mode,
     });
-    if (error) throw error;
-    return mapRoom(firstRow(data));
+    if (legacy.error) throw legacy.error;
+    return mapRoom(firstRow(legacy.data));
   },
   async join(code) {
     if (!supabase) throw new Error('Supabase is not configured.');

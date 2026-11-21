@@ -5,6 +5,7 @@ export const battleSchema = z.object({
   code: z.string(),
   hostId: z.string().uuid(),
   mode: z.enum(['speed', 'survival']).optional().default('speed'),
+  maxPlayers: z.number().optional().default(4),
   phase: z.enum(['waiting', 'countdown', 'question_open', 'question_result', 'finished']),
   serverTime: z.string(),
   answered: z.boolean(),

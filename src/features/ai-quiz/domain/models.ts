@@ -4,6 +4,7 @@ export interface GeneratedQuestion {
   question: string;
   options: string[];
   correctAnswer: number;
+  codeSnippet?: string;
 }
 
 export interface GeneratedQuiz {
@@ -20,4 +21,5 @@ export interface GenerateTopicPayload {
   topic: string;
   difficulty: QuizDifficulty;
   questions: number;
+  includeCodeSnippet?: boolean;
 }

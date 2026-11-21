@@ -34,6 +34,7 @@ export default function CreateQuizScreen() {
       correctAnswer: 0,
     },
   ]);
+  const [openCodeMap, setOpenCodeMap] = useState<Record<number, boolean>>({});
 
   const handleAddQuestion = () => {
     setQuestions((prev) => [
@@ -57,6 +58,12 @@ export default function CreateQuizScreen() {
   const handleQuestionTextChange = (text: string, qIndex: number) => {
     setQuestions((prev) =>
       prev.map((q, i) => (i === qIndex ? { ...q, question: text } : q))
+    );
+  };
+
+  const handleCodeSnippetChange = (text: string, qIndex: number) => {
+    setQuestions((prev) =>
+      prev.map((q, i) => (i === qIndex ? { ...q, codeSnippet: text || undefined } : q))
     );
   };
 
@@ -119,6 +126,7 @@ export default function CreateQuizScreen() {
           correctIndex: q.correctAnswer,
           explanation: 'Câu hỏi soạn thủ công bởi người dùng.',
           position: idx,
+          ...(q.codeSnippet?.trim() ? { codeSnippet: q.codeSnippet.trim() } : {}),
         })),
         updatedAt: new Date().toISOString(),
         syncStatus: 'synced',
@@ -228,6 +236,31 @@ export default function CreateQuizScreen() {
               multiline
               style={[styles.textArea, { color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paperRaised }]}
             />
+
+            <Pressable
+              onPress={() => setOpenCodeMap((prev) => ({ ...prev, [qIndex]: !(prev[qIndex] ?? Boolean(q.codeSnippet)) }))}
+              style={[styles.codeToggle, { borderColor: palette.paperMuted, backgroundColor: palette.paper }]}
+            >
+              <Ionicons name="code-slash-outline" size={16} color={palette.indigo} />
+              <Text style={[typography.caption, { color: palette.indigo, fontWeight: '700' }]}>
+                {(openCodeMap[qIndex] ?? Boolean(q.codeSnippet))
+                  ? 'Ẩn đoạn code minh hoạ'
+                  : 'Thêm đoạn code minh hoạ (tuỳ chọn)'}
+              </Text>
+            </Pressable>
+
+            {(openCodeMap[qIndex] ?? Boolean(q.codeSnippet)) && (
+              <TextInput
+                value={q.codeSnippet ?? ''}
+                onChangeText={(text) => handleCodeSnippetChange(text, qIndex)}
+                placeholder="// Ví dụ: function solve(n) { return n * 2; }"
+                placeholderTextColor="#64748B"
+                multiline
+                autoCapitalize="none"
+                autoCorrect={false}
+                style={styles.codeArea}
+              />
+            )}
 
             <Text style={[typography.caption, { color: palette.inkMuted, fontWeight: '700', marginTop: spacing.md, marginBottom: 4 }]}>
               Các lựa chọn (chọn nút tròn để đánh dấu đáp án đúng):
@@ -360,6 +393,29 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     padding: spacing.md,
     fontSize: 14,
+    textAlignVertical: 'top',
+  },
+  codeToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    marginTop: spacing.xs,
+  },
+  codeArea: {
+    minHeight: 84,
+    borderRadius: radii.sm,
+    padding: spacing.md,
+    marginTop: spacing.xs,
+    backgroundColor: '#0F172A',
+    color: '#E2E8F0',
+    fontFamily: 'monospace',
+    fontSize: 13,
+    lineHeight: 20,
     textAlignVertical: 'top',
   },
   optionRow: {

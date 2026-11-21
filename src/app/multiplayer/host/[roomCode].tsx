@@ -24,6 +24,8 @@ export default function HostRoomScreen() {
 
   const [room, setRoom] = useState<RoomData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [maxPlayers, setMaxPlayers] = useState(6);
+  const [timePerQuestion, setTimePerQuestion] = useState(20);
 
   const loadRoom = useCallback(async () => {
     if (!roomCode) return;
@@ -144,8 +146,61 @@ export default function HostRoomScreen() {
                       ? 'Đang diễn ra'
                       : 'Tạm dừng'}
                   </Badge>
-                  <Badge tone="primary">{room?.players.length || 0} Người tham gia</Badge>
+                  <Badge tone="primary">
+                    {room?.players.length || 0} / {maxPlayers} Người chơi
+                  </Badge>
+                  <Badge tone="neutral">{timePerQuestion}s / câu</Badge>
                 </View>
+
+                {room?.status === 'waiting' && (
+                  <View style={[styles.configBox, { backgroundColor: palette.paper, borderColor: palette.paperMuted }]}>
+                    <View style={styles.configRow}>
+                      <Text style={[typography.caption, { color: palette.ink, fontWeight: '700', flex: 1 }]}>
+                        👥 Tối đa (2–10)
+                      </Text>
+                      <View style={styles.stepperWrap}>
+                        <Pressable
+                          onPress={() => setMaxPlayers((n) => Math.max(2, n - 1))}
+                          disabled={maxPlayers <= 2}
+                          style={[styles.stepBtn, { backgroundColor: palette.paperMuted, opacity: maxPlayers <= 2 ? 0.4 : 1 }]}
+                        >
+                          <Ionicons name="remove" size={16} color={palette.ink} />
+                        </Pressable>
+                        <Text style={[typography.title, { color: palette.indigo, minWidth: 26, textAlign: 'center', fontSize: 15 }]}>
+                          {maxPlayers}
+                        </Text>
+                        <Pressable
+                          onPress={() => setMaxPlayers((n) => Math.min(10, n + 1))}
+                          disabled={maxPlayers >= 10}
+                          style={[styles.stepBtn, { backgroundColor: palette.paperMuted, opacity: maxPlayers >= 10 ? 0.4 : 1 }]}
+                        >
+                          <Ionicons name="add" size={16} color={palette.ink} />
+                        </Pressable>
+                      </View>
+                    </View>
+                    <View style={styles.configRow}>
+                      <Text style={[typography.caption, { color: palette.ink, fontWeight: '700' }]}>⏱ Thời gian/câu</Text>
+                      <View style={styles.timeChips}>
+                        {[15, 20, 30, 45].map((sec) => (
+                          <Pressable
+                            key={sec}
+                            onPress={() => setTimePerQuestion(sec)}
+                            style={[
+                              styles.timeChip,
+                              {
+                                backgroundColor: timePerQuestion === sec ? palette.indigo : palette.paperMuted,
+                              },
+                            ]}
+                          >
+                            <Text style={{ color: timePerQuestion === sec ? '#FFFFFF' : palette.ink, fontSize: 12, fontWeight: '700' }}>
+                              {sec}s
+                            </Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    </View>
+                  </View>
+                )}
 
                 <View style={styles.shareRow}>
                   <View style={styles.flexBtn}>
@@ -331,4 +386,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: spacing.sm,
   },
+  configBox: {
+    width: '100%',
+    borderWidth: 1,
+    borderRadius: radii.md,
+    padding: spacing.sm,
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  configRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  stepperWrap: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  stepBtn: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  timeChips: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
+  timeChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: radii.sm },
 });

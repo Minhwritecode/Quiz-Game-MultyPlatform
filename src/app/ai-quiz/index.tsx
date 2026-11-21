@@ -30,6 +30,7 @@ export default function AiQuizScreen() {
   const [topic, setTopic] = useState('');
   const [difficulty, setDifficulty] = useState<QuizDifficulty>('easy');
   const [questionCount, setQuestionCount] = useState(5);
+  const [includeCodeSnippet, setIncludeCodeSnippet] = useState(false);
   const [pdfFile, setPdfFile] = useState<{ uri: string; name: string; size?: number } | null>(null);
 
   const handlePickDocument = async () => {
@@ -61,7 +62,7 @@ export default function AiQuizScreen() {
         return;
       }
       try {
-        await generateFromTopic(topic.trim(), difficulty, questionCount);
+        await generateFromTopic(topic.trim(), difficulty, questionCount, includeCodeSnippet);
       } catch {
         Alert.alert('Lỗi', 'Không thể tạo quiz lúc này. Vui lòng thử lại.');
       }
@@ -91,6 +92,7 @@ export default function AiQuizScreen() {
         correctIndex: q.correctAnswer,
         explanation: 'Câu hỏi được sinh bởi AI Quiz Generator.',
         position: idx,
+        ...(q.codeSnippet ? { codeSnippet: q.codeSnippet } : {}),
       })),
       updatedAt: new Date().toISOString(),
       syncStatus: 'synced' as const,
@@ -189,6 +191,25 @@ export default function AiQuizScreen() {
                     placeholderTextColor={palette.inkMuted}
                     style={[styles.input, { color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paperRaised }]}
                   />
+                  <Pressable
+                    onPress={() => setIncludeCodeSnippet((v) => !v)}
+                    style={[
+                      styles.codeOptionPill,
+                      {
+                        borderColor: includeCodeSnippet ? palette.indigo : palette.paperMuted,
+                        backgroundColor: includeCodeSnippet ? palette.indigoTint : palette.paperRaised,
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name={includeCodeSnippet ? 'checkbox' : 'square-outline'}
+                      size={18}
+                      color={includeCodeSnippet ? palette.indigo : palette.inkMuted}
+                    />
+                    <Text style={[typography.caption, { color: palette.ink, fontWeight: '700', flex: 1 }]}>
+                      💻 Kèm đoạn code minh hoạ (phù hợp chủ đề lập trình / CNTT)
+                    </Text>
+                  </Pressable>
                 </View>
               ) : (
                 <View style={styles.inputGroup}>
@@ -315,6 +336,11 @@ export default function AiQuizScreen() {
                 <Text style={[typography.title, { color: palette.indigo }]}>
                   Câu {idx + 1}: {q.question}
                 </Text>
+                {q.codeSnippet ? (
+                  <View style={styles.previewCodeBlock}>
+                    <Text style={styles.previewCodeText}>{q.codeSnippet}</Text>
+                  </View>
+                ) : null}
                 <View style={styles.optionsList}>
                   {q.options.map((opt, oIdx) => (
                     <Text
@@ -375,6 +401,9 @@ const styles = StyleSheet.create({
   quizOverview: { padding: spacing.md, borderRadius: radii.md, borderWidth: 1, marginTop: spacing.sm },
   badgeRow: { flexDirection: 'row', gap: spacing.xs, marginTop: spacing.sm, flexWrap: 'wrap' },
   previewItem: { padding: spacing.md, borderRadius: radii.md, borderWidth: 1, marginBottom: spacing.sm },
+  codeOptionPill: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, padding: spacing.sm, borderRadius: radii.md, borderWidth: 1, marginTop: spacing.sm },
+  previewCodeBlock: { backgroundColor: '#0F172A', borderRadius: 8, padding: spacing.sm, marginTop: spacing.xs },
+  previewCodeText: { fontFamily: 'monospace', fontSize: 12, lineHeight: 18, color: '#E2E8F0' },
   optionsList: { marginTop: spacing.xs },
   resultActions: { gap: spacing.sm, marginTop: spacing.xl },
 });

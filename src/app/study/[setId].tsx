@@ -228,6 +228,13 @@ export default function StudyScreen() {
         <Text style={[typography.heading, { color: palette.ink, lineHeight: 32 }]}>
           {question.content}
         </Text>
+        {question.codeSnippet ? (
+          <View style={{ backgroundColor: '#0F172A', borderRadius: 10, padding: spacing.md, marginTop: spacing.md }}>
+            <Text style={{ fontFamily: 'monospace', fontSize: 13, lineHeight: 20, color: '#E2E8F0' }}>
+              {question.codeSnippet}
+            </Text>
+          </View>
+        ) : null}
       </Card>
 
       {/* Options List */}

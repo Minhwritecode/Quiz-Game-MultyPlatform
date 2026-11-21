@@ -2,10 +2,15 @@ import type { GeneratedQuiz, GenerateTopicPayload } from '../domain/models';
 
 export const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://localhost:5000';
 
-function generateFallbackQuestions(topic: string, count: number): GeneratedQuiz {
+function generateFallbackQuestions(topic: string, count: number, includeCodeSnippet = false): GeneratedQuiz {
   const diffLabels = ['Cơ bản', 'Nâng cao', 'Chuyên sâu'];
   const questions = Array.from({ length: count }, (_, i) => ({
     question: `Câu hỏi ${i + 1} về chủ đề "${topic}": Khái niệm hoặc ứng dụng trọng tâm là gì?`,
+    ...(includeCodeSnippet
+      ? {
+          codeSnippet: `// Ví dụ minh hoạ #${i + 1} — ${topic}\nconst sample = { topic: "${topic}", step: ${i + 1} };\nconsole.log(sample.step * 2);`,
+        }
+      : {}),
     options: [
       `Nguyên lý nền tảng của ${topic} và cách vận hành`,
       `Phương pháp áp dụng thực tiễn trong trường hợp đặc biệt`,
@@ -53,7 +58,7 @@ export const aiQuizApi = {
       // Fallback for offline or local dev without active backend server
     }
 
-    return generateFallbackQuestions(payload.topic, payload.questions);
+    return generateFallbackQuestions(payload.topic, payload.questions, payload.includeCodeSnippet);
   },
 
   async generateFromPdf(fileUri: string, fileName: string, difficulty: 'easy' | 'medium' | 'hard', questionsCount: number): Promise<GeneratedQuiz> {

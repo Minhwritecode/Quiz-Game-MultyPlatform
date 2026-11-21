@@ -7,7 +7,12 @@ interface AiQuizState {
   history: GeneratedQuiz[];
   isLoading: boolean;
   error: string | null;
-  generateFromTopic: (topic: string, difficulty: QuizDifficulty, questions: number) => Promise<GeneratedQuiz>;
+  generateFromTopic: (
+    topic: string,
+    difficulty: QuizDifficulty,
+    questions: number,
+    includeCodeSnippet?: boolean
+  ) => Promise<GeneratedQuiz>;
   generateFromPdf: (fileUri: string, fileName: string, difficulty: QuizDifficulty, questions: number) => Promise<GeneratedQuiz>;
   clearCurrentQuiz: () => void;
 }
@@ -18,10 +23,10 @@ export const useAiQuizStore = create<AiQuizState>((set) => ({
   isLoading: false,
   error: null,
 
-  generateFromTopic: async (topic, difficulty, questions) => {
+  generateFromTopic: async (topic, difficulty, questions, includeCodeSnippet = false) => {
     set({ isLoading: true, error: null });
     try {
-      const quiz = await aiQuizApi.generateFromTopic({ topic, difficulty, questions });
+      const quiz = await aiQuizApi.generateFromTopic({ topic, difficulty, questions, includeCodeSnippet });
       set((state) => ({
         generatedQuiz: quiz,
         history: [quiz, ...state.history],

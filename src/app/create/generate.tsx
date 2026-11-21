@@ -25,6 +25,7 @@ export default function GenerateScreen() {
   const saveToStore = usePapyrusStore((state) => state.saveQuestionSet);
   const sourceDocument = usePapyrusStore((state) => state.sourceDocument);
   const [questions, setQuestions] = useState<Question[]>(() => manualMode ? [{ id: `manual-${Date.now()}`, content: '', options: ['', '', '', ''], correctIndex: 0, explanation: '', position: 0 }] : []);
+  const [openCodeIds, setOpenCodeIds] = useState<Record<string, boolean>>({});
   const [count, setCount] = useState(10);
   const [difficulty, setDifficulty] = useState<'Easy' | 'Balanced' | 'Challenge'>('Balanced');
   const [busy, setBusy] = useState(false);
@@ -118,6 +119,33 @@ export default function GenerateScreen() {
     {questions.map((question, index) => <Card key={question.id} style={styles.question}>
       <View style={styles.questionHeader}><Text style={[typography.label, { color: palette.indigo }]}>{t.home.questionLabel.toLocaleUpperCase()} {index + 1}</Text><Pressable accessibilityRole="button" accessibilityLabel={`${t.home.removeQuestion} ${index + 1}`} onPress={() => removeQuestion(question.id)} style={styles.removeButton}><Ionicons name="trash-outline" size={20} color={palette.danger} /></Pressable></View>
       <TextInput testID={`question-${index}-content`} accessibilityLabel={`${t.home.questionLabel} ${index+1}`} placeholder={t.home.questionLabel} value={question.content} onChangeText={(content) => updateQuestion(question.id, (current) => ({ ...current, content }))} multiline textAlignVertical="top" style={[styles.questionInput, { color: palette.ink, borderColor: palette.paperMuted }]} />
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => setOpenCodeIds((prev) => ({ ...prev, [question.id]: !(prev[question.id] ?? Boolean(question.codeSnippet)) }))}
+        style={[styles.codeToggle, { borderColor: palette.paperMuted, backgroundColor: palette.paper }]}
+      >
+        <Ionicons name="code-slash-outline" size={16} color={palette.indigo} />
+        <Text style={[typography.caption, { color: palette.indigo, fontWeight: '700' }]}>
+          {(openCodeIds[question.id] ?? Boolean(question.codeSnippet))
+            ? (language === 'vi' ? 'Ẩn đoạn code minh hoạ' : 'Hide code snippet')
+            : (language === 'vi' ? 'Thêm đoạn code minh hoạ (tuỳ chọn)' : 'Add code snippet (optional)')}
+        </Text>
+      </Pressable>
+      {(openCodeIds[question.id] ?? Boolean(question.codeSnippet)) && (
+        <TextInput
+          testID={`question-${index}-code`}
+          accessibilityLabel={`Code snippet ${index + 1}`}
+          value={question.codeSnippet ?? ''}
+          onChangeText={(codeSnippet) => updateQuestion(question.id, (current) => ({ ...current, codeSnippet: codeSnippet || undefined }))}
+          placeholder="// Ví dụ: const sum = (a, b) => a + b;"
+          placeholderTextColor="#64748B"
+          multiline
+          autoCapitalize="none"
+          autoCorrect={false}
+          textAlignVertical="top"
+          style={styles.codeInput}
+        />
+      )}
       {question.options.map((option, optionIndex) => <View key={`${question.id}-${optionIndex}`} style={styles.optionRow}>
         <Pressable accessibilityRole="radio" accessibilityState={{ selected: question.correctIndex === optionIndex }} accessibilityLabel={`Mark option ${optionIndex + 1} as correct`} onPress={() => updateQuestion(question.id, (current) => ({ ...current, correctIndex: optionIndex }))} style={[styles.answerMark, { backgroundColor: question.correctIndex === optionIndex ? palette.mintTint : palette.paperMuted }]}><Ionicons name={question.correctIndex === optionIndex ? 'checkmark-circle' : 'ellipse-outline'} size={20} color={question.correctIndex === optionIndex ? palette.mint : palette.inkMuted} /></Pressable>
         <TextInput testID={`question-${index}-option-${optionIndex}`} accessibilityLabel={`${t.home.optionLabel} ${optionIndex+1}`} placeholder={`${t.home.optionLabel} ${optionIndex + 1}`} value={option} onChangeText={(nextOption) => updateQuestion(question.id, (current) => ({ ...current, options: current.options.map((value, currentIndex) => currentIndex === optionIndex ? nextOption : value) }))} style={[styles.optionInput, { color: palette.ink, borderColor: palette.paperMuted }]} />
@@ -141,5 +169,7 @@ const styles = StyleSheet.create({
   removeButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   optionInput: { flex: 1, minHeight: 44, borderWidth: 1, borderRadius: 12, paddingHorizontal: spacing.md, fontSize: 14 },
   explanationInput: { minHeight: 48, borderWidth: 1, borderRadius: 12, padding: spacing.md, fontSize: 14 },
+  codeToggle: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingHorizontal: spacing.sm, paddingVertical: 6, borderRadius: 10, borderWidth: 1 },
+  codeInput: { minHeight: 84, borderRadius: 10, padding: spacing.md, backgroundColor: '#0F172A', color: '#E2E8F0', fontFamily: 'monospace', fontSize: 13, lineHeight: 20 },
   actions: { gap: spacing.sm, marginTop: spacing.xl, marginBottom: spacing.xl },
 });

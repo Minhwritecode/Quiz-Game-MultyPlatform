@@ -226,6 +226,13 @@ export default function MultiplayerQuestionScreen() {
           <Text style={[styles.promptText, { color: palette.ink }]}>
             {questionData.question}
           </Text>
+          {questionData.codeSnippet ? (
+            <View style={{ backgroundColor: '#0F172A', borderRadius: 10, padding: spacing.md, marginTop: spacing.md }}>
+              <Text style={{ fontFamily: 'monospace', fontSize: 13, lineHeight: 20, color: '#E2E8F0' }}>
+                {questionData.codeSnippet}
+              </Text>
+            </View>
+          ) : null}
         </Card>
 
         {/* 4 CHOICES WITH STUDYWARS GEOMETRIC SHAPES */}
