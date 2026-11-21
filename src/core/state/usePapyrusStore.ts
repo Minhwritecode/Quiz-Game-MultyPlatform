@@ -13,6 +13,12 @@ type PapyrusState = {
   reduceMotion: boolean;
   language: 'vi' | 'en';
   theme: 'system' | 'light' | 'dark';
+  /** Persistent game stats */
+  gamesPlayed: number;
+  totalScore: number;
+  bestScore: number;
+  wins: number;
+  recordGameResult: (score: number, isWin: boolean) => void;
   setTheme: (theme: 'system' | 'light' | 'dark') => void;
   hydrateQuestionSets: (load: () => Promise<QuestionSet[]>) => Promise<void>;
   saveSourceDocument: (document: SourceDocument) => void;
@@ -34,6 +40,17 @@ export const usePapyrusStore = create<PapyrusState>()(persist((set, get) => ({
   reduceMotion: false,
   language: 'vi',
   theme: 'system',
+  gamesPlayed: 0,
+  totalScore: 0,
+  bestScore: 0,
+  wins: 0,
+  recordGameResult: (score, isWin) =>
+    set((state) => ({
+      gamesPlayed: state.gamesPlayed + 1,
+      totalScore: state.totalScore + score,
+      bestScore: Math.max(state.bestScore, score),
+      wins: state.wins + (isWin ? 1 : 0),
+    })),
   setTheme: (theme) => set({theme}),
   hydrateQuestionSets: async (load) => {
     const stored = await load();
@@ -58,4 +75,4 @@ export const usePapyrusStore = create<PapyrusState>()(persist((set, get) => ({
   toggleReduceMotion: () => set((state) => ({ reduceMotion: !state.reduceMotion })),
   setLanguage: (language) => set({ language }),
   toggleLanguage: () => set((state) => ({ language: state.language === 'vi' ? 'en' : 'vi' })),
-}), {name:'papyrus.preferences',storage:createJSONStorage(()=>AsyncStorage),partialize:state=>({deletedSetIds:state.deletedSetIds,theme:state.theme,language:state.language,haptics:state.haptics,reduceMotion:state.reduceMotion})}));
+}), {name:'papyrus.preferences',storage:createJSONStorage(()=>AsyncStorage),partialize:state=>({deletedSetIds:state.deletedSetIds,theme:state.theme,language:state.language,haptics:state.haptics,reduceMotion:state.reduceMotion,gamesPlayed:state.gamesPlayed,totalScore:state.totalScore,bestScore:state.bestScore,wins:state.wins})}));

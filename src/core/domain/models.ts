@@ -7,6 +7,8 @@ export type Question = {
   correctIndex: number;
   explanation: string;
   position: number;
+  /** Optional code snippet shown before answer options (displayed in monospace block) */
+  codeSnippet?: string;
 };
 
 export type QuestionSet = {
@@ -97,7 +99,33 @@ export function isValidQuestion(question: Question): boolean {
     question.correctIndex >= 0 && question.correctIndex < question.options.length;
 }
 
-export function calculateSpeedScore(isCorrect: boolean, remainingMs: number): number {
+/**
+ * 10-tier speed scoring (inspired by competitive quiz ranking systems).
+ * Base: 1000 pts always for correct answer.
+ * Speed bonus (0–500): based on how quickly player answered relative to timeLimit.
+ * Tier breakdown (elapsed ratio → bonus):
+ *   <5%  → 500   <10% → 445   <15% → 390   <20% → 335
+ *   <30% → 280   <40% → 220   <55% → 165   <70% → 110
+ *   <85% → 55    else → 0
+ */
+export function calculateSpeedScore(
+  isCorrect: boolean,
+  remainingMs: number,
+  timeLimitMs = 15_000,
+): number {
   if (!isCorrect) return 0;
-  return 1000 + Math.min(500, Math.max(0, Math.floor(remainingMs / 100)));
+  const elapsedMs = Math.max(0, timeLimitMs - remainingMs);
+  const ratio = elapsedMs / Math.max(1, timeLimitMs);
+  let bonus = 0;
+  if      (ratio < 0.05) bonus = 500;
+  else if (ratio < 0.10) bonus = 445;
+  else if (ratio < 0.15) bonus = 390;
+  else if (ratio < 0.20) bonus = 335;
+  else if (ratio < 0.30) bonus = 280;
+  else if (ratio < 0.40) bonus = 220;
+  else if (ratio < 0.55) bonus = 165;
+  else if (ratio < 0.70) bonus = 110;
+  else if (ratio < 0.85) bonus = 55;
+  else                   bonus = 0;
+  return 1000 + bonus;
 }

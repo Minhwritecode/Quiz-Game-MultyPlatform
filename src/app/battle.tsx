@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { AppState, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Animated, AppState, Easing, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { Badge, Button, Card, IconTile, Screen, usePalette } from '@/shared/ui';
@@ -13,13 +13,71 @@ import { GameEnvironment } from '@/shared/GameEnvironment';
 import { CharacterAvatar } from '@/shared/CharacterAvatar';
 import { sfx } from '@/core/audio/sfx';
 
+import { usePapyrusStore } from '@/core/state/usePapyrusStore';
+
 const SCHOLAR_COLORS = ['#3B82F6', '#F59E0B', '#10B981', '#EC4899', '#8B5CF6', '#06B6D4'];
+
+/** Simple pure-RN confetti: 20 coloured squares burst from top then fade */
+function ConfettiOverlay({ visible }: { visible: boolean }) {
+  const COLORS = ['#4F46E5', '#FBBF24', '#10B981', '#F43F5E', '#06B6D4', '#8B5CF6'];
+  const particles = useRef(
+    Array.from({ length: 20 }, (_, i) => ({
+      x: new Animated.Value(0.1 + (i % 10) * 0.08),
+      y: new Animated.Value(0),
+      op: new Animated.Value(1),
+      color: COLORS[i % COLORS.length],
+      rot: new Animated.Value(0),
+      size: 8 + (i % 5) * 3,
+    })),
+  ).current;
+
+  useEffect(() => {
+    if (!visible) return;
+    const anims = particles.map((p) => {
+      p.y.setValue(0);
+      p.op.setValue(1);
+      p.rot.setValue(0);
+      return Animated.parallel([
+        Animated.timing(p.y, { toValue: 1, duration: 2000 + Math.random() * 800, useNativeDriver: true, easing: Easing.out(Easing.quad) }),
+        Animated.timing(p.op, { toValue: 0, duration: 2400, delay: 400, useNativeDriver: true }),
+        Animated.timing(p.rot, { toValue: 1, duration: 2000, useNativeDriver: true }),
+      ]);
+    });
+    Animated.stagger(80, anims).start();
+  }, [visible, particles]);
+
+  if (!visible) return null;
+  return (
+    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, pointerEvents: 'none' }}>
+      {particles.map((p, i) => (
+        <Animated.View
+          key={i}
+          style={{
+            position: 'absolute',
+            left: `${p.x._value * 100}%` as unknown as number,
+            top: 0,
+            width: p.size,
+            height: p.size,
+            backgroundColor: p.color,
+            borderRadius: 2,
+            opacity: p.op,
+            transform: [
+              { translateY: p.y.interpolate({ inputRange: [0, 1], outputRange: [0, 500] }) },
+              { rotate: p.rot.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '540deg'] }) },
+            ],
+          }}
+        />
+      ))}
+    </View>
+  );
+}
 
 export default function BattleScreen() {
   const router = useRouter();
   const palette = usePalette();
   const { language, t } = useI18n();
   const user = useAuthStore((s) => s.user);
+  const recordGameResult = usePapyrusStore((s) => s.recordGameResult);
   const params = useLocalSearchParams<{ code?: string }>();
   const [code, setCode] = useState(params.code ?? '');
   const [roomId, setRoomId] = useState<string | null>(null);
@@ -31,6 +89,8 @@ export default function BattleScreen() {
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const [questionCount, setQuestionCount] = useState(10);
   const [secondsPerQuestion, setSecondsPerQuestion] = useState(15);
+  const [showConfetti, setShowConfetti] = useState(false);
+  const recordedRef = useRef(false);
 
   useEffect(() => {
     if (!battle?.question || battle.phase !== 'question_open') { setRemainingSeconds(null); return; }
@@ -42,6 +102,20 @@ export default function BattleScreen() {
     const timer = setInterval(tick, 250);
     return () => clearInterval(timer);
   }, [battle]);
+
+  // Record game result + show confetti when finished
+  useEffect(() => {
+    if (battle?.phase !== 'finished' || recordedRef.current) return;
+    recordedRef.current = true;
+    const me = battle.players.find((p) => p.userId === user?.id);
+    const myScore = me?.score ?? 0;
+    const isWin = battle.players.length > 0 && battle.players[0]?.userId === user?.id;
+    recordGameResult(myScore, isWin);
+    setShowConfetti(true);
+    const tid = setTimeout(() => setShowConfetti(false), 3000);
+    return () => clearTimeout(tid);
+  }, [battle?.phase]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const roomKey = `papyrus.battle.${user?.id ?? 'guest'}`;
 
   useEffect(() => {
@@ -466,6 +540,14 @@ export default function BattleScreen() {
                 {question.content}
               </Text>
 
+              {question.codeSnippet ? (
+                <View style={[styles.codeBlock, { backgroundColor: palette.ink === '#0F172A' ? '#1E293B' : '#F1F5F9' }]}>
+                  <Text style={[styles.codeText, { color: palette.ink === '#0F172A' ? '#94A3B8' : '#334155' }]}>
+                    {question.codeSnippet}
+                  </Text>
+                </View>
+              ) : null}
+
               <View style={styles.battleOptions}>
                 {question.options.map((option, index) => (
                   <Button
@@ -577,6 +659,7 @@ export default function BattleScreen() {
       )}
       </GameEnvironment>
     </Screen>
+    <ConfettiOverlay visible={showConfetti} />
   );
 }
 
@@ -658,4 +741,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   playerRank: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  codeBlock: {
+    borderRadius: 10,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  codeText: {
+    fontFamily: 'monospace',
+    fontSize: 13,
+    lineHeight: 20,
+  },
 });
