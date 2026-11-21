@@ -5,11 +5,15 @@ coverage
 .idea
 *.iml
 .env*
+supabase/.env*
+supabase/.temp
+supabase/.branches
 android/.gradle
 ios/Pods
 node_modules
 .expo
 dist
+web-build
 android
 ios
 agentic-awesome-skills
@@ -18,14 +22,17 @@ QuizPulse-main
 StudyWars-master
 buzrr-main
 dev-quiz-battle-main
+Setup Guide In-Editor Tutorial
+client
 *.jks
 *.keystore
 *.p12
 *.p8
 *.pem
+*.log
+*.tsbuildinfo
 credentials.json
 play-service-account.json
-
 .local-signing/
 .worktrees/
 artifacts/
