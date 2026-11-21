@@ -14,6 +14,12 @@ port = 54323
 [functions.generate-questions]
 verify_jwt = true
 
+[functions.rag-ingest]
+verify_jwt = true
+
+[functions.billing-checkout]
+verify_jwt = true
+
 [functions.delete-account]
 verify_jwt = true
 
