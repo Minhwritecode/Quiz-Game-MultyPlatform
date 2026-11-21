@@ -8,8 +8,13 @@ alter table public.rooms
 alter table public.questions
   add column if not exists code_snippet text;
 
+-- Drop previous signatures cleanly so we can extend return columns & add optional p_max_players without overload ambiguity
+drop function if exists public.create_room(uuid, integer, integer, text);
+drop function if exists public.create_room(uuid, integer, integer, text, integer);
+drop function if exists public.join_room(text);
+
 -- Update create_room to support optional p_max_players (backward-compatible default = 4)
-create or replace function public.create_room(
+create function public.create_room(
   p_set_id uuid,
   p_question_count integer default 10,
   p_seconds_per_question integer default 15,
@@ -84,7 +89,7 @@ end;
 $$;
 
 -- Update join_room to respect room.max_players instead of hardcoded 4
-create or replace function public.join_room(p_code text)
+create function public.join_room(p_code text)
 returns table (
   id uuid,
   code text,
@@ -229,3 +234,11 @@ begin
   offset greatest(0, p_offset);
 end;
 $$;
+
+revoke all on function public.create_room(uuid, integer, integer, text, integer) from public, anon;
+revoke all on function public.join_room(text) from public, anon;
+grant execute on function public.create_room(uuid, integer, integer, text, integer),
+  public.join_room(text) to authenticated;
+
+revoke all on function public.get_leaderboard_players(text, text, integer, integer) from public;
+grant execute on function public.get_leaderboard_players(text, text, integer, integer) to authenticated, anon;
