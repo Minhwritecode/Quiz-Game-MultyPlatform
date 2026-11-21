@@ -13,7 +13,7 @@ import { radii, spacing, typography } from '@/core/theme/tokens';
 import { useAuthStore } from '@/core/state/useAuthStore';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { dependencies } from '@/composition/dependencies';
-import { getEloTier } from '@/features/room-battle/domain/elo';
+import { DUEL_CATEGORIES, getEloTier } from '@/features/room-battle/domain/elo';
 
 function StatBox({
   label,
@@ -63,6 +63,7 @@ export default function ProfileScreen() {
   const eloRating = usePapyrusStore((s) => s.eloRating);
   const eloPeak = usePapyrusStore((s) => s.eloPeak);
   const lastEloDelta = usePapyrusStore((s) => s.lastEloDelta);
+  const categoryElos = usePapyrusStore((s) => s.categoryElos);
   const eloTier = getEloTier(eloRating);
 
   const [name, setName] = useState(user?.displayName ?? '');
@@ -148,6 +149,28 @@ export default function ProfileScreen() {
             <StatBox label="Trận đấu" value={gamesPlayed} accent={palette.mint} />
             <StatBox label="Tỉ lệ thắng" value={winRate} accent={palette.danger} />
           </View>
+
+          {/* ── Per-Category ELO Ratings ── */}
+          <Card style={{ marginTop: spacing.md, width: '100%' }}>
+            <Text style={[typography.label, { color: palette.indigo, marginBottom: spacing.sm }]}>
+              ELO THEO CHUYÊN MÔN (1V1 DUEL)
+            </Text>
+            <View style={styles.catEloGrid}>
+              {DUEL_CATEGORIES.map((cat) => {
+                const rating = categoryElos[cat.id] ?? eloRating;
+                return (
+                  <View key={cat.id} style={[styles.catEloChip, { backgroundColor: palette.paperMuted }]}>
+                    <Text style={[typography.caption, { color: palette.ink, fontWeight: '700' }]} numberOfLines={1}>
+                      {cat.icon} {cat.label}
+                    </Text>
+                    <Text style={[typography.caption, { color: palette.indigo, fontWeight: '800' }]}>
+                      {rating}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          </Card>
 
           {/* ── Edit display name ── */}
           {user ? (
@@ -240,6 +263,23 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginTop: spacing.xl,
     width: '100%',
+  },
+  catEloGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  catEloChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 7,
+    borderRadius: 10,
+    flexBasis: '47%',
+    flexGrow: 1,
+    minWidth: 120,
   },
   input: {
     minHeight: 52,

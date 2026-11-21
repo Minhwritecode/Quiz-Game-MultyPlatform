@@ -8,6 +8,8 @@ import { dependencies } from '@/composition/dependencies';
 import { useAuthStore } from '@/core/state/useAuthStore';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { useI18n } from '@/core/i18n';
+import { ModerationQueueModal } from '@/features/moderation/components/ModerationQueueModal';
+import { useModerationStore } from '@/features/moderation/state/useModerationStore';
 
 function PreferenceRow({
   icon,
@@ -40,6 +42,8 @@ export default function SettingsScreen() {
   const [reminder,setReminder]=useState(false);
   const [busy,setBusy]=useState(false);
   const [notice,setNotice]=useState('');
+  const [moderationOpen, setModerationOpen] = useState(false);
+  const openReportCount = useModerationStore((s) => s.reports.filter((r) => r.status === 'open').length);
   useEffect(()=>{const refresh=()=>{void dependencies.reminders.enabled().then(setReminder).catch(()=>undefined);};refresh();const listener=AppState.addEventListener('change',state=>{if(state==='active')refresh();});return ()=>listener.remove();},[]);
   const toggleReminder=async(value:boolean)=>{if(busy)return;setBusy(true);setNotice('');try{await dependencies.reminders.setEnabled(value);setReminder(value);}catch(e){setNotice(e instanceof Error?e.message:'Không đổi được lịch nhắc.');}finally{setBusy(false);}};
   const theme=usePapyrusStore(s=>s.theme);
@@ -148,7 +152,29 @@ export default function SettingsScreen() {
           </View>
           <Ionicons name="chevron-forward" size={20} color={palette.indigo} />
         </Pressable>
+        <View style={[styles.separator, { backgroundColor: palette.paperMuted }]} />
+        <Pressable accessibilityRole="button" style={styles.row} onPress={() => setModerationOpen(true)}>
+          <View style={[styles.iconWrap, { backgroundColor: palette.paper }]}>
+            <Ionicons name="shield-checkmark-outline" size={20} color={palette.indigo} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[typography.body, { color: palette.ink, fontWeight: '700' }]}>
+              {language === 'vi' ? 'Kiểm duyệt câu hỏi (Moderation)' : 'Question Moderation Queue'}
+            </Text>
+            <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
+              {language === 'vi'
+                ? 'Duyệt, đánh dấu đã sửa hoặc bỏ qua các câu hỏi bị báo lỗi'
+                : 'Review, resolve, or dismiss flagged questions'}
+            </Text>
+          </View>
+          {openReportCount > 0 ? (
+            <Badge tone="danger">{openReportCount}</Badge>
+          ) : (
+            <Ionicons name="chevron-forward" size={20} color={palette.indigo} />
+          )}
+        </Pressable>
       </Card>
+      <ModerationQueueModal visible={moderationOpen} onClose={() => setModerationOpen(false)} />
 
       {Platform.OS !== 'web' && <Card style={{marginTop:spacing.lg}}>
         <PreferenceRow icon="notifications-outline" title="Nhắc học mỗi ngày" subtitle="19:00 theo giờ điện thoại · không gửi nội dung tài liệu"><Switch accessibilityLabel="Nhắc học lúc 19 giờ" disabled={busy} value={reminder} onValueChange={value=>void toggleReminder(value)}/></PreferenceRow>

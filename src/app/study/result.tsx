@@ -12,6 +12,7 @@ import {
   formatMsSeconds,
   formatStudyReportSummary,
 } from '@/features/study/domain/sessionReport';
+import { exportStudyPdfReport } from '@/features/study/domain/sessionPdf';
 
 export default function StudyResultScreen() {
   const { setId, attemptId } = useLocalSearchParams<{ setId: string; attemptId?: string }>();
@@ -148,9 +149,12 @@ export default function StudyResultScreen() {
             </Text>
           </View>
         </View>
-        <View style={{ marginTop: spacing.sm }}>
+        <View style={{ marginTop: spacing.sm, gap: spacing.xs }}>
+          <Button icon="document-text-outline" variant="primary" onPress={() => void exportStudyPdfReport(sessionReport)} fullWidth>
+            {language === 'vi' ? '🖨️ Xuất báo cáo PDF in đẹp' : '🖨️ Export Print-Ready PDF'}
+          </Button>
           <Button icon="share-outline" variant="secondary" onPress={() => void handleShareReport()} fullWidth>
-            {language === 'vi' ? 'Xuất & Chia sẻ báo cáo phiên học' : 'Export & Share Session Report'}
+            {language === 'vi' ? 'Chia sẻ tóm tắt văn bản' : 'Share Text Summary'}
           </Button>
         </View>
       </Card>

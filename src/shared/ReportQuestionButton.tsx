@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Button, Card, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { supabase } from '@/core/network/supabase';
+import { useModerationStore } from '@/features/moderation/state/useModerationStore';
 
 const REPORT_REASONS = [
   { id: 'wrong_answer', label: 'Đáp án chưa chính xác' },
@@ -27,6 +28,11 @@ export function ReportQuestionButton({ questionKey, questionContent }: ReportQue
   const submitReport = async () => {
     if (busy || reported) return;
     setBusy(true);
+    useModerationStore.getState().addLocalReport({
+      questionRef: questionKey,
+      questionPreview: questionContent.slice(0, 240),
+      reason: selectedReason as 'wrong_answer' | 'typo_format' | 'inappropriate' | 'duplicate',
+    });
     try {
       if (supabase) {
         const { data } = await supabase.auth.getUser();

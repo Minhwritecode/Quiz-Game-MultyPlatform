@@ -87,6 +87,14 @@ const PLAN_ROWS: Array<{ feature: string; free: string; vip: string }> = [
   { feature: 'Báo cáo phiên đấu & Đấu ELO', free: 'Có sẵn ✓', vip: 'Đầy đủ ✓' },
 ];
 
+const COMPARE_ROWS: Array<{ feature: string; papyrus: string; kahoot: string; quizizz: string }> = [
+  { feature: 'Offline-first & Scan OCR ngay trên máy', papyrus: '✓ Có sẵn', kahoot: '✕ Không', quizizz: '✕ Không' },
+  { feature: 'Đấu 1v1 ELO & PvP chọn đề theo lượt', papyrus: '✓ Đầy đủ', kahoot: '✕ Không', quizizz: '✕ Không' },
+  { feature: '6 loại câu hỏi + Code Snippet lập trình', papyrus: '✓ Đầy đủ', kahoot: 'Gói trả phí', quizizz: 'Một phần' },
+  { feature: 'Kho tri thức AI (RAG) & Xuất PDF/CSV', papyrus: '✓ Miễn phí', kahoot: 'Gói Pro', quizizz: 'Gói Super' },
+  { feature: 'Hiệu ứng 3D WebGL & Đa nền tảng RN/Web', papyrus: '✓ 60fps', kahoot: '2D Web', quizizz: '2D Web' },
+];
+
 export default function LandingShowcaseScreen() {
   const router = useRouter();
   const palette = usePalette();
@@ -407,6 +415,31 @@ export default function LandingShowcaseScreen() {
           </View>
         </Card>
 
+        {/* ── 5D. COMPETITOR COMPARISON MATRIX (COMPARE) ── */}
+        <Text style={[typography.title, { color: palette.ink, fontSize: 19, marginTop: spacing.lg, marginBottom: spacing.sm }]}>
+          So sánh Papyrus với các nền tảng phổ biến
+        </Text>
+        <Card style={styles.planCard}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={{ minWidth: 500 }}>
+              <View style={[styles.planHeaderRow, { borderBottomColor: palette.paperMuted }]}>
+                <Text style={[typography.caption, { color: palette.inkMuted, fontWeight: '800', width: 200 }]}>TIÊU CHÍ</Text>
+                <Text style={[typography.caption, { color: palette.indigo, fontWeight: '900', width: 105, textAlign: 'center' }]}>✦ Papyrus</Text>
+                <Text style={[typography.caption, { color: palette.inkMuted, fontWeight: '700', width: 95, textAlign: 'center' }]}>Kahoot!</Text>
+                <Text style={[typography.caption, { color: palette.inkMuted, fontWeight: '700', width: 95, textAlign: 'center' }]}>Quizizz</Text>
+              </View>
+              {COMPARE_ROWS.map((row) => (
+                <View key={row.feature} style={[styles.planRow, { borderBottomColor: palette.paperMuted }]}>
+                  <Text style={[typography.caption, { color: palette.ink, width: 200, fontWeight: '600' }]}>{row.feature}</Text>
+                  <Text style={[typography.caption, { color: palette.mint, width: 105, textAlign: 'center', fontWeight: '800' }]}>{row.papyrus}</Text>
+                  <Text style={[typography.caption, { color: palette.inkMuted, width: 95, textAlign: 'center' }]}>{row.kahoot}</Text>
+                  <Text style={[typography.caption, { color: palette.inkMuted, width: 95, textAlign: 'center' }]}>{row.quizizz}</Text>
+                </View>
+              ))}
+            </View>
+          </ScrollView>
+        </Card>
+
         {/* ── 6. FAQ ACCORDION ── */}
         <Text style={[typography.title, { color: palette.ink, fontSize: 19, marginTop: spacing.lg, marginBottom: spacing.sm }]}>
           Câu hỏi thường gặp (FAQ)
@@ -438,7 +471,20 @@ export default function LandingShowcaseScreen() {
 
         {/* FOOTER */}
         <View style={[styles.footer, { borderTopColor: palette.paperMuted }]}>
-          <Text style={[typography.caption, { color: palette.inkMuted, textAlign: 'center' }]}>
+          <View style={styles.legalLinksRow}>
+            <Pressable onPress={() => router.push('/privacy')}>
+              <Text style={[typography.caption, { color: palette.indigo, fontWeight: '700' }]}>Quyền riêng tư</Text>
+            </Pressable>
+            <Text style={{ color: palette.inkMuted }}>·</Text>
+            <Pressable onPress={() => router.push('/privacy')}>
+              <Text style={[typography.caption, { color: palette.indigo, fontWeight: '700' }]}>Điều khoản (Terms)</Text>
+            </Pressable>
+            <Text style={{ color: palette.inkMuted }}>·</Text>
+            <Pressable onPress={() => router.push('/privacy')}>
+              <Text style={[typography.caption, { color: palette.indigo, fontWeight: '700' }]}>Hoàn tiền (Refund)</Text>
+            </Pressable>
+          </View>
+          <Text style={[typography.caption, { color: palette.inkMuted, textAlign: 'center', marginTop: spacing.xs }]}>
             © {new Date().getFullYear()} Papyrus Quest Arena • Phiên bản 0.2.0
           </Text>
           <Text style={[typography.caption, { color: palette.inkMuted, textAlign: 'center', marginTop: 4 }]}>
@@ -575,5 +621,6 @@ const styles = StyleSheet.create({
   faqCard: { padding: spacing.md, borderRadius: radii.md },
   faqHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
   faqBody: { paddingTop: spacing.sm, marginTop: spacing.sm, borderTopWidth: 1 },
+  legalLinksRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: spacing.sm },
   footer: { paddingTop: spacing.xl, marginTop: spacing.xl, borderTopWidth: 1 },
 });

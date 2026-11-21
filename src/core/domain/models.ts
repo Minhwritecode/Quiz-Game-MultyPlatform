@@ -1,6 +1,12 @@
 export type SyncStatus = 'synced' | 'pending' | 'failed';
 
-export type QuestionType = 'multiple_choice' | 'true_false';
+export type QuestionType =
+  | 'multiple_choice'
+  | 'true_false'
+  | 'poll'
+  | 'word_cloud'
+  | 'rating'
+  | 'open_text';
 
 export type Question = {
   id: string;
@@ -11,6 +17,14 @@ export type Question = {
   position: number;
   /** Optional question type; defaults to 4-option multiple_choice */
   questionType?: QuestionType;
+  /** Allow multiple correct answers for multiple_choice */
+  multiSelect?: boolean;
+  /** Exact set of correct option indices when multiSelect is enabled */
+  correctIndices?: number[];
+  /** Scale maximum for rating questions (5 stars or 10 points) */
+  ratingMax?: 5 | 10;
+  /** Low/high labels for rating questions */
+  ratingLabels?: { low: string; high: string };
   /** Optional code snippet shown before answer options (displayed in monospace block) */
   codeSnippet?: string;
 };
@@ -94,10 +108,29 @@ export type Room = {
   status: 'waiting' | 'countdown' | 'question_open' | 'finished';
 };
 
+export function isScoredQuestion(question: Question): boolean {
+  const t = question.questionType ?? 'multiple_choice';
+  return t === 'multiple_choice' || t === 'true_false';
+}
+
 export function isValidQuestion(question: Question): boolean {
-  const expectedLength = question.questionType === 'true_false' ? 2 : 4;
+  if (question.content.trim().length === 0) return false;
+  const qType = question.questionType ?? 'multiple_choice';
+
+  if (qType === 'word_cloud' || qType === 'rating' || qType === 'open_text') {
+    return true;
+  }
+
+  if (qType === 'poll') {
+    return (
+      question.options.length >= 2 &&
+      question.options.every((option) => option.trim().length > 0) &&
+      new Set(question.options.map((option) => option.trim().toLocaleLowerCase())).size === question.options.length
+    );
+  }
+
+  const expectedLength = qType === 'true_false' ? 2 : 4;
   return (
-    question.content.trim().length > 0 &&
     question.options.length === expectedLength &&
     question.options.every((option) => option.trim().length > 0) &&
     new Set(question.options.map((option) => option.trim().toLocaleLowerCase())).size === expectedLength &&

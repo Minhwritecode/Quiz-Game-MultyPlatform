@@ -3,7 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { seedQuestionSets } from '@/core/data/seed';
 import type { QuestionSet, SourceDocument } from '@/core/domain/models';
-import { computeNextElo, ELO_INITIAL } from '@/features/room-battle/domain/elo';
+import { computeNextElo, ELO_INITIAL, type EloMatchOutcome } from '@/features/room-battle/domain/elo';
 
 type PapyrusState = {
   questionSets: QuestionSet[];
@@ -24,7 +24,9 @@ type PapyrusState = {
   eloRating: number;
   eloPeak: number;
   lastEloDelta: number;
+  categoryElos: Record<string, number>;
   recordGameResult: (score: number, isWin: boolean, opponentElo?: number) => void;
+  recordCategoryElo: (categoryId: string, outcome: EloMatchOutcome, opponentElo: number, rated: boolean) => number;
   setTheme: (theme: 'system' | 'light' | 'dark') => void;
   hydrateQuestionSets: (load: () => Promise<QuestionSet[]>) => Promise<void>;
   saveSourceDocument: (document: SourceDocument) => void;
@@ -60,6 +62,7 @@ export const usePapyrusStore = create<PapyrusState>()(
       eloRating: ELO_INITIAL,
       eloPeak: ELO_INITIAL,
       lastEloDelta: 0,
+      categoryElos: {},
       recordGameResult: (score, isWin, opponentElo) =>
         set((state) => {
           const opp = opponentElo ?? state.eloRating;
@@ -79,6 +82,19 @@ export const usePapyrusStore = create<PapyrusState>()(
             lastEloDelta: delta,
           };
         }),
+      recordCategoryElo: (categoryId, outcome, opponentElo, rated) => {
+        if (!rated) return 0;
+        const state = get();
+        const current = state.categoryElos[categoryId] ?? state.eloRating;
+        const { nextRating, delta } = computeNextElo(current, opponentElo, outcome, state.gamesPlayed);
+        set({
+          categoryElos: { ...state.categoryElos, [categoryId]: nextRating },
+          eloRating: nextRating,
+          eloPeak: Math.max(state.eloPeak, nextRating),
+          lastEloDelta: delta,
+        });
+        return delta;
+      },
       setTheme: (theme) => set({ theme }),
       hydrateQuestionSets: async (load) => {
         const stored = await load();
@@ -135,6 +151,7 @@ export const usePapyrusStore = create<PapyrusState>()(
         eloRating: state.eloRating,
         eloPeak: state.eloPeak,
         lastEloDelta: state.lastEloDelta,
+        categoryElos: state.categoryElos,
       }),
     }
   )

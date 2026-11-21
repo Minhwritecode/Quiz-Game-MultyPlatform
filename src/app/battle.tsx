@@ -17,6 +17,7 @@ import { useStreakStore } from '@/features/streak/state/useStreakStore';
 
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { TurnPvpArena } from '@/features/room-battle/components/TurnPvpArena';
+import { RankedDuelArena } from '@/features/room-battle/components/RankedDuelArena';
 import { LiveReactionsBar } from '@/features/room-battle/components/LiveReactionsBar';
 import { ReportQuestionButton } from '@/shared/ReportQuestionButton';
 
@@ -90,6 +91,7 @@ export default function BattleScreen() {
   const [battle, setBattle] = useState<Battle | null>(null);
   const [sets, setSets] = useState<{ id: string; title: string }[]>([]);
   const [roomMode, setRoomMode] = useState<'survival' | 'speed' | 'turn_pvp'>('survival');
+  const [arenaTab, setArenaTab] = useState<'rooms' | 'duel_1v1'>('rooms');
   const [turnPvpActive, setTurnPvpActive] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -233,576 +235,614 @@ export default function BattleScreen() {
   return (
     <Screen bottomNav>
       <GameEnvironment gameMode="battle">
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={{ flex: 1 }}>
-          <Text style={[typography.label, { color: palette.indigo }]}>{t.battle.badge}</Text>
-          <Text style={[typography.heading, { color: palette.ink, marginTop: spacing.xs }]}>
-            {t.battle.title} ⚔️
-          </Text>
-          <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
-            {t.battle.sub}
-          </Text>
-        </View>
-      </View>
-
-      {/* Error Banner */}
-      {!!error && (
-        <View style={[styles.errorBox, { backgroundColor: palette.dangerTint, borderColor: palette.danger }]}>
-          <Ionicons name="alert-circle" size={18} color={palette.danger} />
-          <Text style={[typography.caption, { color: palette.danger, flex: 1 }]}>{error}</Text>
-        </View>
-      )}
-
-      {/* Turn-Based PvP Mode Active */}
-      {turnPvpActive ? (
-        <TurnPvpArena
-          playerName={user?.displayName || 'Bạn'}
-          secondsPerQuestion={secondsPerQuestion}
-          totalRounds={Math.min(Math.max(3, questionCount), 8)}
-          maxPlayers={maxPlayers}
-          onFinish={(score, isWin) => {
-            recordGameResult(score, isWin);
-            setShowConfetti(true);
-            setTimeout(() => setShowConfetti(false), 3000);
-          }}
-          onExit={() => setTurnPvpActive(false)}
-        />
-      ) : null}
-
-      {/* Not Signed In */}
-      {!turnPvpActive && !user && (
-        <Card style={styles.notAuthCard}>
-          <IconTile icon="lock-closed-outline" tint="primary" />
-          <Text style={[typography.title, { color: palette.ink, marginTop: spacing.md }]}>
-            {language === 'vi' ? 'Đăng nhập để vào phòng đấu' : 'Sign in to join battles'}
-          </Text>
-          <Text style={[typography.body, { color: palette.inkMuted, textAlign: 'center', marginTop: 4 }]}>
-            {language === 'vi'
-              ? 'Tính năng thi đấu thời gian thực yêu cầu tài khoản để lưu bảng điểm, hoặc bạn có thể thử ngay PvP theo lượt bên dưới.'
-              : 'Realtime battle arena requires an account to store match history, or try Turn-Based PvP immediately.'}
-          </Text>
-          <View style={{ marginTop: spacing.lg, width: '100%', gap: spacing.sm }}>
-            <Button icon="log-in-outline" onPress={() => router.push('/auth')} fullWidth>
-              {language === 'vi' ? 'Đăng nhập ngay' : 'Sign in now'}
-            </Button>
-            <Button variant="reward" icon="swap-horizontal" onPress={() => setTurnPvpActive(true)} fullWidth>
-              {language === 'vi' ? 'Chơi ngay PvP theo lượt' : 'Play Turn-Based PvP'}
-            </Button>
+        {/* Header */}
+        <View style={styles.header}>
+          <View style={{ flex: 1 }}>
+            <Text style={[typography.label, { color: palette.indigo }]}>{t.battle.badge}</Text>
+            <Text style={[typography.heading, { color: palette.ink, marginTop: spacing.xs }]}>
+              {t.battle.title} ⚔️
+            </Text>
+            <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
+              {t.battle.sub}
+            </Text>
           </View>
-        </Card>
-      )}
-
-      {/* Lobby - Join or Create */}
-      {!turnPvpActive && user && !roomId && (
-        <View style={styles.lobbySections}>
-          {/* Instant Survival Arena Card */}
-          <Card style={{ backgroundColor: palette.dangerTint, borderColor: palette.dangerBorder, marginBottom: spacing.sm }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <IconTile icon="skull-outline" tint="danger" />
-              <View style={{ flex: 1 }}>
-                <Text style={[typography.title, { color: palette.ink }]}>{t.survival.title}</Text>
-                <Text style={[typography.caption, { color: palette.inkMuted }]}>
-                  {language === 'vi'
-                    ? 'Chơi ngay chế độ sinh tồn 3 mạng đấu cùng 3 AI Bot hoặc luyện tập cá nhân!'
-                    : 'Play 3-lives survival mode immediately with 3 AI Bots or solo practice!'}
-                </Text>
-              </View>
-            </View>
-            <View style={{ marginTop: spacing.md }}>
-              <Button variant="danger" icon="flame" onPress={() => router.push('/games/survival')} fullWidth>
-                {language === 'vi' ? 'Vào Đấu trường Sinh tồn ngay' : 'Enter Survival Arena Now'}
-              </Button>
-            </View>
-          </Card>
-
-          {/* Join Room */}
-          <Card style={styles.cardSection}>
-            <Text style={[typography.title, { color: palette.ink }]}>{t.battle.enterPin}</Text>
-            <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
-              {language === 'vi'
-                ? 'Nhập mã PIN 6 ký tự do bạn bè chia sẻ để tham gia ngay:'
-                : 'Enter the 6-character room PIN code shared by your host:'}
-            </Text>
-            <TextInput
-              accessibilityLabel="Room code"
-              value={code}
-              onChangeText={setCode}
-              autoCapitalize="characters"
-              maxLength={6}
-              placeholder={t.battle.pinPlaceholder}
-              placeholderTextColor={palette.inkMuted}
-              style={[
-                styles.pinInput,
-                { color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paper },
-              ]}
-            />
-            <Button
-              icon="arrow-forward"
-              disabled={busy || !/^[a-z0-9]{6}$/i.test(code.trim())}
-              onPress={() =>
-                void run(async () => {
-                  const room = await dependencies.rooms.join(code.trim().toUpperCase());
-                  await enter(room.id);
-                })
-              }
-              fullWidth
-            >
-              {t.battle.joinRoom}
-            </Button>
-          </Card>
-
-          {/* Create Room */}
-          <Card style={styles.cardSection}>
-            <Text style={[typography.title, { color: palette.ink }]}>{t.battle.createRoom}</Text>
-            <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
-              {language === 'vi'
-                ? 'Chọn chế độ đấu và bộ câu hỏi từ đám mây của bạn để làm đề thi:'
-                : 'Select battle mode and synced question set to host a match:'}
-            </Text>
-
-            {/* Mode Selector Pill Buttons */}
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginVertical: spacing.md }}>
-              <Pressable
-                onPress={() => setRoomMode('survival')}
-                style={[
-                  styles.modePill,
-                  {
-                    backgroundColor: roomMode === 'survival' ? palette.dangerTint : palette.paper,
-                    borderColor: roomMode === 'survival' ? palette.danger : palette.paperMuted,
-                  },
-                ]}
-              >
-                <Ionicons name="heart" size={16} color={roomMode === 'survival' ? palette.danger : palette.inkMuted} />
-                <Text
-                  style={[
-                    typography.caption,
-                    {
-                      fontWeight: '700',
-                      color: roomMode === 'survival' ? palette.danger : palette.ink,
-                    },
-                  ]}
-                  numberOfLines={1}
-                >
-                  {t.survival.modeSurvival}
-                </Text>
-              </Pressable>
-
-              <Pressable
-                onPress={() => setRoomMode('speed')}
-                style={[
-                  styles.modePill,
-                  {
-                    backgroundColor: roomMode === 'speed' ? palette.indigoTint : palette.paper,
-                    borderColor: roomMode === 'speed' ? palette.indigo : palette.paperMuted,
-                  },
-                ]}
-              >
-                <Ionicons name="flash" size={16} color={roomMode === 'speed' ? palette.indigo : palette.inkMuted} />
-                <Text
-                  style={[
-                    typography.caption,
-                    {
-                      fontWeight: '700',
-                      color: roomMode === 'speed' ? palette.indigo : palette.ink,
-                    },
-                  ]}
-                  numberOfLines={1}
-                >
-                  {t.survival.modeSpeed}
-                </Text>
-              </Pressable>
-
-              <Pressable
-                onPress={() => setRoomMode('turn_pvp')}
-                style={[
-                  styles.modePill,
-                  {
-                    backgroundColor: roomMode === 'turn_pvp' ? palette.goldTint : palette.paper,
-                    borderColor: roomMode === 'turn_pvp' ? palette.gold : palette.paperMuted,
-                  },
-                ]}
-              >
-                <Ionicons name="swap-horizontal" size={16} color={roomMode === 'turn_pvp' ? palette.gold : palette.inkMuted} />
-                <Text
-                  style={[
-                    typography.caption,
-                    {
-                      fontWeight: '700',
-                      color: roomMode === 'turn_pvp' ? palette.gold : palette.ink,
-                    },
-                  ]}
-                  numberOfLines={1}
-                >
-                  {language === 'vi' ? 'PvP theo lượt' : 'Turn PvP'}
-                </Text>
-              </Pressable>
-            </View>
-
-            {/* Structured Match Config: Questions / Time / Max Players (2-10) */}
-            <Text style={[typography.caption, { color: palette.inkMuted, fontWeight: '700' }]}>
-              {language === 'vi' ? 'Số câu hỏi' : 'Question count'}
-            </Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6, marginBottom: 12 }}>
-              {[5, 10, 15].map((value) => (
-                <Button key={value} variant={questionCount === value ? 'primary' : 'secondary'} onPress={() => setQuestionCount(value)}>
-                  {String(value)}
-                </Button>
-              ))}
-            </View>
-
-            <Text style={[typography.caption, { color: palette.inkMuted, fontWeight: '700' }]}>
-              {language === 'vi' ? 'Thời gian mỗi câu' : 'Seconds per question'}
-            </Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6, marginBottom: 12 }}>
-              {[10, 15, 30].map((value) => (
-                <Button key={value} variant={secondsPerQuestion === value ? 'primary' : 'secondary'} onPress={() => setSecondsPerQuestion(value)}>
-                  {value}s
-                </Button>
-              ))}
-            </View>
-
-            <View style={[styles.stepperRow, { backgroundColor: palette.paper, borderColor: palette.paperMuted }]}>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={[typography.caption, { color: palette.ink, fontWeight: '700' }]}>
-                  {language === 'vi' ? 'Số người chơi tối đa' : 'Max players'}
-                </Text>
-                <Text style={[typography.caption, { color: palette.inkMuted }]}>
-                  {language === 'vi' ? 'Tùy chỉnh từ 2 đến 10 người' : 'Configurable from 2 to 10 players'}
-                </Text>
-              </View>
-              <View style={styles.stepperControls}>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Giảm số người tối đa"
-                  onPress={() => setMaxPlayers((p) => Math.max(2, p - 1))}
-                  disabled={maxPlayers <= 2}
-                  style={[styles.stepBtn, { backgroundColor: palette.paperMuted, opacity: maxPlayers <= 2 ? 0.45 : 1 }]}
-                >
-                  <Ionicons name="remove" size={18} color={palette.ink} />
-                </Pressable>
-                <Text style={[typography.title, { color: palette.indigo, minWidth: 28, textAlign: 'center' }]}>
-                  {maxPlayers}
-                </Text>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Tăng số người tối đa"
-                  onPress={() => setMaxPlayers((p) => Math.min(10, p + 1))}
-                  disabled={maxPlayers >= 10}
-                  style={[styles.stepBtn, { backgroundColor: palette.paperMuted, opacity: maxPlayers >= 10 ? 0.45 : 1 }]}
-                >
-                  <Ionicons name="add" size={18} color={palette.ink} />
-                </Pressable>
-              </View>
-            </View>
-
-            {roomMode === 'turn_pvp' ? (
-              <View style={{ marginTop: spacing.md }}>
-                <Button variant="reward" icon="swap-horizontal" onPress={() => setTurnPvpActive(true)} fullWidth>
-                  {language === 'vi' ? 'Bắt đầu PvP chọn chủ đề theo lượt' : 'Start Turn-Based PvP Match'}
-                </Button>
-              </View>
-            ) : sets.length === 0 ? (
-              <View style={styles.noSetsNotice}>
-                <Text style={[typography.caption, { color: palette.inkMuted }]}>
-                  {language === 'vi'
-                    ? 'Bạn chưa có bộ câu hỏi nào được đồng bộ lên đám mây.'
-                    : 'You have no question sets synced to your cloud account yet.'}
-                </Text>
-                <Button variant="secondary" icon="cloud-upload" onPress={() => router.push('/sync')}>
-                  {language === 'vi' ? 'Đồng bộ bộ câu hỏi ngay' : 'Sync question sets now'}
-                </Button>
-              </View>
-            ) : (
-              <View style={styles.setsList}>
-                {sets.map((set) => (
-                  <Button
-                    key={set.id}
-                    disabled={busy}
-                    variant="secondary"
-                    icon="play"
-                    onPress={() =>
-                      void run(async () => {
-                        if (!useMembershipStore.getState().canCreateBattle()) {
-                          Alert.alert(
-                            'Đạt giới hạn tạo phòng hôm nay',
-                            'Học Giả Tập Sự được tạo tối đa 3 phòng đấu/ngày. Bạn có thể nâng cấp lên VIP để tạo phòng không giới hạn!'
-                          );
-                          return;
-                        }
-                        const room = await dependencies.rooms.create({
-                          setId: set.id,
-                          questionCount,
-                          secondsPerQuestion,
-                          mode: roomMode,
-                          maxPlayers,
-                        });
-                        useMembershipStore.getState().consumeBattle();
-                        await enter(room.id);
-                      })
-                    }
-                  >
-                    {language === 'vi' ? `Tạo phòng (${maxPlayers} người): ${set.title}` : `Host (${maxPlayers}P): ${set.title}`}
-                  </Button>
-                ))}
-              </View>
-            )}
-          </Card>
         </View>
-      )}
 
-      {/* Restoring Room */}
-      {roomId && !battle && (
-        <Card style={styles.restoringCard}>
-          <Ionicons name="refresh" size={28} color={palette.indigo} />
-          <Text style={[typography.body, { color: palette.ink, marginTop: spacing.sm }]}>
-            {t.battle.reconnecting}
-          </Text>
-        </Card>
-      )}
+        {/* Error Banner */}
+        {!!error && (
+          <View style={[styles.errorBox, { backgroundColor: palette.dangerTint, borderColor: palette.danger }]}>
+            <Ionicons name="alert-circle" size={18} color={palette.danger} />
+            <Text style={[typography.caption, { color: palette.danger, flex: 1 }]}>{error}</Text>
+          </View>
+        )}
 
-      {/* Active Battle Arena */}
-      {battle && (
-        <View style={styles.battleArena}>
-          {/* Room PIN & Status */}
-          <Card color={palette.indigo} style={styles.battleHero}>
-            <Text style={[typography.label, { color: '#C7D2FE' }]}>{t.battle.roomCode}</Text>
-            <Text style={[typography.display, { color: palette.white, letterSpacing: 6, fontSize: 40 }]}>
-              {battle.code}
+        {/* Segmented Arena Switcher (Rooms & Groups vs Ranked 1v1 ELO Duel) */}
+        {!roomId && !turnPvpActive && (
+          <View style={[styles.arenaTabs, { backgroundColor: palette.paperRaised, borderColor: palette.paperMuted }]}>
+            <Pressable
+              onPress={() => setArenaTab('rooms')}
+              style={[styles.arenaTabBtn, arenaTab === 'rooms' && { backgroundColor: palette.indigo }]}
+            >
+              <Ionicons name="people-outline" size={16} color={arenaTab === 'rooms' ? '#FFFFFF' : palette.inkMuted} />
+              <Text style={[typography.caption, { color: arenaTab === 'rooms' ? '#FFFFFF' : palette.inkMuted, fontWeight: '800' }]} numberOfLines={1}>
+                {language === 'vi' ? 'Phòng đấu & Nhóm' : 'Rooms & Groups'}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setArenaTab('duel_1v1')}
+              style={[styles.arenaTabBtn, arenaTab === 'duel_1v1' && { backgroundColor: palette.indigo }]}
+            >
+              <Ionicons name="trophy-outline" size={16} color={arenaTab === 'duel_1v1' ? '#FFFFFF' : palette.inkMuted} />
+              <Text style={[typography.caption, { color: arenaTab === 'duel_1v1' ? '#FFFFFF' : palette.inkMuted, fontWeight: '800' }]} numberOfLines={1}>
+                {language === 'vi' ? '⚔️ Đấu 1v1 ELO' : '⚔️ 1v1 Ranked ELO'}
+              </Text>
+            </Pressable>
+          </View>
+        )}
+
+        {/* 1v1 Ranked Matchmaking & Unrated Friend Duel */}
+        {!roomId && !turnPvpActive && arenaTab === 'duel_1v1' ? (
+          <RankedDuelArena
+            playerName={user?.displayName || 'Bạn'}
+            onMatchFinished={(score, isWin) => {
+              recordGameResult(score, isWin);
+              if (isWin) {
+                setShowConfetti(true);
+                setTimeout(() => setShowConfetti(false), 3000);
+              }
+            }}
+          />
+        ) : null}
+
+        {/* Turn-Based PvP Mode Active */}
+        {turnPvpActive ? (
+          <TurnPvpArena
+            playerName={user?.displayName || 'Bạn'}
+            secondsPerQuestion={secondsPerQuestion}
+            totalRounds={Math.min(Math.max(3, questionCount), 8)}
+            maxPlayers={maxPlayers}
+            onFinish={(score, isWin) => {
+              recordGameResult(score, isWin);
+              setShowConfetti(true);
+              setTimeout(() => setShowConfetti(false), 3000);
+            }}
+            onExit={() => setTurnPvpActive(false)}
+          />
+        ) : null}
+
+        {/* Not Signed In */}
+        {!turnPvpActive && arenaTab === 'rooms' && !user && (
+          <Card style={styles.notAuthCard}>
+            <IconTile icon="lock-closed-outline" tint="primary" />
+            <Text style={[typography.title, { color: palette.ink, marginTop: spacing.md }]}>
+              {language === 'vi' ? 'Đăng nhập để vào phòng đấu' : 'Sign in to join battles'}
             </Text>
-            <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', justifyContent: 'center' }}>
-              <Badge tone="reward">
-                {battle.phase === 'waiting'
-                  ? (language === 'vi' ? 'ĐANG CHỜ NGƯỜI CHƠI' : 'WAITING FOR PLAYERS')
-                  : battle.phase === 'question_open'
-                  ? (language === 'vi' ? 'ĐANG THI ĐẤU' : 'LIVE BATTLE')
-                  : (language === 'vi' ? 'KẾT THÚC' : 'FINISHED')}
-              </Badge>
-              <Badge tone="primary">
-                {battle.players.length}/{battle.maxPlayers ?? maxPlayers} {language === 'vi' ? 'người' : 'players'}
-              </Badge>
-            </View>
-
-            {/* 3D Colosseum Scholars Arena Display */}
-            <View style={styles.arenaScholarsRow}>
-              {battle.players.slice(0, 4).map((p, idx) => {
-                let action: 'idle' | 'attack' | 'hurt' | 'victory' = 'idle';
-                if (battle.phase === 'finished') {
-                  action = idx === 0 ? 'victory' : 'idle';
-                } else if (battle.answered && p.userId === user?.id) {
-                  action = 'attack';
-                } else if (battle.mode === 'survival' && (p.lives ?? 3) < 3) {
-                  action = 'hurt';
-                }
-
-                return (
-                  <View key={p.userId} style={styles.scholarContainer}>
-                    <CharacterAvatar
-                      color={SCHOLAR_COLORS[idx % SCHOLAR_COLORS.length]}
-                      name={p.name}
-                      action={action}
-                      size={48}
-                      showName={true}
-                      isDisconnected={!p.connected}
-                      reconnectCountdown={30}
-                      hasGoldenAura={p.userId === user?.id && isVip}
-                    />
-                    {p.userId === battle.hostId && (
-                      <View style={styles.hostCrown}>
-                        <Text style={{ fontSize: 11 }}>👑</Text>
-                      </View>
-                    )}
-                  </View>
-                );
-              })}
-            </View>
-
-            <View style={styles.battleHeroButtons}>
-              <Button
-                variant="reward"
-                icon="share-social"
-                onPress={() =>
-                  void Share.share({
-                    message: `Tham gia phòng thi đấu Papyrus với mã: ${battle.code}\nLink: papyrus://battle?code=${battle.code}`,
-                  })
-                }
-              >
-                {t.battle.shareCode}
+            <Text style={[typography.body, { color: palette.inkMuted, textAlign: 'center', marginTop: 4 }]}>
+              {language === 'vi'
+                ? 'Tính năng thi đấu thời gian thực yêu cầu tài khoản để lưu bảng điểm, hoặc bạn có thể thử ngay PvP theo lượt bên dưới.'
+                : 'Realtime battle arena requires an account to store match history, or try Turn-Based PvP immediately.'}
+            </Text>
+            <View style={{ marginTop: spacing.lg, width: '100%', gap: spacing.sm }}>
+              <Button icon="log-in-outline" onPress={() => router.push('/auth')} fullWidth>
+                {language === 'vi' ? 'Đăng nhập ngay' : 'Sign in now'}
               </Button>
-
-              {battle.phase === 'waiting' && (
-                <Button
-                  disabled={busy}
-                  variant={me?.ready ? 'secondary' : 'primary'}
-                  icon={me?.ready ? 'checkmark-circle' : 'time'}
-                  onPress={() => void run(() => dependencies.battle.heartbeat(roomId!, !me?.ready))}
-                >
-                  {me?.ready
-                    ? (language === 'vi' ? 'Đã sẵn sàng' : 'Ready')
-                    : (language === 'vi' ? 'Tôi sẵn sàng' : 'I am ready')}
-                </Button>
-              )}
-
-              {battle.phase === 'waiting' && battle.hostId === user?.id && (
-                <Button
-                  disabled={busy || battle.players.length < 2 || battle.players.some((p) => !p.ready || !p.connected)}
-                  variant="success"
-                  icon="play"
-                  onPress={() => void run(() => dependencies.battle.start(roomId!))}
-                >
-                  {t.battle.startGame}
-                </Button>
-              )}
+              <Button variant="reward" icon="swap-horizontal" onPress={() => setTurnPvpActive(true)} fullWidth>
+                {language === 'vi' ? 'Chơi ngay PvP theo lượt' : 'Play Turn-Based PvP'}
+              </Button>
             </View>
           </Card>
+        )}
 
-          {/* Active Question */}
-          {question && battle.phase !== 'finished' && (
-            <Card style={styles.activeQuestionCard}>
-              <View style={styles.questionHeader}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                  <Badge tone="primary">
-                    {language === 'vi' ? `CÂU ${question.position + 1}` : `Q ${question.position + 1}`}
-                  </Badge>
-                  {remainingSeconds !== null && <Badge tone={remainingSeconds <= 5 ? "danger" : "neutral"}>{remainingSeconds}s</Badge>}
-                  {battle.answered && (
-                    <Badge tone="success">
-                      {language === 'vi' ? 'ĐÃ TRẢ LỜI' : 'ANSWERED'}
-                    </Badge>
-                  )}
-                </View>
-                <ReportQuestionButton
-                  questionKey={`battle-${battle.id}-${question.position}`}
-                  questionContent={question.content}
-                />
-              </View>
-
-              <Text style={[typography.heading, { color: palette.ink, marginVertical: spacing.md }]}>
-                {question.content}
-              </Text>
-
-              {question.codeSnippet ? (
-                <View style={[styles.codeBlock, { backgroundColor: palette.ink === '#0F172A' ? '#1E293B' : '#F1F5F9' }]}>
-                  <Text style={[styles.codeText, { color: palette.ink === '#0F172A' ? '#94A3B8' : '#334155' }]}>
-                    {question.codeSnippet}
+        {/* Lobby - Join or Create */}
+        {!turnPvpActive && arenaTab === 'rooms' && user && !roomId && (
+          <View style={styles.lobbySections}>
+            {/* Instant Survival Arena Card */}
+            <Card style={{ backgroundColor: palette.dangerTint, borderColor: palette.dangerBorder, marginBottom: spacing.sm }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <IconTile icon="skull-outline" tint="danger" />
+                <View style={{ flex: 1 }}>
+                  <Text style={[typography.title, { color: palette.ink }]}>{t.survival.title}</Text>
+                  <Text style={[typography.caption, { color: palette.inkMuted }]}>
+                    {language === 'vi'
+                      ? 'Chơi ngay chế độ sinh tồn 3 mạng đấu cùng 3 AI Bot hoặc luyện tập cá nhân!'
+                      : 'Play 3-lives survival mode immediately with 3 AI Bots or solo practice!'}
                   </Text>
                 </View>
-              ) : null}
+              </View>
+              <View style={{ marginTop: spacing.md }}>
+                <Button variant="danger" icon="flame" onPress={() => router.push('/games/survival')} fullWidth>
+                  {language === 'vi' ? 'Vào Đấu trường Sinh tồn ngay' : 'Enter Survival Arena Now'}
+                </Button>
+              </View>
+            </Card>
 
-              <View style={styles.battleOptions}>
-                {question.options.map((option, index) => (
-                  <Button
-                    key={index}
-                    variant={battle.answered ? (question.correctIndex === index ? 'success' : 'ghost') : 'secondary'}
-                    disabled={busy || battle.answered || remainingSeconds === 0 || battle.phase !== 'question_open'}
-                    onPress={() =>
-                      void run(async () => {
-                        sfx.playSpellCast();
-                        await dependencies.battle.answer(roomId!, question.position, index);
-                        setBattle(await dependencies.battle.snapshot(roomId!));
-                      })
-                    }
-                    fullWidth
+            {/* Join Room */}
+            <Card style={styles.cardSection}>
+              <Text style={[typography.title, { color: palette.ink }]}>{t.battle.enterPin}</Text>
+              <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
+                {language === 'vi'
+                  ? 'Nhập mã PIN 6 ký tự do bạn bè chia sẻ để tham gia ngay:'
+                  : 'Enter the 6-character room PIN code shared by your host:'}
+              </Text>
+              <TextInput
+                accessibilityLabel="Room code"
+                value={code}
+                onChangeText={setCode}
+                autoCapitalize="characters"
+                maxLength={6}
+                placeholder={t.battle.pinPlaceholder}
+                placeholderTextColor={palette.inkMuted}
+                style={[
+                  styles.pinInput,
+                  { color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paper },
+                ]}
+              />
+              <Button
+                icon="arrow-forward"
+                disabled={busy || !/^[a-z0-9]{6}$/i.test(code.trim())}
+                onPress={() =>
+                  void run(async () => {
+                    const room = await dependencies.rooms.join(code.trim().toUpperCase());
+                    await enter(room.id);
+                  })
+                }
+                fullWidth
+              >
+                {t.battle.joinRoom}
+              </Button>
+            </Card>
+
+            {/* Create Room */}
+            <Card style={styles.cardSection}>
+              <Text style={[typography.title, { color: palette.ink }]}>{t.battle.createRoom}</Text>
+              <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
+                {language === 'vi'
+                  ? 'Chọn chế độ đấu và bộ câu hỏi từ đám mây của bạn để làm đề thi:'
+                  : 'Select battle mode and synced question set to host a match:'}
+              </Text>
+
+              {/* Mode Selector Pill Buttons */}
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginVertical: spacing.md }}>
+                <Pressable
+                  onPress={() => setRoomMode('survival')}
+                  style={[
+                    styles.modePill,
+                    {
+                      backgroundColor: roomMode === 'survival' ? palette.dangerTint : palette.paper,
+                      borderColor: roomMode === 'survival' ? palette.danger : palette.paperMuted,
+                    },
+                  ]}
+                >
+                  <Ionicons name="heart" size={16} color={roomMode === 'survival' ? palette.danger : palette.inkMuted} />
+                  <Text
+                    style={[
+                      typography.caption,
+                      {
+                        fontWeight: '700',
+                        color: roomMode === 'survival' ? palette.danger : palette.ink,
+                      },
+                    ]}
+                    numberOfLines={1}
                   >
-                    {String.fromCharCode(65 + index)}. {option}
+                    {t.survival.modeSurvival}
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={() => setRoomMode('speed')}
+                  style={[
+                    styles.modePill,
+                    {
+                      backgroundColor: roomMode === 'speed' ? palette.indigoTint : palette.paper,
+                      borderColor: roomMode === 'speed' ? palette.indigo : palette.paperMuted,
+                    },
+                  ]}
+                >
+                  <Ionicons name="flash" size={16} color={roomMode === 'speed' ? palette.indigo : palette.inkMuted} />
+                  <Text
+                    style={[
+                      typography.caption,
+                      {
+                        fontWeight: '700',
+                        color: roomMode === 'speed' ? palette.indigo : palette.ink,
+                      },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {t.survival.modeSpeed}
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={() => setRoomMode('turn_pvp')}
+                  style={[
+                    styles.modePill,
+                    {
+                      backgroundColor: roomMode === 'turn_pvp' ? palette.goldTint : palette.paper,
+                      borderColor: roomMode === 'turn_pvp' ? palette.gold : palette.paperMuted,
+                    },
+                  ]}
+                >
+                  <Ionicons name="swap-horizontal" size={16} color={roomMode === 'turn_pvp' ? palette.gold : palette.inkMuted} />
+                  <Text
+                    style={[
+                      typography.caption,
+                      {
+                        fontWeight: '700',
+                        color: roomMode === 'turn_pvp' ? palette.gold : palette.ink,
+                      },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {language === 'vi' ? 'PvP theo lượt' : 'Turn PvP'}
+                  </Text>
+                </Pressable>
+              </View>
+
+              {/* Structured Match Config: Questions / Time / Max Players (2-10) */}
+              <Text style={[typography.caption, { color: palette.inkMuted, fontWeight: '700' }]}>
+                {language === 'vi' ? 'Số câu hỏi' : 'Question count'}
+              </Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6, marginBottom: 12 }}>
+                {[5, 10, 15].map((value) => (
+                  <Button key={value} variant={questionCount === value ? 'primary' : 'secondary'} onPress={() => setQuestionCount(value)}>
+                    {String(value)}
                   </Button>
                 ))}
               </View>
 
-              {battle.answered && (
-                <Text style={[typography.caption, { color: palette.inkMuted, textAlign: 'center', marginTop: spacing.sm }]}>
-                  {language === 'vi'
-                    ? 'Đáp án của bạn đã được ghi nhận. Đang chờ kết quả từ đối thủ…'
-                    : 'Your answer is locked in. Waiting for other players…'}
-                </Text>
-              )}
+              <Text style={[typography.caption, { color: palette.inkMuted, fontWeight: '700' }]}>
+                {language === 'vi' ? 'Thời gian mỗi câu' : 'Seconds per question'}
+              </Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6, marginBottom: 12 }}>
+                {[10, 15, 30].map((value) => (
+                  <Button key={value} variant={secondsPerQuestion === value ? 'primary' : 'secondary'} onPress={() => setSecondsPerQuestion(value)}>
+                    {value}s
+                  </Button>
+                ))}
+              </View>
 
-              {question.explanation && battle.phase !== 'question_open' && (
-                <Text style={[typography.caption, { color: palette.ink, marginTop: spacing.md }]}>
-                  {question.explanation}
-                </Text>
+              <View style={[styles.stepperRow, { backgroundColor: palette.paper, borderColor: palette.paperMuted }]}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={[typography.caption, { color: palette.ink, fontWeight: '700' }]}>
+                    {language === 'vi' ? 'Số người chơi tối đa' : 'Max players'}
+                  </Text>
+                  <Text style={[typography.caption, { color: palette.inkMuted }]}>
+                    {language === 'vi' ? 'Tùy chỉnh từ 2 đến 10 người' : 'Configurable from 2 to 10 players'}
+                  </Text>
+                </View>
+                <View style={styles.stepperControls}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Giảm số người tối đa"
+                    onPress={() => setMaxPlayers((p) => Math.max(2, p - 1))}
+                    disabled={maxPlayers <= 2}
+                    style={[styles.stepBtn, { backgroundColor: palette.paperMuted, opacity: maxPlayers <= 2 ? 0.45 : 1 }]}
+                  >
+                    <Ionicons name="remove" size={18} color={palette.ink} />
+                  </Pressable>
+                  <Text style={[typography.title, { color: palette.indigo, minWidth: 28, textAlign: 'center' }]}>
+                    {maxPlayers}
+                  </Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Tăng số người tối đa"
+                    onPress={() => setMaxPlayers((p) => Math.min(10, p + 1))}
+                    disabled={maxPlayers >= 10}
+                    style={[styles.stepBtn, { backgroundColor: palette.paperMuted, opacity: maxPlayers >= 10 ? 0.45 : 1 }]}
+                  >
+                    <Ionicons name="add" size={18} color={palette.ink} />
+                  </Pressable>
+                </View>
+              </View>
+
+              {roomMode === 'turn_pvp' ? (
+                <View style={{ marginTop: spacing.md }}>
+                  <Button variant="reward" icon="swap-horizontal" onPress={() => setTurnPvpActive(true)} fullWidth>
+                    {language === 'vi' ? 'Bắt đầu PvP chọn chủ đề theo lượt' : 'Start Turn-Based PvP Match'}
+                  </Button>
+                </View>
+              ) : sets.length === 0 ? (
+                <View style={styles.noSetsNotice}>
+                  <Text style={[typography.caption, { color: palette.inkMuted }]}>
+                    {language === 'vi'
+                      ? 'Bạn chưa có bộ câu hỏi nào được đồng bộ lên đám mây.'
+                      : 'You have no question sets synced to your cloud account yet.'}
+                  </Text>
+                  <Button variant="secondary" icon="cloud-upload" onPress={() => router.push('/sync')}>
+                    {language === 'vi' ? 'Đồng bộ bộ câu hỏi ngay' : 'Sync question sets now'}
+                  </Button>
+                </View>
+              ) : (
+                <View style={styles.setsList}>
+                  {sets.map((set) => (
+                    <Button
+                      key={set.id}
+                      disabled={busy}
+                      variant="secondary"
+                      icon="play"
+                      onPress={() =>
+                        void run(async () => {
+                          if (!useMembershipStore.getState().canCreateBattle()) {
+                            Alert.alert(
+                              'Đạt giới hạn tạo phòng hôm nay',
+                              'Học Giả Tập Sự được tạo tối đa 3 phòng đấu/ngày. Bạn có thể nâng cấp lên VIP để tạo phòng không giới hạn!'
+                            );
+                            return;
+                          }
+                          const room = await dependencies.rooms.create({
+                            setId: set.id,
+                            questionCount,
+                            secondsPerQuestion,
+                            mode: roomMode,
+                            maxPlayers,
+                          });
+                          useMembershipStore.getState().consumeBattle();
+                          await enter(room.id);
+                        })
+                      }
+                    >
+                      {language === 'vi' ? `Tạo phòng (${maxPlayers} người): ${set.title}` : `Host (${maxPlayers}P): ${set.title}`}
+                    </Button>
+                  ))}
+                </View>
               )}
             </Card>
-          )}
+          </View>
+        )}
 
-          {/* Live Leaderboard */}
-          <Card style={styles.leaderboardCard}>
-            <Text style={[typography.title, { color: palette.ink }]}>
-              {battle.phase === 'finished'
-                ? (language === 'vi' ? '🏆 BẢNG VÀNG CHUNG CUỘC' : '🏆 FINAL STANDINGS')
-                : (language === 'vi' ? '⚡ BẢNG ĐIỂM TRỰC TIẾP' : '⚡ LIVE SCOREBOARD')}
+        {/* Restoring Room */}
+        {roomId && !battle && (
+          <Card style={styles.restoringCard}>
+            <Ionicons name="refresh" size={28} color={palette.indigo} />
+            <Text style={[typography.body, { color: palette.ink, marginTop: spacing.sm }]}>
+              {t.battle.reconnecting}
             </Text>
-            <View style={styles.playersList}>
-              {battle.players.map((p, i) => (
-                <View
-                  key={p.userId}
-                  style={[
-                    styles.playerRow,
-                    {
-                      backgroundColor: p.userId === user?.id ? palette.indigoTint : palette.paper,
-                      borderColor: palette.paperMuted,
-                    },
-                  ]}
+          </Card>
+        )}
+
+        {/* Active Battle Arena */}
+        {battle && (
+          <View style={styles.battleArena}>
+            {/* Room PIN & Status */}
+            <Card color={palette.indigo} style={styles.battleHero}>
+              <Text style={[typography.label, { color: '#C7D2FE' }]}>{t.battle.roomCode}</Text>
+              <Text style={[typography.display, { color: palette.white, letterSpacing: 6, fontSize: 40 }]}>
+                {battle.code}
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', justifyContent: 'center' }}>
+                <Badge tone="reward">
+                  {battle.phase === 'waiting'
+                    ? (language === 'vi' ? 'ĐANG CHỜ NGƯỜI CHƠI' : 'WAITING FOR PLAYERS')
+                    : battle.phase === 'question_open'
+                      ? (language === 'vi' ? 'ĐANG THI ĐẤU' : 'LIVE BATTLE')
+                      : (language === 'vi' ? 'KẾT THÚC' : 'FINISHED')}
+                </Badge>
+                <Badge tone="primary">
+                  {battle.players.length}/{battle.maxPlayers ?? maxPlayers} {language === 'vi' ? 'người' : 'players'}
+                </Badge>
+              </View>
+
+              {/* 3D Colosseum Scholars Arena Display */}
+              <View style={styles.arenaScholarsRow}>
+                {battle.players.slice(0, 4).map((p, idx) => {
+                  let action: 'idle' | 'attack' | 'hurt' | 'victory' = 'idle';
+                  if (battle.phase === 'finished') {
+                    action = idx === 0 ? 'victory' : 'idle';
+                  } else if (battle.answered && p.userId === user?.id) {
+                    action = 'attack';
+                  } else if (battle.mode === 'survival' && (p.lives ?? 3) < 3) {
+                    action = 'hurt';
+                  }
+
+                  return (
+                    <View key={p.userId} style={styles.scholarContainer}>
+                      <CharacterAvatar
+                        color={SCHOLAR_COLORS[idx % SCHOLAR_COLORS.length]}
+                        name={p.name}
+                        action={action}
+                        size={48}
+                        showName={true}
+                        isDisconnected={!p.connected}
+                        reconnectCountdown={30}
+                        hasGoldenAura={p.userId === user?.id && isVip}
+                      />
+                      {p.userId === battle.hostId && (
+                        <View style={styles.hostCrown}>
+                          <Text style={{ fontSize: 11 }}>👑</Text>
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+
+              <View style={styles.battleHeroButtons}>
+                <Button
+                  variant="reward"
+                  icon="share-social"
+                  onPress={() =>
+                    void Share.share({
+                      message: `Tham gia phòng thi đấu Papyrus với mã: ${battle.code}\nLink: papyrus://battle?code=${battle.code}`,
+                    })
+                  }
                 >
-                  <View style={styles.playerRank}>
-                    <Text style={{ fontWeight: '800', color: i === 0 ? palette.gold : palette.ink }}>
-                      {i === 0 ? '🥇 1' : i === 1 ? '🥈 2' : i === 2 ? '🥉 3' : `${i + 1}`}
-                    </Text>
-                  </View>
-                  <View style={{ marginRight: 8 }}>
-                    <CharacterAvatar
-                      color={SCHOLAR_COLORS[i % SCHOLAR_COLORS.length]}
-                      name={p.name}
-                      action={battle.phase === 'finished' && i === 0 ? 'victory' : 'idle'}
-                      size={36}
-                      showName={false}
-                      isDisconnected={!p.connected}
-                      hasGoldenAura={p.userId === user?.id && isVip}
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[typography.body, { color: palette.ink, fontWeight: '700' }]}>
-                      {p.name} {p.userId === battle.hostId && (language === 'vi' ? '(Chủ phòng)' : '(Host)')} {p.userId === user?.id && (language === 'vi' ? (isVip ? '(Bạn 👑 VIP)' : '(Bạn)') : (isVip ? '(You 👑 VIP)' : '(You)'))}
-                    </Text>
-                    <Text style={[typography.caption, { color: palette.inkMuted }]}>
-                      {p.connected
-                        ? p.ready
-                          ? (language === 'vi' ? 'Sẵn sàng' : 'Ready')
-                          : (language === 'vi' ? 'Chưa sẵn sàng' : 'Not ready')
-                        : (language === 'vi' ? 'Mất kết nối' : 'Disconnected')}
-                    </Text>
-                  </View>
-                  <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={[typography.title, { color: palette.indigo }]}>
-                      {p.score} {language === 'vi' ? 'điểm' : 'pts'}
-                    </Text>
-                    {battle.mode === 'survival' && (
-                      <View style={{ flexDirection: 'row', gap: 2, marginTop: 3 }}>
-                        <Ionicons name={(p.lives ?? 3) >= 1 ? 'heart' : 'heart-dislike'} size={14} color={(p.lives ?? 3) >= 1 ? '#EF4444' : '#94A3B8'} />
-                        <Ionicons name={(p.lives ?? 3) >= 2 ? 'heart' : 'heart-dislike'} size={14} color={(p.lives ?? 3) >= 2 ? '#EF4444' : '#94A3B8'} />
-                        <Ionicons name={(p.lives ?? 3) >= 3 ? 'heart' : 'heart-dislike'} size={14} color={(p.lives ?? 3) >= 3 ? '#EF4444' : '#94A3B8'} />
-                      </View>
+                  {t.battle.shareCode}
+                </Button>
+
+                {battle.phase === 'waiting' && (
+                  <Button
+                    disabled={busy}
+                    variant={me?.ready ? 'secondary' : 'primary'}
+                    icon={me?.ready ? 'checkmark-circle' : 'time'}
+                    onPress={() => void run(() => dependencies.battle.heartbeat(roomId!, !me?.ready))}
+                  >
+                    {me?.ready
+                      ? (language === 'vi' ? 'Đã sẵn sàng' : 'Ready')
+                      : (language === 'vi' ? 'Tôi sẵn sàng' : 'I am ready')}
+                  </Button>
+                )}
+
+                {battle.phase === 'waiting' && battle.hostId === user?.id && (
+                  <Button
+                    disabled={busy || battle.players.length < 2 || battle.players.some((p) => !p.ready || !p.connected)}
+                    variant="success"
+                    icon="play"
+                    onPress={() => void run(() => dependencies.battle.start(roomId!))}
+                  >
+                    {t.battle.startGame}
+                  </Button>
+                )}
+              </View>
+            </Card>
+
+            {/* Active Question */}
+            {question && battle.phase !== 'finished' && (
+              <Card style={styles.activeQuestionCard}>
+                <View style={styles.questionHeader}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <Badge tone="primary">
+                      {language === 'vi' ? `CÂU ${question.position + 1}` : `Q ${question.position + 1}`}
+                    </Badge>
+                    {remainingSeconds !== null && <Badge tone={remainingSeconds <= 5 ? "danger" : "neutral"}>{remainingSeconds}s</Badge>}
+                    {battle.answered && (
+                      <Badge tone="success">
+                        {language === 'vi' ? 'ĐÃ TRẢ LỜI' : 'ANSWERED'}
+                      </Badge>
                     )}
                   </View>
+                  <ReportQuestionButton
+                    questionKey={`battle-${battle.id}-${question.position}`}
+                    questionContent={question.content}
+                  />
                 </View>
-              ))}
-            </View>
-          </Card>
 
-          {battle.phase === 'finished' && (
-            <LiveReactionsBar label={language === 'vi' ? 'Gửi biểu cảm mừng chung cuộc 🎉' : 'Send end-of-match reactions 🎉'} />
-          )}
-        </View>
-      )}
+                <Text style={[typography.heading, { color: palette.ink, marginVertical: spacing.md }]}>
+                  {question.content}
+                </Text>
 
-      {/* Leave Button */}
-      {roomId && (
-        <View style={{ marginTop: spacing.md, marginBottom: spacing.xxl }}>
-          <Button disabled={busy} variant="danger" icon="exit-outline" onPress={() => void run(leave)} fullWidth>
-            {t.battle.leaveRoom}
-          </Button>
-        </View>
-      )}
+                {question.codeSnippet ? (
+                  <View style={[styles.codeBlock, { backgroundColor: palette.ink === '#0F172A' ? '#1E293B' : '#F1F5F9' }]}>
+                    <Text style={[styles.codeText, { color: palette.ink === '#0F172A' ? '#94A3B8' : '#334155' }]}>
+                      {question.codeSnippet}
+                    </Text>
+                  </View>
+                ) : null}
+
+                <View style={styles.battleOptions}>
+                  {question.options.map((option, index) => (
+                    <Button
+                      key={index}
+                      variant={battle.answered ? (question.correctIndex === index ? 'success' : 'ghost') : 'secondary'}
+                      disabled={busy || battle.answered || remainingSeconds === 0 || battle.phase !== 'question_open'}
+                      onPress={() =>
+                        void run(async () => {
+                          sfx.playSpellCast();
+                          await dependencies.battle.answer(roomId!, question.position, index);
+                          setBattle(await dependencies.battle.snapshot(roomId!));
+                        })
+                      }
+                      fullWidth
+                    >
+                      {String.fromCharCode(65 + index)}. {option}
+                    </Button>
+                  ))}
+                </View>
+
+                {battle.answered && (
+                  <Text style={[typography.caption, { color: palette.inkMuted, textAlign: 'center', marginTop: spacing.sm }]}>
+                    {language === 'vi'
+                      ? 'Đáp án của bạn đã được ghi nhận. Đang chờ kết quả từ đối thủ…'
+                      : 'Your answer is locked in. Waiting for other players…'}
+                  </Text>
+                )}
+
+                {question.explanation && battle.phase !== 'question_open' && (
+                  <Text style={[typography.caption, { color: palette.ink, marginTop: spacing.md }]}>
+                    {question.explanation}
+                  </Text>
+                )}
+              </Card>
+            )}
+
+            {/* Live Leaderboard */}
+            <Card style={styles.leaderboardCard}>
+              <Text style={[typography.title, { color: palette.ink }]}>
+                {battle.phase === 'finished'
+                  ? (language === 'vi' ? '🏆 BẢNG VÀNG CHUNG CUỘC' : '🏆 FINAL STANDINGS')
+                  : (language === 'vi' ? '⚡ BẢNG ĐIỂM TRỰC TIẾP' : '⚡ LIVE SCOREBOARD')}
+              </Text>
+              <View style={styles.playersList}>
+                {battle.players.map((p, i) => (
+                  <View
+                    key={p.userId}
+                    style={[
+                      styles.playerRow,
+                      {
+                        backgroundColor: p.userId === user?.id ? palette.indigoTint : palette.paper,
+                        borderColor: palette.paperMuted,
+                      },
+                    ]}
+                  >
+                    <View style={styles.playerRank}>
+                      <Text style={{ fontWeight: '800', color: i === 0 ? palette.gold : palette.ink }}>
+                        {i === 0 ? '🥇 1' : i === 1 ? '🥈 2' : i === 2 ? '🥉 3' : `${i + 1}`}
+                      </Text>
+                    </View>
+                    <View style={{ marginRight: 8 }}>
+                      <CharacterAvatar
+                        color={SCHOLAR_COLORS[i % SCHOLAR_COLORS.length]}
+                        name={p.name}
+                        action={battle.phase === 'finished' && i === 0 ? 'victory' : 'idle'}
+                        size={36}
+                        showName={false}
+                        isDisconnected={!p.connected}
+                        hasGoldenAura={p.userId === user?.id && isVip}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[typography.body, { color: palette.ink, fontWeight: '700' }]}>
+                        {p.name} {p.userId === battle.hostId && (language === 'vi' ? '(Chủ phòng)' : '(Host)')} {p.userId === user?.id && (language === 'vi' ? (isVip ? '(Bạn 👑 VIP)' : '(Bạn)') : (isVip ? '(You 👑 VIP)' : '(You)'))}
+                      </Text>
+                      <Text style={[typography.caption, { color: palette.inkMuted }]}>
+                        {p.connected
+                          ? p.ready
+                            ? (language === 'vi' ? 'Sẵn sàng' : 'Ready')
+                            : (language === 'vi' ? 'Chưa sẵn sàng' : 'Not ready')
+                          : (language === 'vi' ? 'Mất kết nối' : 'Disconnected')}
+                      </Text>
+                    </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={[typography.title, { color: palette.indigo }]}>
+                        {p.score} {language === 'vi' ? 'điểm' : 'pts'}
+                      </Text>
+                      {battle.mode === 'survival' && (
+                        <View style={{ flexDirection: 'row', gap: 2, marginTop: 3 }}>
+                          <Ionicons name={(p.lives ?? 3) >= 1 ? 'heart' : 'heart-dislike'} size={14} color={(p.lives ?? 3) >= 1 ? '#EF4444' : '#94A3B8'} />
+                          <Ionicons name={(p.lives ?? 3) >= 2 ? 'heart' : 'heart-dislike'} size={14} color={(p.lives ?? 3) >= 2 ? '#EF4444' : '#94A3B8'} />
+                          <Ionicons name={(p.lives ?? 3) >= 3 ? 'heart' : 'heart-dislike'} size={14} color={(p.lives ?? 3) >= 3 ? '#EF4444' : '#94A3B8'} />
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </Card>
+
+            {battle.phase === 'finished' && (
+              <LiveReactionsBar label={language === 'vi' ? 'Gửi biểu cảm mừng chung cuộc 🎉' : 'Send end-of-match reactions 🎉'} />
+            )}
+          </View>
+        )}
+
+        {/* Leave Button */}
+        {roomId && (
+          <View style={{ marginTop: spacing.md, marginBottom: spacing.xxl }}>
+            <Button disabled={busy} variant="danger" icon="exit-outline" onPress={() => void run(leave)} fullWidth>
+              {t.battle.leaveRoom}
+            </Button>
+          </View>
+        )}
       </GameEnvironment>
       <ConfettiOverlay visible={showConfetti} />
     </Screen>
@@ -828,6 +868,24 @@ const styles = StyleSheet.create({
     right: -4,
   },
   header: { paddingTop: spacing.md, marginBottom: spacing.md },
+  arenaTabs: {
+    flexDirection: 'row',
+    padding: 4,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    marginBottom: spacing.md,
+    gap: 4,
+  },
+  arenaTabBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radii.pill,
+  },
   errorBox: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -6,6 +6,7 @@ import { useMultiplayerStore } from '@/features/multiplayer/state/useMultiplayer
 import type { LeaderboardPlayer } from '@/features/multiplayer/domain/models';
 import { LiveReactionsBar } from '@/features/room-battle/components/LiveReactionsBar';
 import { buildLeaderboardCsv } from '@/features/study/domain/sessionReport';
+import { exportBattlePdfReport } from '@/features/study/domain/sessionPdf';
 
 export default function MultiplayerResultsScreen() {
   const router = useRouter();
@@ -112,8 +113,15 @@ export default function MultiplayerResultsScreen() {
         </View>
 
         <View style={styles.footer}>
+          <Button
+            variant="primary"
+            icon="document-text-outline"
+            onPress={() => void exportBattlePdfReport(roomCode || 'LIVE', displayResults)}
+          >
+            🖨️ In / Xuất báo cáo PDF
+          </Button>
           <Button variant="secondary" icon="download-outline" onPress={() => void handleExportReport()}>
-            📊 Xuất báo cáo phiên đấu (CSV)
+            📊 Xuất bảng điểm CSV
           </Button>
           <Button variant="reward" icon="home-outline" onPress={handleFinish}>
             Về Trang chủ Papyrus

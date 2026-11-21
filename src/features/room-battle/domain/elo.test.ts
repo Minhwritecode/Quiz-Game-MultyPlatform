@@ -1,4 +1,4 @@
-import { applyEloFloor, computeNextElo, ELO_FLOOR, eloDelta, getEloTier, kFactor } from './elo';
+import { applyEloFloor, computeNextElo, ELO_FLOOR, eloDelta, eloSearchBand, getEloTier, kFactor, pickTieredBot } from './elo';
 
 describe('ELO rating system', () => {
   it('uses higher provisional K-factor for first 10 matches', () => {
@@ -27,5 +27,13 @@ describe('ELO rating system', () => {
     expect(getEloTier(1450).id).toBe('platinum');
     expect(getEloTier(1650).id).toBe('diamond');
     expect(getEloTier(1900).id).toBe('archmage');
+  });
+
+  it('widens ELO search band over wait time and mirrors bot ELO', () => {
+    expect(eloSearchBand(0)).toBe(100);
+    expect(eloSearchBand(8)).toBe(300);
+    expect(eloSearchBand(60)).toBe(500);
+    const bot = pickTieredBot(1300);
+    expect(Math.abs(bot.elo - 1300)).toBeLessThanOrEqual(75);
   });
 });

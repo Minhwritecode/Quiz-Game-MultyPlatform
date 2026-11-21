@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { useLocalSearchParams } from 'expo-router';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Button, Card, PageHeader, Screen, TopBar, usePalette } from '@/shared/ui';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { dependencies } from '@/composition/dependencies';
@@ -119,43 +119,105 @@ export default function GenerateScreen() {
     {questions.map((question, index) => <Card key={question.id} style={styles.question}>
       <View style={styles.questionHeader}>
         <Text style={[typography.label, { color: palette.indigo }]}>{t.home.questionLabel.toLocaleUpperCase()} {index + 1}</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          {(['multiple_choice', 'true_false'] as QuestionType[]).map((qType) => {
-            const active = (question.questionType ?? 'multiple_choice') === qType;
-            return (
-              <Pressable
-                key={qType}
-                accessibilityRole="button"
-                onPress={() =>
-                  updateQuestion(question.id, (current) => ({
-                    ...current,
-                    questionType: qType,
-                    options:
-                      qType === 'true_false'
-                        ? [language === 'vi' ? 'Đúng' : 'True', language === 'vi' ? 'Sai' : 'False']
-                        : current.options.length === 4
-                        ? current.options
-                        : ['', '', '', ''],
-                    correctIndex: qType === 'true_false' ? Math.min(current.correctIndex, 1) : current.correctIndex,
-                  }))
-                }
-                style={[
-                  styles.typeChip,
-                  {
-                    backgroundColor: active ? palette.indigo : palette.paper,
-                    borderColor: active ? palette.indigo : palette.paperMuted,
-                  },
-                ]}
-              >
-                <Text style={{ fontSize: 11, fontWeight: '700', color: active ? '#FFFFFF' : palette.inkMuted }}>
-                  {qType === 'true_false' ? (language === 'vi' ? 'Đúng / Sai' : 'True / False') : '4 lựa chọn'}
-                </Text>
-              </Pressable>
-            );
-          })}
-          <Pressable accessibilityRole="button" accessibilityLabel={`${t.home.removeQuestion} ${index + 1}`} onPress={() => removeQuestion(question.id)} style={styles.removeButton}><Ionicons name="trash-outline" size={20} color={palette.danger} /></Pressable>
-        </View>
+        <Pressable accessibilityRole="button" accessibilityLabel={`${t.home.removeQuestion} ${index + 1}`} onPress={() => removeQuestion(question.id)} style={styles.removeButton}><Ionicons name="trash-outline" size={20} color={palette.danger} /></Pressable>
       </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.typeScroll}>
+        {(
+          [
+            { id: 'multiple_choice', label: '4 lựa chọn' },
+            { id: 'true_false', label: 'Đúng / Sai' },
+            { id: 'poll', label: '📊 Bình chọn' },
+            { id: 'word_cloud', label: '☁️ Word Cloud' },
+            { id: 'rating', label: '⭐ Đánh giá' },
+            { id: 'open_text', label: '✍️ Tự luận' },
+          ] as Array<{ id: QuestionType; label: string }>
+        ).map((item) => {
+          const active = (question.questionType ?? 'multiple_choice') === item.id;
+          return (
+            <Pressable
+              key={item.id}
+              accessibilityRole="button"
+              onPress={() =>
+                updateQuestion(question.id, (current) => ({
+                  ...current,
+                  questionType: item.id,
+                  multiSelect: item.id === 'multiple_choice' ? current.multiSelect : false,
+                  options:
+                    item.id === 'true_false'
+                      ? [language === 'vi' ? 'Đúng' : 'True', language === 'vi' ? 'Sai' : 'False']
+                      : item.id === 'word_cloud' || item.id === 'rating' || item.id === 'open_text'
+                      ? []
+                      : current.options.length === 4
+                      ? current.options
+                      : ['', '', '', ''],
+                  correctIndex: item.id === 'true_false' ? Math.min(current.correctIndex, 1) : current.correctIndex,
+                  ratingMax: item.id === 'rating' ? (current.ratingMax ?? 5) : current.ratingMax,
+                }))
+              }
+              style={[
+                styles.typeChip,
+                {
+                  backgroundColor: active ? palette.indigo : palette.paper,
+                  borderColor: active ? palette.indigo : palette.paperMuted,
+                },
+              ]}
+            >
+              <Text style={{ fontSize: 11, fontWeight: '700', color: active ? '#FFFFFF' : palette.inkMuted }}>
+                {item.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+      {(question.questionType ?? 'multiple_choice') === 'multiple_choice' && (
+        <Pressable
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: Boolean(question.multiSelect) }}
+          onPress={() =>
+            updateQuestion(question.id, (current) => ({
+              ...current,
+              multiSelect: !current.multiSelect,
+              correctIndices: !current.multiSelect
+                ? Array.from(new Set([current.correctIndex, ...(current.correctIndices ?? [])]))
+                : undefined,
+            }))
+          }
+          style={[styles.codeToggle, { borderColor: question.multiSelect ? palette.indigo : palette.paperMuted, backgroundColor: question.multiSelect ? palette.indigoTint : palette.paper }]}
+        >
+          <Ionicons name={question.multiSelect ? 'checkbox' : 'square-outline'} size={16} color={palette.indigo} />
+          <Text style={[typography.caption, { color: palette.indigo, fontWeight: '700' }]}>
+            {language === 'vi' ? 'Cho phép nhiều đáp án đúng (Multi-select)' : 'Allow multiple correct answers'}
+          </Text>
+        </Pressable>
+      )}
+      {question.questionType === 'rating' && (
+        <View style={{ flexDirection: 'row', gap: spacing.xs, flexWrap: 'wrap' }}>
+          {([5, 10] as const).map((max) => (
+            <Pressable
+              key={max}
+              onPress={() => updateQuestion(question.id, (current) => ({ ...current, ratingMax: max }))}
+              style={[
+                styles.typeChip,
+                {
+                  backgroundColor: (question.ratingMax ?? 5) === max ? palette.goldTint : palette.paper,
+                  borderColor: (question.ratingMax ?? 5) === max ? palette.gold : palette.paperMuted,
+                },
+              ]}
+            >
+              <Text style={{ fontSize: 12, fontWeight: '700', color: (question.ratingMax ?? 5) === max ? palette.gold : palette.inkMuted }}>
+                {max === 5 ? '⭐ Thang 5 sao' : '🔟 Thang điểm 1–10'}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
+      {(question.questionType === 'word_cloud' || question.questionType === 'open_text') && (
+        <Text style={[typography.caption, { color: palette.inkMuted }]}>
+          {question.questionType === 'word_cloud'
+            ? '☁️ Người chơi sẽ nhập tối đa 3 từ khóa ngắn để ghép thành Đám mây từ khóa (không chấm điểm).'
+            : '✍️ Người chơi sẽ nhập câu trả lời tự luận ngắn (hỗ trợ chế độ ẩn danh, không chấm điểm).'}
+        </Text>
+      )}
       <TextInput testID={`question-${index}-content`} accessibilityLabel={`${t.home.questionLabel} ${index+1}`} placeholder={t.home.questionLabel} value={question.content} onChangeText={(content) => updateQuestion(question.id, (current) => ({ ...current, content }))} multiline textAlignVertical="top" style={[styles.questionInput, { color: palette.ink, borderColor: palette.paperMuted }]} />
       <Pressable
         accessibilityRole="button"
@@ -184,10 +246,54 @@ export default function GenerateScreen() {
           style={styles.codeInput}
         />
       )}
-      {question.options.map((option, optionIndex) => <View key={`${question.id}-${optionIndex}`} style={styles.optionRow}>
-        <Pressable accessibilityRole="radio" accessibilityState={{ selected: question.correctIndex === optionIndex }} accessibilityLabel={`Mark option ${optionIndex + 1} as correct`} onPress={() => updateQuestion(question.id, (current) => ({ ...current, correctIndex: optionIndex }))} style={[styles.answerMark, { backgroundColor: question.correctIndex === optionIndex ? palette.mintTint : palette.paperMuted }]}><Ionicons name={question.correctIndex === optionIndex ? 'checkmark-circle' : 'ellipse-outline'} size={20} color={question.correctIndex === optionIndex ? palette.mint : palette.inkMuted} /></Pressable>
-        <TextInput testID={`question-${index}-option-${optionIndex}`} accessibilityLabel={`${t.home.optionLabel} ${optionIndex+1}`} placeholder={`${t.home.optionLabel} ${optionIndex + 1}`} value={option} onChangeText={(nextOption) => updateQuestion(question.id, (current) => ({ ...current, options: current.options.map((value, currentIndex) => currentIndex === optionIndex ? nextOption : value) }))} style={[styles.optionInput, { color: palette.ink, borderColor: palette.paperMuted }]} />
-      </View>)}
+      {question.options.map((option, optionIndex) => {
+        const isMarked = question.multiSelect
+          ? (question.correctIndices ?? [question.correctIndex]).includes(optionIndex)
+          : question.correctIndex === optionIndex;
+        return (
+          <View key={`${question.id}-${optionIndex}`} style={styles.optionRow}>
+            {question.questionType !== 'poll' && (
+              <Pressable
+                accessibilityRole={question.multiSelect ? 'checkbox' : 'radio'}
+                accessibilityState={{ selected: isMarked, checked: isMarked }}
+                accessibilityLabel={`Mark option ${optionIndex + 1} as correct`}
+                onPress={() =>
+                  updateQuestion(question.id, (current) => {
+                    if (!current.multiSelect) return { ...current, correctIndex: optionIndex };
+                    const cur = current.correctIndices ?? [current.correctIndex];
+                    const nextSet = cur.includes(optionIndex)
+                      ? cur.length > 1
+                        ? cur.filter((v) => v !== optionIndex)
+                        : cur
+                      : [...cur, optionIndex];
+                    return { ...current, correctIndex: nextSet[0] ?? 0, correctIndices: nextSet };
+                  })
+                }
+                style={[styles.answerMark, { backgroundColor: isMarked ? palette.mintTint : palette.paperMuted }]}
+              >
+                <Ionicons
+                  name={question.multiSelect ? (isMarked ? 'checkbox' : 'square-outline') : isMarked ? 'checkmark-circle' : 'ellipse-outline'}
+                  size={20}
+                  color={isMarked ? palette.mint : palette.inkMuted}
+                />
+              </Pressable>
+            )}
+            <TextInput
+              testID={`question-${index}-option-${optionIndex}`}
+              accessibilityLabel={`${t.home.optionLabel} ${optionIndex + 1}`}
+              placeholder={`${t.home.optionLabel} ${optionIndex + 1}`}
+              value={option}
+              onChangeText={(nextOption) =>
+                updateQuestion(question.id, (current) => ({
+                  ...current,
+                  options: current.options.map((value, currentIndex) => (currentIndex === optionIndex ? nextOption : value)),
+                }))
+              }
+              style={[styles.optionInput, { color: palette.ink, borderColor: palette.paperMuted }]}
+            />
+          </View>
+        );
+      })}
       <TextInput testID={`question-${index}-explanation`} accessibilityLabel="Explanation" value={question.explanation} onChangeText={(explanation) => updateQuestion(question.id, (current) => ({ ...current, explanation }))} placeholder="Add an explanation" placeholderTextColor={palette.inkMuted} multiline style={[styles.explanationInput, { color: palette.ink, borderColor: palette.paperMuted }]} />
     </Card>)}
 
@@ -201,7 +307,8 @@ const styles = StyleSheet.create({
   choiceRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },
   question: { marginBottom: spacing.md, gap: spacing.sm },
   questionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: spacing.xs },
-  typeChip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, borderWidth: 1 },
+  typeScroll: { gap: 6, paddingVertical: 2 },
+  typeChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1 },
   questionInput: { minHeight: 62, borderWidth: 1, borderRadius: 12, padding: spacing.md, fontSize: 16, lineHeight: 22 },
   optionRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   answerMark: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },

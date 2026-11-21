@@ -13,6 +13,7 @@ import { GameEnvironment } from '@/shared/GameEnvironment';
 import { MagicParticles } from '@/shared/MagicParticles';
 import { CharacterAvatar } from '@/shared/CharacterAvatar';
 import { sfx } from '@/core/audio/sfx';
+import { InteractiveQuestionView } from '@/features/study/components/InteractiveQuestionView';
 
 export default function StudyScreen() {
   const { setId } = useLocalSearchParams<{ setId: string }>();
@@ -242,7 +243,44 @@ export default function StudyScreen() {
         ) : null}
       </Card>
 
-      {/* Options List */}
+      {/* Options List OR Pluggable Interactive Renderer (multiSelect, poll, word_cloud, rating, open_text) */}
+      {question.multiSelect ||
+      question.questionType === 'poll' ||
+      question.questionType === 'word_cloud' ||
+      question.questionType === 'rating' ||
+      question.questionType === 'open_text' ? (
+        <InteractiveQuestionView
+          key={question.id}
+          question={question}
+          revealed={revealed}
+          onComplete={(isCorrect, chosenIdx) => {
+            const answer: AttemptAnswer = {
+              questionId: question.id,
+              chosenIndex: chosenIdx,
+              isCorrect,
+              timeMs: Math.max(0, Date.now() - questionStartedAt),
+            };
+            const updatedAnswers = [...answers.filter((item) => item.questionId !== question.id), answer];
+            setSelected(chosenIdx ?? 0);
+            setAnswers(updatedAnswers);
+            setRevealed(true);
+            if (isCorrect) {
+              sfx.playCorrect();
+              setParticleTrigger((c) => c + 1);
+            } else {
+              sfx.playWrong();
+            }
+            persistProgress({
+              questionSetId: questionSet.id,
+              currentIndex: index,
+              selectedIndex: chosenIdx,
+              revealed: true,
+              answers: updatedAnswers,
+              startedAt: sessionStartedAt,
+            });
+          }}
+        />
+      ) : (
       <View style={styles.optionsList}>
         {question.options.map((option, optionIndex) => {
           const chosen = selected === optionIndex;
@@ -308,6 +346,7 @@ export default function StudyScreen() {
           );
         })}
       </View>
+      )}
 
       {/* Explanation Box */}
       {revealed && (

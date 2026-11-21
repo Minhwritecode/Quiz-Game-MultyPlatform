@@ -62,3 +62,29 @@ export function getEloTier(rating: number): EloTier {
   }
   return ELO_TIERS[ELO_TIERS.length - 1]!;
 }
+
+export type DuelCategoryId = 'general' | 'coding' | 'math' | 'science' | 'history' | 'english';
+
+export const DUEL_CATEGORIES: Array<{ id: DuelCategoryId; label: string; icon: string }> = [
+  { id: 'coding', label: 'Lập trình', icon: '💻' },
+  { id: 'general', label: 'Tổng hợp', icon: '🌐' },
+  { id: 'math', label: 'Toán học', icon: '📐' },
+  { id: 'science', label: 'Khoa học', icon: '🔬' },
+  { id: 'history', label: 'Lịch sử', icon: '📜' },
+  { id: 'english', label: 'Tiếng Anh', icon: '🇬🇧' },
+];
+
+/** Widening ELO matchmaking band: starts at ±100 and widens smoothly up to ±500 with wait time. */
+export function eloSearchBand(waitSeconds: number): number {
+  return Math.min(500, 100 + Math.floor(Math.max(0, waitSeconds) / 2) * 50);
+}
+
+/** Difficulty-tiered bot mirroring player ELO (±75) when queue has no human after 8s. */
+export function pickTieredBot(playerElo: number): { name: string; elo: number; accuracy: number } {
+  const names = ['Học giả Minerva', 'Kỵ sĩ Alan', 'Pháp sư Ada', 'Thủ lĩnh Euler', 'Chiến binh Gauss'];
+  const idx = Math.abs(Math.round(playerElo / 50)) % names.length;
+  const offset = (idx - 2) * 28;
+  const elo = applyEloFloor(playerElo + offset);
+  const accuracy = Math.min(0.92, Math.max(0.45, 0.52 + (elo - 1000) / 1800));
+  return { name: names[idx] ?? 'Học giả Nova', elo, accuracy };
+}

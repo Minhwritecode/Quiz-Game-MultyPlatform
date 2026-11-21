@@ -18,6 +18,10 @@ import { useAiQuizStore } from '@/features/ai-quiz/state/useAiQuizStore';
 import type { QuizDifficulty } from '@/features/ai-quiz/domain/models';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { useQuizStore } from '@/features/quiz-library/state/useQuizStore';
+import {
+  buildCitedQuizFromSpace,
+  useKnowledgeSpacesStore,
+} from '@/features/ai-quiz/state/useKnowledgeSpacesStore';
 
 export default function AiQuizScreen() {
   const router = useRouter();
@@ -26,12 +30,23 @@ export default function AiQuizScreen() {
   const saveQuestionSet = usePapyrusStore((state) => state.saveQuestionSet);
   const saveToLibrary = useQuizStore((state) => state.addQuiz);
 
-  const [mode, setMode] = useState<'topic' | 'pdf'>('topic');
+  const [mode, setMode] = useState<'topic' | 'pdf' | 'space'>('topic');
   const [topic, setTopic] = useState('');
   const [difficulty, setDifficulty] = useState<QuizDifficulty>('easy');
   const [questionCount, setQuestionCount] = useState(5);
   const [includeCodeSnippet, setIncludeCodeSnippet] = useState(false);
   const [pdfFile, setPdfFile] = useState<{ uri: string; name: string; size?: number } | null>(null);
+
+  // Knowledge Spaces (RAG multi-document workspace)
+  const spaces = useKnowledgeSpacesStore((s) => s.spaces);
+  const createSpace = useKnowledgeSpacesStore((s) => s.createSpace);
+  const addDocument = useKnowledgeSpacesStore((s) => s.addDocument);
+  const removeDocument = useKnowledgeSpacesStore((s) => s.removeDocument);
+  const [selectedSpaceId, setSelectedSpaceId] = useState<string>(() => spaces[0]?.id ?? '');
+  const [newSpaceName, setNewSpaceName] = useState('');
+  const [noteTitle, setNoteTitle] = useState('');
+  const [noteExcerpt, setNoteExcerpt] = useState('');
+  const activeSpace = spaces.find((s) => s.id === selectedSpaceId) ?? spaces[0] ?? null;
 
   const handlePickDocument = async () => {
     try {
@@ -66,6 +81,16 @@ export default function AiQuizScreen() {
       } catch {
         Alert.alert('Lỗi', 'Không thể tạo quiz lúc này. Vui lòng thử lại.');
       }
+    } else if (mode === 'space') {
+      if (!activeSpace) {
+        Alert.alert('Chưa có Kho tri thức', 'Hãy tạo một Kho tri thức và thêm tài liệu trước.');
+        return;
+      }
+      const quiz = buildCitedQuizFromSpace(activeSpace, difficulty, questionCount, includeCodeSnippet);
+      useAiQuizStore.setState((state) => ({
+        generatedQuiz: quiz,
+        history: [quiz, ...state.history],
+      }));
     } else {
       if (!pdfFile) {
         Alert.alert('Chưa chọn PDF', 'Vui lòng chọn một file PDF tài liệu.');
@@ -171,11 +196,25 @@ export default function AiQuizScreen() {
               >
                 <Ionicons
                   name="document-text-outline"
-                  size={18}
+                  size={17}
                   color={mode === 'pdf' ? palette.white : palette.inkMuted}
                 />
-                <Text style={[styles.tabText, { color: mode === 'pdf' ? palette.white : palette.inkMuted }]}>
-                  Tài liệu PDF
+                <Text style={[styles.tabText, { color: mode === 'pdf' ? palette.white : palette.inkMuted }]} numberOfLines={1}>
+                  File PDF
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => setMode('space')}
+                style={[styles.tabBtn, mode === 'space' && { backgroundColor: palette.indigo }]}
+              >
+                <Ionicons
+                  name="folder-open-outline"
+                  size={17}
+                  color={mode === 'space' ? palette.white : palette.inkMuted}
+                />
+                <Text style={[styles.tabText, { color: mode === 'space' ? palette.white : palette.inkMuted }]} numberOfLines={1}>
+                  Kho tri thức
                 </Text>
               </Pressable>
             </View>
@@ -211,7 +250,7 @@ export default function AiQuizScreen() {
                     </Text>
                   </Pressable>
                 </View>
-              ) : (
+              ) : mode === 'pdf' ? (
                 <View style={styles.inputGroup}>
                   <Text style={[typography.title, { color: palette.ink }]}>Tài liệu PDF (tối đa 20MB)</Text>
                   <Pressable
@@ -230,6 +269,140 @@ export default function AiQuizScreen() {
                       {pdfFile ? `${((pdfFile.size || 0) / 1024).toFixed(1)} KB` : 'Slide bài giảng, tài liệu ôn tập, đề cương...'}
                     </Text>
                   </Pressable>
+                </View>
+              ) : (
+                <View style={styles.inputGroup}>
+                  <Text style={[typography.title, { color: palette.ink }]}>📚 Knowledge Spaces (Kho tài liệu RAG)</Text>
+                  <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2, marginBottom: spacing.sm }]}>
+                    Gom nhiều file PDF / MD / TXT / ghi chú theo môn học để sinh bộ đề có trích dẫn nguồn cụ thể.
+                  </Text>
+
+                  {/* Space Selector Pills */}
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, marginBottom: spacing.sm }}>
+                    {spaces.map((sp) => {
+                      const active = activeSpace?.id === sp.id;
+                      return (
+                        <Pressable
+                          key={sp.id}
+                          onPress={() => setSelectedSpaceId(sp.id)}
+                          style={[
+                            styles.choiceChip,
+                            {
+                              borderColor: active ? palette.indigo : palette.paperMuted,
+                              backgroundColor: active ? palette.indigo : palette.paperRaised,
+                            },
+                          ]}
+                        >
+                          <Text style={{ fontSize: 13, fontWeight: '700', color: active ? '#FFFFFF' : palette.ink }}>
+                            📁 {sp.name} ({sp.documents.length})
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+
+                  {/* Quick Create Space */}
+                  <View style={{ flexDirection: 'row', gap: 8, marginBottom: spacing.md }}>
+                    <TextInput
+                      value={newSpaceName}
+                      onChangeText={setNewSpaceName}
+                      placeholder="Tạo kho mới (VD: Ôn thi Giải tích)..."
+                      placeholderTextColor={palette.inkMuted}
+                      style={[styles.input, { flex: 1, marginTop: 0, color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paperRaised }]}
+                    />
+                    <Button
+                      variant="secondary"
+                      disabled={!newSpaceName.trim()}
+                      onPress={() => {
+                        const created = createSpace(newSpaceName, 'Tự chọn');
+                        setSelectedSpaceId(created.id);
+                        setNewSpaceName('');
+                      }}
+                    >
+                      + Tạo
+                    </Button>
+                  </View>
+
+                  {/* Active Space Documents + Add Doc */}
+                  {activeSpace && (
+                    <View style={[styles.spaceBox, { borderColor: palette.paperMuted, backgroundColor: palette.paper }]}>
+                      <Text style={[typography.caption, { color: palette.indigo, fontWeight: '800', marginBottom: 6 }]}>
+                        TÀI LIỆU TRONG “{activeSpace.name}” ({activeSpace.documents.length})
+                      </Text>
+                      {activeSpace.documents.map((doc) => (
+                        <View key={doc.id} style={[styles.docRow, { borderColor: palette.paperMuted }]}>
+                          <Ionicons name="document-attach-outline" size={16} color={palette.indigo} />
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <Text style={[typography.caption, { color: palette.ink, fontWeight: '700' }]} numberOfLines={1}>
+                              {doc.name}
+                            </Text>
+                            <Text style={[typography.caption, { color: palette.inkMuted }]} numberOfLines={1}>
+                              {doc.excerpt}
+                            </Text>
+                          </View>
+                          <Pressable onPress={() => removeDocument(activeSpace.id, doc.id)}>
+                            <Ionicons name="trash-outline" size={16} color={palette.danger} />
+                          </Pressable>
+                        </View>
+                      ))}
+
+                      <View style={{ gap: 6, marginTop: spacing.sm }}>
+                        <TextInput
+                          value={noteTitle}
+                          onChangeText={setNoteTitle}
+                          placeholder="Tên tài liệu mới (VD: chuong-3.md)..."
+                          placeholderTextColor={palette.inkMuted}
+                          style={[styles.input, { marginTop: 0, minHeight: 40, color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paperRaised }]}
+                        />
+                        <TextInput
+                          value={noteExcerpt}
+                          onChangeText={setNoteExcerpt}
+                          placeholder="Dán nội dung tóm tắt / kiến thức trọng tâm..."
+                          placeholderTextColor={palette.inkMuted}
+                          multiline
+                          style={[styles.input, { marginTop: 0, minHeight: 56, paddingVertical: 8, color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paperRaised }]}
+                        />
+                        <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                          <Button
+                            variant="secondary"
+                            icon="add-circle-outline"
+                            disabled={!noteTitle.trim() || !noteExcerpt.trim()}
+                            onPress={() => {
+                              addDocument(activeSpace.id, {
+                                name: noteTitle.trim(),
+                                kind: noteTitle.endsWith('.md') ? 'md' : noteTitle.endsWith('.txt') ? 'txt' : 'note',
+                                excerpt: noteExcerpt.trim(),
+                              });
+                              setNoteTitle('');
+                              setNoteExcerpt('');
+                            }}
+                          >
+                            Thêm ghi chú vào kho
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            icon="cloud-upload-outline"
+                            onPress={async () => {
+                              const pickedDoc = await DocumentPicker.getDocumentAsync({
+                                type: ['application/pdf', 'text/plain', 'text/markdown'],
+                                copyToCacheDirectory: true,
+                              });
+                              if (!pickedDoc.canceled && pickedDoc.assets?.[0]) {
+                                const file = pickedDoc.assets[0];
+                                addDocument(activeSpace.id, {
+                                  name: file.name,
+                                  kind: file.name.endsWith('.pdf') ? 'pdf' : file.name.endsWith('.md') ? 'md' : 'txt',
+                                  excerpt: `Tài liệu tải lên (${((file.size ?? 0) / 1024).toFixed(1)} KB) sẵn sàng trích dẫn RAG.`,
+                                });
+                              }
+                            }}
+                          >
+                            Nạp file PDF/MD/TXT
+                          </Button>
+                        </View>
+                      </View>
+                    </View>
+                  )}
                 </View>
               )}
 
@@ -404,6 +577,8 @@ const styles = StyleSheet.create({
   codeOptionPill: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, padding: spacing.sm, borderRadius: radii.md, borderWidth: 1, marginTop: spacing.sm },
   previewCodeBlock: { backgroundColor: '#0F172A', borderRadius: 8, padding: spacing.sm, marginTop: spacing.xs },
   previewCodeText: { fontFamily: 'monospace', fontSize: 12, lineHeight: 18, color: '#E2E8F0' },
+  spaceBox: { borderWidth: 1, borderRadius: radii.md, padding: spacing.md },
+  docRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingVertical: 8, borderBottomWidth: 1 },
   optionsList: { marginTop: spacing.xs },
   resultActions: { gap: spacing.sm, marginTop: spacing.xl },
 });

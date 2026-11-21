@@ -1,4 +1,4 @@
-import { calculateSpeedScore, calculateTieredSpeedScore, isValidQuestion } from './models';
+import { calculateSpeedScore, calculateTieredSpeedScore, isScoredQuestion, isValidQuestion } from './models';
 
 describe('Papyrus domain rules', () => {
   it('requires exactly four distinct answer options', () => {
@@ -19,5 +19,17 @@ describe('Papyrus domain rules', () => {
     expect(calculateTieredSpeedScore(true, 9_500, 15_000)).toBe(1220);
     // Incorrect -> 0
     expect(calculateTieredSpeedScore(false, 14_500, 15_000)).toBe(0);
+  });
+
+  it('validates pluggable question types and scored flags', () => {
+    const tf = { id: 'tf', content: 'Trái đất tròn?', options: ['Đúng', 'Sai'], correctIndex: 0, explanation: '', position: 0, questionType: 'true_false' as const };
+    const cloud = { id: 'wc', content: 'Từ khóa?', options: [], correctIndex: 0, explanation: '', position: 1, questionType: 'word_cloud' as const };
+    const poll = { id: 'pl', content: 'Chọn 1', options: ['A', 'B'], correctIndex: 0, explanation: '', position: 2, questionType: 'poll' as const };
+    expect(isValidQuestion(tf)).toBe(true);
+    expect(isScoredQuestion(tf)).toBe(true);
+    expect(isValidQuestion(cloud)).toBe(true);
+    expect(isScoredQuestion(cloud)).toBe(false);
+    expect(isValidQuestion(poll)).toBe(true);
+    expect(isScoredQuestion(poll)).toBe(false);
   });
 });
