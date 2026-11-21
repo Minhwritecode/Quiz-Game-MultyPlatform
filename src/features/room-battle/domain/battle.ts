@@ -17,6 +17,8 @@ export const battleSchema = z.object({
       lives: z.number().optional().default(3),
       ready: z.boolean(),
       connected: z.boolean(),
+      forfeited: z.boolean().optional().default(false),
+      connectionState: z.enum(['connected', 'reconnecting', 'forfeited']).optional(),
     })
   ),
   question: z

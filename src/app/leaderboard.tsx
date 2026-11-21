@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import {
   ActivityIndicator,
@@ -11,7 +12,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import { Badge, Card, Screen, usePalette } from '@/shared/ui';
+import { Badge, Button, Card, Screen, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { useAuthStore } from '@/core/state/useAuthStore';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
@@ -19,7 +20,10 @@ import { useStreakStore } from '@/features/streak/state/useStreakStore';
 import { getEloTier } from '@/features/room-battle/domain/elo';
 import { useI18n } from '@/core/i18n';
 import {
+  fetchFriendsLeaderboard,
   fetchGlobalLeaderboard,
+  fetchMyBattleHistory,
+  type BattleHistoryItem,
   type LeaderboardEntry,
   type LeaderboardTimeframe,
   type LeaderboardTopic,
@@ -89,6 +93,7 @@ function PlayerRow({ player }: { player: LeaderboardEntry }) {
 }
 
 export default function LeaderboardScreen() {
+  const router = useRouter();
   const palette = usePalette();
   const user = useAuthStore((s) => s.user);
   const localScore = usePapyrusStore((s) => s.totalScore);
@@ -99,15 +104,28 @@ export default function LeaderboardScreen() {
   const { t } = useI18n();
   const { width } = useWindowDimensions();
 
+  const [scope, setScope] = useState<'global' | 'friends'>('global');
   const [timeFilter, setTimeFilter] = useState<LeaderboardTimeframe>('week');
   const [topicFilter, setTopicFilter] = useState<LeaderboardTopic>('all');
   const [page, setPage] = useState(0);
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
+  const [battleHistory, setBattleHistory] = useState<BattleHistoryItem[]>([]);
   const [source, setSource] = useState<'live' | 'offline'>('offline');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState('');
 
   const fetchEntries = useCallback(async () => {
+    if (scope === 'friends') {
+      return fetchFriendsLeaderboard({
+        timeframe: timeFilter,
+        currentUserId: user?.id,
+        currentUserName: user?.displayName ?? undefined,
+        localScore,
+        localGamesPlayed,
+        localStreak,
+      });
+    }
     return fetchGlobalLeaderboard({
       timeframe: timeFilter,
       topic: topicFilter,
@@ -117,14 +135,18 @@ export default function LeaderboardScreen() {
       localGamesPlayed,
       localStreak,
     });
-  }, [timeFilter, topicFilter, user?.id, user?.displayName, localScore, localGamesPlayed, localStreak]);
+  }, [scope, timeFilter, topicFilter, user?.id, user?.displayName, localScore, localGamesPlayed, localStreak]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
+    setLoadError('');
     try {
-      const res = await fetchEntries();
+      const [res, hist] = await Promise.all([fetchEntries(), fetchMyBattleHistory(8)]);
       setEntries(res.entries);
       setSource(res.source);
+      setBattleHistory(hist);
+    } catch {
+      setLoadError('Không thể tải bảng xếp hạng lúc này. Nhấn Thử lại để đồng bộ.');
     } finally {
       setRefreshing(false);
     }
@@ -132,11 +154,16 @@ export default function LeaderboardScreen() {
 
   useEffect(() => {
     let active = true;
-    void fetchEntries()
-      .then((res) => {
+    void Promise.all([fetchEntries(), fetchMyBattleHistory(8)])
+      .then(([res, hist]) => {
         if (!active) return;
         setEntries(res.entries);
         setSource(res.source);
+        setBattleHistory(hist);
+        setLoadError('');
+      })
+      .catch(() => {
+        if (active) setLoadError('Không thể tải bảng xếp hạng lúc này.');
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -182,6 +209,49 @@ export default function LeaderboardScreen() {
                 {t.leaderboard.sub}
               </Text>
             </View>
+
+            {/* ── Global vs Friends Scope Switcher ── */}
+            <View style={[styles.tabRow, { marginBottom: spacing.sm }]}>
+              {([
+                { key: 'global', label: '🌍 Toàn cầu' },
+                { key: 'friends', label: '👥 Bạn bè' },
+              ] as const).map((sc) => (
+                <Pressable
+                  key={sc.key}
+                  onPress={() => {
+                    setScope(sc.key);
+                    setPage(0);
+                  }}
+                  style={[
+                    styles.tab,
+                    {
+                      backgroundColor: scope === sc.key ? palette.indigo : palette.paperRaised,
+                      borderColor: scope === sc.key ? palette.indigo : palette.paperMuted,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      typography.caption,
+                      { color: scope === sc.key ? '#fff' : palette.ink, fontWeight: '800' },
+                    ]}
+                  >
+                    {sc.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            {loadError ? (
+              <Card style={{ marginBottom: spacing.sm, borderColor: palette.danger, borderWidth: 1 }}>
+                <Text style={[typography.caption, { color: palette.danger, marginBottom: spacing.xs }]}>
+                  {loadError}
+                </Text>
+                <Button variant="secondary" icon="refresh" onPress={() => void handleRefresh()}>
+                  Thử lại
+                </Button>
+              </Card>
+            ) : null}
 
             {/* ── Time filter tabs ── */}
             <View style={styles.tabRow}>
@@ -231,18 +301,58 @@ export default function LeaderboardScreen() {
               <Badge tone="fire">{myEntry ? `#${myEntry.rank}` : t.leaderboard.rank1}</Badge>
             </Card>
 
-            {/* ── My rank snapshot + ELO Rating ── */}
+            {/* ── My rank snapshot + ELO Rating + Link to Profile/History ── */}
             {myEntry ? (
-              <Card style={[styles.myRank, { borderColor: palette.indigo }]}>
+              <Card onPress={() => router.push('/profile')} style={[styles.myRank, { borderColor: palette.indigo }]}>
                 <Ionicons name="person-circle" size={20} color={palette.indigo} />
                 <Text style={[typography.caption, { color: palette.indigo, flex: 1, fontWeight: '700' }]} numberOfLines={1}>
-                  Hạng #{myEntry.rank} · {eloTier.badge} {eloRating} ELO
+                  Hạng #{myEntry.rank} · {eloTier.badge} {eloRating} ELO · Xem hồ sơ →
                 </Text>
                 <Text style={[typography.caption, { color: palette.inkMuted, fontWeight: '700' }]}>
                   {myEntry.scoreLabel}
                 </Text>
               </Card>
             ) : null}
+
+            {/* ── Recent Personal Battle History (Supabase RPC) ── */}
+            {battleHistory.length > 0 && (
+              <Card style={{ marginBottom: spacing.md, padding: spacing.md }}>
+                <Text style={[typography.caption, { color: palette.indigo, fontWeight: '800', marginBottom: 6 }]}>
+                  📜 LỊCH SỬ TRẬN ĐẤU GẦN ĐÂY ({battleHistory.length})
+                </Text>
+                {battleHistory.slice(0, 3).map((item) => (
+                  <View
+                    key={item.matchId}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      paddingVertical: 5,
+                      borderBottomWidth: 1,
+                      borderBottomColor: palette.paperMuted,
+                    }}
+                  >
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={[typography.caption, { color: palette.ink, fontWeight: '700' }]} numberOfLines={1}>
+                        {item.label} vs {item.opponentOrPlayers}
+                      </Text>
+                      <Text style={{ fontSize: 11, color: palette.inkMuted }}>
+                        {new Date(item.playedAt).toLocaleDateString('vi-VN')} · {item.myScore}đ
+                      </Text>
+                    </View>
+                    <Badge tone={item.outcome === 'win' ? 'success' : item.outcome === 'forfeit' ? 'danger' : 'neutral'}>
+                      {item.outcome === 'win'
+                        ? `Thắng${item.eloDelta ? ` (+${item.eloDelta})` : ''}`
+                        : item.outcome === 'forfeit'
+                        ? 'Bỏ cuộc'
+                        : item.outcome === 'draw'
+                        ? 'Hòa'
+                        : `Thua${item.eloDelta ? ` (${item.eloDelta})` : ''}`}
+                    </Badge>
+                  </View>
+                ))}
+              </Card>
+            )}
 
             {/* ── Topic filter chips ── */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipScroll}>

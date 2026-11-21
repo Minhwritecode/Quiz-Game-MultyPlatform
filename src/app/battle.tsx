@@ -20,6 +20,9 @@ import { TurnPvpArena } from '@/features/room-battle/components/TurnPvpArena';
 import { RankedDuelArena } from '@/features/room-battle/components/RankedDuelArena';
 import { LiveReactionsBar } from '@/features/room-battle/components/LiveReactionsBar';
 import { ReportQuestionButton } from '@/shared/ReportQuestionButton';
+import { parseBattleInviteParams } from '@/features/room-battle/domain/pendingInvite';
+
+const PENDING_INVITE_STORAGE_KEY = 'papyrus.battle.pending_invite';
 
 const SCHOLAR_COLORS = ['#3B82F6', '#F59E0B', '#10B981', '#EC4899', '#8B5CF6', '#06B6D4'];
 
@@ -85,8 +88,9 @@ export default function BattleScreen() {
   const user = useAuthStore((s) => s.user);
   const recordGameResult = usePapyrusStore((s) => s.recordGameResult);
   const isVip = useMembershipStore((state) => state.tier === 'archmage');
-  const params = useLocalSearchParams<{ code?: string }>();
+  const params = useLocalSearchParams<{ code?: string; invite?: string }>();
   const [code, setCode] = useState(params.code ?? '');
+  const [connectionBanner, setConnectionBanner] = useState<'connected' | 'reconnecting' | 'forfeited'>('connected');
   const [roomId, setRoomId] = useState<string | null>(null);
   const [battle, setBattle] = useState<Battle | null>(null);
   const [sets, setSets] = useState<{ id: string; title: string }[]>([]);
@@ -151,6 +155,38 @@ export default function BattleScreen() {
     };
   }, [user?.id, roomKey]);
 
+  // Handle deep-link room/duel invites reliably when app is opened, resumed, or unauthenticated
+  useEffect(() => {
+    const parsed = parseBattleInviteParams({ code: params.code, invite: params.invite });
+    if (parsed) {
+      if (!user) {
+        void AsyncStorage.setItem(PENDING_INVITE_STORAGE_KEY, JSON.stringify(parsed));
+      } else if (parsed.kind === 'duel') {
+        setArenaTab('duel_1v1');
+      } else {
+        setArenaTab('rooms');
+        setCode(parsed.code);
+      }
+      return;
+    }
+    if (user) {
+      void AsyncStorage.getItem(PENDING_INVITE_STORAGE_KEY).then((raw) => {
+        if (!raw) return;
+        try {
+          const saved = JSON.parse(raw) as { kind?: string; code?: string };
+          if (saved.kind === 'duel') setArenaTab('duel_1v1');
+          else if (saved.code) {
+            setArenaTab('rooms');
+            setCode(saved.code);
+          }
+        } catch {
+          // Ignore malformed invite cache
+        }
+        void AsyncStorage.removeItem(PENDING_INVITE_STORAGE_KEY);
+      });
+    }
+  }, [params.code, params.invite, user]);
+
   useEffect(() => {
     if (!roomId) return;
     let active = true;
@@ -163,10 +199,21 @@ export default function BattleScreen() {
         const next = await dependencies.battle.snapshot(roomId);
         if (active) {
           setBattle(next);
+          const myState = next.players.find((p) => p.userId === user?.id);
+          if (myState?.forfeited || myState?.connectionState === 'forfeited') {
+            setConnectionBanner('forfeited');
+          } else if (myState?.connectionState === 'reconnecting') {
+            setConnectionBanner('reconnecting');
+          } else {
+            setConnectionBanner('connected');
+          }
           setError('');
         }
       } catch (e) {
-        if (active) setError(e instanceof Error ? e.message : t.battle.reconnecting);
+        if (active) {
+          setConnectionBanner('reconnecting');
+          setError(e instanceof Error ? e.message : t.battle.reconnecting);
+        }
       } finally {
         fetching = false;
       }
@@ -176,8 +223,16 @@ export default function BattleScreen() {
       void dependencies.battle
         .heartbeat(roomId)
         .then(refresh)
-        .catch(() => {
-          if (active) setError(t.battle.lostConnection);
+        .catch((err) => {
+          if (!active) return;
+          const msg = err instanceof Error ? err.message : '';
+          if (msg.includes('seat_forfeited')) {
+            setConnectionBanner('forfeited');
+            setError('Hết thời gian giữ chỗ 30 giây — bạn đã bị tính bỏ cuộc trong trận này.');
+          } else {
+            setConnectionBanner('reconnecting');
+            setError(t.battle.lostConnection);
+          }
         });
     };
 
@@ -247,6 +302,35 @@ export default function BattleScreen() {
             </Text>
           </View>
         </View>
+
+        {/* Connection & 30s Seat-Hold Status Banner */}
+        {roomId && connectionBanner !== 'connected' && (
+          <View
+            style={[
+              styles.errorBox,
+              {
+                backgroundColor: connectionBanner === 'forfeited' ? palette.dangerTint : '#FEF3C7',
+                borderColor: connectionBanner === 'forfeited' ? palette.danger : '#F59E0B',
+              },
+            ]}
+          >
+            <Ionicons
+              name={connectionBanner === 'forfeited' ? 'close-circle' : 'wifi-outline'}
+              size={18}
+              color={connectionBanner === 'forfeited' ? palette.danger : '#D97706'}
+            />
+            <Text
+              style={[
+                typography.caption,
+                { color: connectionBanner === 'forfeited' ? palette.danger : '#92400E', flex: 1, fontWeight: '700' },
+              ]}
+            >
+              {connectionBanner === 'forfeited'
+                ? '🔴 Hết quyền giữ chỗ 30 giây — Trận đấu đã ghi nhận bỏ cuộc.'
+                : '🟡 Mất kết nối — Đang nối lại (Server giữ chỗ tối đa 30 giây)...'}
+            </Text>
+          </View>
+        )}
 
         {/* Error Banner */}
         {!!error && (

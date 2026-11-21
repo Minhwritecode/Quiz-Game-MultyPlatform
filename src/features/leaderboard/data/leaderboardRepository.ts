@@ -219,3 +219,97 @@ export async function fetchGlobalLeaderboard(params: {
 
   return { entries: merged, source: 'offline', totalCount: merged.length };
 }
+
+export interface BattleHistoryItem {
+  matchId: string;
+  kind: string;
+  label: string;
+  myScore: number;
+  opponentOrPlayers: string;
+  outcome: 'win' | 'loss' | 'draw' | 'forfeit';
+  eloDelta: number;
+  playedAt: string;
+}
+
+export async function fetchFriendsLeaderboard(params: {
+  timeframe: LeaderboardTimeframe;
+  currentUserId?: string;
+  currentUserName?: string;
+  localScore?: number;
+  localGamesPlayed?: number;
+  localStreak?: number;
+}): Promise<LeaderboardFetchResult> {
+  if (supabase) {
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (sessionData.session) {
+        const { data, error } = await supabase.rpc('get_friends_leaderboard', {
+          p_timeframe: params.timeframe,
+          p_limit: 30,
+          p_offset: 0,
+        });
+        if (!error && Array.isArray(data) && data.length > 0) {
+          const entries: LeaderboardEntry[] = data.map((row: Record<string, unknown>, idx: number) => {
+            const score = Number(row.total_score ?? 0);
+            const games = Number(row.games_played ?? 0);
+            const uid = String(row.user_id ?? `f-${idx}`);
+            return {
+              id: uid,
+              rank: Number(row.rank ?? idx + 1),
+              name: String(row.display_name || 'Bạn học Papyrus'),
+              score,
+              scoreLabel: formatXp(score),
+              gamesPlayed: games,
+              streak: uid === params.currentUserId ? params.localStreak ?? 1 : Math.max(1, Math.min(14, games)),
+              avatar: AVATARS[idx % AVATARS.length] ?? '👥',
+              isMe: Boolean(params.currentUserId && uid === params.currentUserId),
+              topic: 'all',
+            };
+          });
+          return { entries, source: 'live', totalCount: entries.length };
+        }
+      }
+    } catch {
+      // Fallback below
+    }
+  }
+
+  // Offline / no friends added yet fallback: show user + 2 friend benchmarks
+  const myScore = Math.max(params.localScore ?? 0, 1450);
+  const raw = [
+    { id: 'fr-1', rank: 1, name: 'Minh Anh (Bạn học)', score: 3800, gamesPlayed: 9, streak: 5, avatar: '🤝', isMe: false, topic: 'all' as const },
+    { id: params.currentUserId || 'local-me', rank: 2, name: params.currentUserName || 'Bạn (Học giả)', score: myScore, gamesPlayed: Math.max(1, params.localGamesPlayed ?? 1), streak: Math.max(1, params.localStreak ?? 1), avatar: '🧙', isMe: true, topic: 'all' as const },
+    { id: 'fr-2', rank: 3, name: 'Gia Huy (Bạn học)', score: 1200, gamesPlayed: 4, streak: 2, avatar: '🎯', isMe: false, topic: 'all' as const },
+  ]
+    .sort((a, b) => b.score - a.score)
+    .map((item, idx) => ({ ...item, rank: idx + 1, scoreLabel: formatXp(item.score) }));
+
+  return { entries: raw, source: 'offline', totalCount: raw.length };
+}
+
+export async function fetchMyBattleHistory(limit = 15): Promise<BattleHistoryItem[]> {
+  if (!supabase) return [];
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData.session) return [];
+    const { data, error } = await supabase.rpc('get_my_battle_history', {
+      p_limit: limit,
+      p_offset: 0,
+    });
+    if (error || !Array.isArray(data)) return [];
+    return data.map((row: Record<string, unknown>) => ({
+      matchId: String(row.match_id ?? ''),
+      kind: String(row.kind ?? 'room'),
+      label: String(row.label ?? 'Trận đấu'),
+      myScore: Number(row.my_score ?? 0),
+      opponentOrPlayers: String(row.opponent_or_players ?? ''),
+      outcome: (['win', 'loss', 'draw', 'forfeit'].includes(String(row.outcome))
+        ? String(row.outcome)
+        : 'loss') as BattleHistoryItem['outcome'],
+      eloDelta: Number(row.elo_delta ?? 0),
+      playedAt: String(row.played_at ?? new Date().toISOString()),
+    }));
+  } catch {
+    return [];
+  }
+}

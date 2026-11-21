@@ -46,8 +46,33 @@ export default function SettingsScreen() {
   const [notice,setNotice]=useState('');
   const [moderationOpen, setModerationOpen] = useState(false);
   const [billingOpen, setBillingOpen] = useState(false);
+  const [cacheNotice, setCacheNotice] = useState('');
+  const [clearingCache, setClearingCache] = useState(false);
+  const questionSetCount = usePapyrusStore((s) => s.questionSets.length);
   const membershipTier = useMembershipStore((s) => s.tier);
   const openReportCount = useModerationStore((s) => s.reports.filter((r) => r.status === 'open').length);
+
+  const handleClearStudyDraftsCache = async () => {
+    if (clearingCache) return;
+    setClearingCache(true);
+    setCacheNotice('');
+    try {
+      const drafts = await dependencies.study.listProgress();
+      for (const d of drafts) {
+        await dependencies.study.clearProgress(d.questionSetId);
+      }
+      usePapyrusStore.getState().clearSourceDocument();
+      setCacheNotice(
+        language === 'vi'
+          ? `✅ Đã dọn ${drafts.length} phiên học dở & bản nháp OCR tạm (bộ đề & lịch sử hoàn thành vẫn giữ nguyên).`
+          : `✅ Cleared ${drafts.length} study draft(s) and temporary OCR buffer (sets & attempts preserved).`
+      );
+    } catch {
+      setCacheNotice(language === 'vi' ? 'Không thể dọn bộ nhớ tạm lúc này.' : 'Could not clear local cache.');
+    } finally {
+      setClearingCache(false);
+    }
+  };
   useEffect(()=>{const refresh=()=>{void dependencies.reminders.enabled().then(setReminder).catch(()=>undefined);};refresh();const listener=AppState.addEventListener('change',state=>{if(state==='active')refresh();});return ()=>listener.remove();},[]);
   const toggleReminder=async(value:boolean)=>{if(busy)return;setBusy(true);setNotice('');try{await dependencies.reminders.setEnabled(value);setReminder(value);}catch(e){setNotice(e instanceof Error?e.message:'Không đổi được lịch nhắc.');}finally{setBusy(false);}};
   const theme=usePapyrusStore(s=>s.theme);
@@ -155,6 +180,24 @@ export default function SettingsScreen() {
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={20} color={palette.indigo} />
+        </Pressable>
+        <View style={[styles.separator, { backgroundColor: palette.paperMuted }]} />
+        <Pressable accessibilityRole="button" style={styles.row} onPress={() => void handleClearStudyDraftsCache()}>
+          <View style={[styles.iconWrap, { backgroundColor: palette.paper }]}>
+            <Ionicons name="trash-bin-outline" size={20} color={palette.inkMuted} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[typography.body, { color: palette.ink, fontWeight: '700' }]}>
+              {language === 'vi' ? 'Dọn bộ nhớ đệm & phiên học tạm' : 'Clear Local Drafts & OCR Cache'}
+            </Text>
+            <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
+              {cacheNotice ||
+                (language === 'vi'
+                  ? `Đang lưu ${questionSetCount} bộ đề · Chạm để dọn phiên học dở & cache OCR tạm`
+                  : `${questionSetCount} sets stored · Tap to clear temporary drafts and OCR cache`)}
+            </Text>
+          </View>
+          <Badge tone="neutral">{clearingCache ? '...' : language === 'vi' ? 'Dọn' : 'Clear'}</Badge>
         </Pressable>
         <View style={[styles.separator, { backgroundColor: palette.paperMuted }]} />
         <Pressable accessibilityRole="button" style={styles.row} onPress={() => setModerationOpen(true)}>

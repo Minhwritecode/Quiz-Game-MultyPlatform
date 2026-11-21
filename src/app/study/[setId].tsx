@@ -14,13 +14,30 @@ import { MagicParticles } from '@/shared/MagicParticles';
 import { CharacterAvatar } from '@/shared/CharacterAvatar';
 import { sfx } from '@/core/audio/sfx';
 import { InteractiveQuestionView } from '@/features/study/components/InteractiveQuestionView';
+import {
+  buildStudyQueue,
+  sanitizeStudyProgress,
+  type StudyMode,
+} from '@/features/study/domain/setAnalytics';
+
+const TIMED_SECONDS = 20;
 
 export default function StudyScreen() {
-  const { setId } = useLocalSearchParams<{ setId: string }>();
+  const { setId, mode: initialModeParam } = useLocalSearchParams<{ setId: string; mode?: string }>();
   const router = useRouter();
   const palette = usePalette();
   const { t } = useI18n();
   const questionSet = usePapyrusStore((state) => state.questionSets.find((item) => item.id === setId));
+  const initialMode: StudyMode =
+    initialModeParam === 'shuffled' ||
+    initialModeParam === 'timed' ||
+    initialModeParam === 'wrong_only'
+      ? initialModeParam
+      : 'sequential';
+  const [studyMode, setStudyMode] = useState<StudyMode>(initialMode);
+  const [activeQuestions, setActiveQuestions] = useState(questionSet?.questions ?? []);
+  const [missedCount, setMissedCount] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(TIMED_SECONDS);
   const [index, setIndex] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
   const [revealed, setRevealed] = useState(false);
@@ -34,29 +51,70 @@ export default function StudyScreen() {
   const [level, setLevel] = useState(1);
   const [particleTrigger, setParticleTrigger] = useState(0);
   const [levelUpMessage, setLevelUpMessage] = useState(false);
-  const question = useMemo(() => questionSet?.questions[index], [index, questionSet]);
+  const effectiveQuestions = activeQuestions.length > 0 ? activeQuestions : questionSet?.questions ?? [];
+  const question = useMemo(() => effectiveQuestions[index], [index, effectiveQuestions]);
 
   useEffect(() => {
     let active = true;
-    void dependencies.study.getProgress(setId).then((progress) => {
-      if (!active) return;
-      if (progress) {
-        setIndex(Math.min(progress.currentIndex, Math.max(0, (questionSet?.questions.length ?? 1) - 1)));
-        setSelected(progress.selectedIndex);
-        setRevealed(progress.revealed);
-        setAnswers(progress.answers);
-        setSessionStartedAt(progress.startedAt);
-      } else {
-        const now = new Date().toISOString();
-        const initial: StudyProgress = { questionSetId: setId, currentIndex: 0, selectedIndex: null, revealed: false, answers: [], startedAt: now, updatedAt: now };
-        void dependencies.study.saveProgress(initial).catch(() => undefined);
-      }
-      setProgressLoaded(true);
-    }).catch(() => {
-      if (active) { setSaveError(t.study.progressUnavailable); setProgressLoaded(true); }
-    });
+    void Promise.all([
+      dependencies.study.getProgress(setId),
+      dependencies.study.listAttempts().catch(() => []),
+    ])
+      .then(([rawProgress, pastAttempts]) => {
+        if (!active) return;
+        if (questionSet) {
+          const built = buildStudyQueue(questionSet, studyMode, pastAttempts);
+          setActiveQuestions(built.questions);
+          setMissedCount(built.missedCount);
+        }
+        if (rawProgress && questionSet && studyMode === 'sequential') {
+          const safe = sanitizeStudyProgress(rawProgress, questionSet);
+          setIndex(safe.currentIndex);
+          setSelected(safe.selectedIndex);
+          setRevealed(safe.revealed);
+          setAnswers(safe.answers);
+          setSessionStartedAt(safe.startedAt);
+        } else {
+          const now = new Date().toISOString();
+          setIndex(0);
+          setSelected(null);
+          setRevealed(false);
+          setAnswers([]);
+          setSessionStartedAt(now);
+          setTimeLeft(TIMED_SECONDS);
+          if (studyMode === 'sequential') {
+            const initial: StudyProgress = { questionSetId: setId, currentIndex: 0, selectedIndex: null, revealed: false, answers: [], startedAt: now, updatedAt: now };
+            void dependencies.study.saveProgress(initial).catch(() => undefined);
+          }
+        }
+        setProgressLoaded(true);
+      })
+      .catch(() => {
+        if (active) { setSaveError(t.study.progressUnavailable); setProgressLoaded(true); }
+      });
     return () => { active = false; };
-  }, [setId, questionSet?.questions.length, t.study.progressUnavailable]);
+  }, [setId, questionSet, studyMode, t.study.progressUnavailable]);
+
+  // Countdown timer for Timed study mode (auto-reveals on timeout)
+  useEffect(() => {
+    if (studyMode !== 'timed' || !progressLoaded || revealed || !question) return;
+    if (timeLeft <= 0) {
+      const tid = setTimeout(() => {
+        const timeoutAns: AttemptAnswer = {
+          questionId: question.id,
+          chosenIndex: null,
+          isCorrect: false,
+          timeMs: TIMED_SECONDS * 1000,
+        };
+        setAnswers((prev) => [...prev.filter((a) => a.questionId !== question.id), timeoutAns]);
+        setRevealed(true);
+        sfx.playWrong();
+      }, 0);
+      return () => clearTimeout(tid);
+    }
+    const timer = setInterval(() => setTimeLeft((s) => Math.max(0, s - 1)), 1000);
+    return () => clearInterval(timer);
+  }, [studyMode, progressLoaded, revealed, timeLeft, question]);
 
   const persistProgress = (progress: Omit<StudyProgress, 'updatedAt'>) => {
     void dependencies.study.saveProgress({ ...progress, updatedAt: new Date().toISOString() })
@@ -145,7 +203,7 @@ export default function StudyScreen() {
       return;
     }
     const lastAnswer = answers.find((item) => item.questionId === question.id);
-    if (index >= questionSet.questions.length - 1) {
+    if (index >= effectiveQuestions.length - 1) {
       if (!lastAnswer) return;
       await finish(lastAnswer);
       return;
@@ -153,17 +211,50 @@ export default function StudyScreen() {
     setIndex((value) => value + 1);
     setSelected(null);
     setRevealed(false);
+    setTimeLeft(TIMED_SECONDS);
     setQuestionStartedAt(Date.now());
-    persistProgress({ questionSetId: questionSet.id, currentIndex: index + 1, selectedIndex: null, revealed: false, answers, startedAt: sessionStartedAt });
+    if (studyMode === 'sequential') {
+      persistProgress({ questionSetId: questionSet.id, currentIndex: index + 1, selectedIndex: null, revealed: false, answers, startedAt: sessionStartedAt });
+    }
   };
 
-  const progress = (index + 1) / questionSet.questions.length;
+  const progress = (index + 1) / Math.max(1, effectiveQuestions.length);
 
   return (
     <Screen>
       <GameEnvironment gameMode="study">
       <TopBar title={questionSet.title} action={<Badge tone={index > 0 || answers.length > 0 ? 'reward' : 'success'}>{index > 0 || answers.length > 0 ? t.study.resumedBadge : t.study.offlineModeBadge}</Badge>} />
       {saveError ? <Text accessibilityRole="alert" style={{color:palette.danger}}>{saveError}</Text> : null}
+
+      {/* Study Mode Selector (Sequential / Shuffled / Timed 20s / Wrong-Only Review) */}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: spacing.sm }}>
+        {([
+          { id: 'sequential', label: '📖 Tuần tự' },
+          { id: 'shuffled', label: '🎲 Ngẫu nhiên' },
+          { id: 'timed', label: `⏱️ ${timeLeft}s` },
+          { id: 'wrong_only', label: `🎯 Ôn câu sai${missedCount > 0 ? ` (${missedCount})` : ''}` },
+        ] as const).map((m) => {
+          const active = studyMode === m.id;
+          return (
+            <Pressable
+              key={m.id}
+              onPress={() => setStudyMode(m.id)}
+              style={{
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+                borderRadius: radii.pill,
+                borderWidth: 1,
+                borderColor: active ? palette.indigo : palette.paperMuted,
+                backgroundColor: active ? palette.indigo : palette.paperRaised,
+              }}
+            >
+              <Text style={{ fontSize: 12, fontWeight: '700', color: active ? '#FFFFFF' : palette.ink }}>
+                {m.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
 
       {/* Magic Particles */}
       <MagicParticles trigger={particleTrigger} type="sparkles" />
@@ -215,7 +306,7 @@ export default function StudyScreen() {
       <View style={styles.progressContainer}>
         <View style={styles.progressMeta}>
           <Text style={[typography.label, { color: palette.inkMuted }]}>
-            {t.study.questionLabel} {index + 1} / {questionSet.questions.length}
+            {t.study.questionLabel} {index + 1} / {effectiveQuestions.length}
           </Text>
           <Text style={[typography.label, { color: palette.indigo }]}>
             {Math.round(progress * 100)}%

@@ -13,7 +13,10 @@ import {
   parseQuizCsv,
   SAMPLE_QUIZ_CSV,
 } from '@/features/question-sets/domain/csvTransfer';
+import { cloneQuestionSet } from '@/features/study/domain/setAnalytics';
 import type { QuestionSet } from '@/core/domain/models';
+
+const SETS_PAGE_SIZE = 10;
 
 export default function LibraryScreen() {
   const router = useRouter();
@@ -27,6 +30,27 @@ export default function LibraryScreen() {
   const [csvText, setCsvText] = useState('');
   const [csvError, setCsvError] = useState('');
   const [csvBusy, setCsvBusy] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(SETS_PAGE_SIZE);
+
+  const handleDuplicateSet = async (original: QuestionSet) => {
+    setActionBusyId(original.id);
+    setActionError('');
+    try {
+      const stamp = Date.now();
+      const cloned = cloneQuestionSet(
+        original,
+        `copy-${stamp}-${Math.random().toString(36).slice(2, 6)}`,
+        (idx) => `q-copy-${stamp}-${idx}`,
+        language === 'vi' ? '(Bản sao)' : '(Copy)'
+      );
+      await saveQuestionSet(dependencies.questionSets, cloned);
+      usePapyrusStore.getState().saveQuestionSet(cloned);
+    } catch {
+      setActionError(language === 'vi' ? 'Không thể nhân bản bộ câu hỏi lúc này.' : 'Could not duplicate this set.');
+    } finally {
+      setActionBusyId(null);
+    }
+  };
 
   const handleImportCsv = async () => {
     if (csvBusy) return;
@@ -162,7 +186,7 @@ export default function LibraryScreen() {
           }
         />
       ) : (
-        filtered.map((set) => (
+        filtered.slice(0, visibleCount).map((set) => (
           <Card
             key={set.id}
             onPress={() => router.push({ pathname: '/study/[setId]', params: { setId: set.id } })}
@@ -183,8 +207,12 @@ export default function LibraryScreen() {
               </Text>
             </View>
             <View style={styles.trailing}>
-              <Badge tone={set.syncStatus === 'pending' || set.syncStatus === 'failed' ? 'reward' : 'success'}>
-                {set.syncStatus === 'pending' || set.syncStatus === 'failed' ? t.library.pendingSync : t.library.synced}
+              <Badge tone={set.syncStatus === 'failed' ? 'danger' : set.syncStatus === 'pending' ? 'reward' : 'success'}>
+                {set.syncStatus === 'failed'
+                  ? language === 'vi' ? 'Lỗi đồng bộ' : 'Sync failed'
+                  : set.syncStatus === 'pending'
+                  ? t.library.pendingSync
+                  : t.library.synced}
               </Badge>
               <View style={styles.actionIcons}>
                 {set.questions.length >= 3 && (
@@ -217,6 +245,18 @@ export default function LibraryScreen() {
                 )}
                 <Pressable
                   accessibilityRole="button"
+                  accessibilityLabel={`Nhân bản: ${set.title}`}
+                  disabled={actionBusyId === set.id}
+                  onPress={(event) => {
+                    event.stopPropagation();
+                    void handleDuplicateSet(set);
+                  }}
+                  style={styles.utilityIconBtn}
+                >
+                  <Ionicons name="copy-outline" size={17} color={palette.indigo} />
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
                   accessibilityLabel={`Xuất CSV: ${set.title}`}
                   disabled={actionBusyId === set.id}
                   onPress={(event) => {
@@ -238,6 +278,16 @@ export default function LibraryScreen() {
             </View>
           </Card>
         ))
+      )}
+
+      {filtered.length > visibleCount && (
+        <View style={{ marginTop: spacing.xs, marginBottom: spacing.md }}>
+          <Button variant="secondary" onPress={() => setVisibleCount((c) => c + SETS_PAGE_SIZE)} fullWidth>
+            {language === 'vi'
+              ? `Xem thêm bộ câu hỏi (${filtered.length - visibleCount} còn lại)`
+              : `Load more sets (${filtered.length - visibleCount} remaining)`}
+          </Button>
+        </View>
       )}
 
       {/* Bulk CSV Import Modal */}
