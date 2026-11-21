@@ -18,9 +18,9 @@ export default function StudyResultScreen() {
   useEffect(() => {
     let active = true;
     const request = attemptId ? dependencies.study.getAttempt(attemptId) : dependencies.study.getLatestAttempt(setId ?? '');
-    setLoadError('');
     void request.then((value: Attempt | null) => {
       if (active) {
+        setLoadError('');
         setAttempt(value);
         if(value)void dependencies.release.recordStudyCompletion(value.id).catch(()=>undefined);
       }

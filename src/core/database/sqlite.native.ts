@@ -11,6 +11,8 @@ export function getLocalDatabase(): SQLite.SQLiteDatabase {
       id TEXT PRIMARY KEY NOT NULL,
       title TEXT NOT NULL,
       subject TEXT NOT NULL,
+      tags_json TEXT NOT NULL DEFAULT '[]',
+      source_document_id TEXT,
       updated_at TEXT NOT NULL,
       sync_status TEXT NOT NULL DEFAULT 'synced',
       is_deleted INTEGER NOT NULL DEFAULT 0
@@ -57,19 +59,24 @@ export function getLocalDatabase(): SQLite.SQLiteDatabase {
       updated_at TEXT NOT NULL
     );
   `);
+  const columns = new Set(database.getAllSync<{ name: string }>('PRAGMA table_info(question_sets)').map(column => column.name));
+  if (!columns.has('tags_json')) database.execSync("ALTER TABLE question_sets ADD COLUMN tags_json TEXT NOT NULL DEFAULT '[]'");
+  if (!columns.has('source_document_id')) database.execSync('ALTER TABLE question_sets ADD COLUMN source_document_id TEXT');
   return database;
 }
 
-type QuestionSetRow = { id: string; title: string; subject: string; updated_at: string; sync_status: QuestionSet['syncStatus'] };
+type QuestionSetRow = { id: string; title: string; subject: string; tags_json: string; source_document_id: string | null; updated_at: string; sync_status: QuestionSet['syncStatus'] };
 type QuestionRow = { id: string; set_id: string; content: string; options_json: string; correct_index: number; explanation: string; position: number };
 
 export async function loadQuestionSets(): Promise<QuestionSet[]> {
   const db = getLocalDatabase();
-  const sets = db.getAllSync<QuestionSetRow>('SELECT id, title, subject, updated_at, sync_status FROM question_sets WHERE is_deleted = 0 ORDER BY updated_at DESC');
+  const sets = db.getAllSync<QuestionSetRow>('SELECT id, title, subject, tags_json, source_document_id, updated_at, sync_status FROM question_sets WHERE is_deleted = 0 ORDER BY updated_at DESC');
   return sets.map((set) => ({
     id: set.id,
     title: set.title,
     subject: set.subject,
+    tags: JSON.parse(set.tags_json) as string[],
+    sourceDocumentId: set.source_document_id,
     updatedAt: set.updated_at,
     syncStatus: set.sync_status,
     questions: db.getAllSync<QuestionRow>('SELECT id, set_id, content, options_json, correct_index, explanation, position FROM questions WHERE set_id = ? ORDER BY position ASC', set.id).map((question) => ({
@@ -89,8 +96,8 @@ export async function persistQuestionSet(questionSet: QuestionSet): Promise<void
     const existing = db.getFirstSync<{ id: string }>('SELECT id FROM question_sets WHERE id = ? LIMIT 1', questionSet.id);
     const operation = existing ? 'update' : 'insert';
     db.runSync(
-      'INSERT OR REPLACE INTO question_sets (id, title, subject, updated_at, sync_status, is_deleted) VALUES (?, ?, ?, ?, ?, 0)',
-      questionSet.id, questionSet.title, questionSet.subject, questionSet.updatedAt, questionSet.syncStatus,
+      'INSERT OR REPLACE INTO question_sets (id, title, subject, tags_json, source_document_id, updated_at, sync_status, is_deleted) VALUES (?, ?, ?, ?, ?, ?, ?, 0)',
+      questionSet.id, questionSet.title, questionSet.subject, JSON.stringify(questionSet.tags ?? []), questionSet.sourceDocumentId ?? null, questionSet.updatedAt, questionSet.syncStatus,
     );
     db.runSync('DELETE FROM questions WHERE set_id = ?', questionSet.id);
     for (const question of questionSet.questions) {

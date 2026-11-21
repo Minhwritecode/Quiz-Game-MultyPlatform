@@ -119,10 +119,11 @@ export class LearningSync {
       await this.store.save(owner, state);
     });
   }
-  sync(owner: string): Promise<LearningState> {
+  sync(owner: string, pushEntities?: LearningEntity[]): Promise<LearningState> {
     return this.exclusive(owner, async () => {
       const state = await this.load(owner);
       for (const item of [...state.pending]) {
+        if (pushEntities && !pushEntities.includes(item.document.entity)) continue;
         if (item.conflict || item.retryAt > this.now()) continue;
         let reply: Awaited<ReturnType<LearningRemote['push']>>;
         try {

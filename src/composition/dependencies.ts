@@ -15,6 +15,8 @@ import { deleteCurrentAccount } from '@/features/auth/data/accountDeletion';
 import { captureSourceImage, pickSourceImages } from '@/features/scan-ocr/data/imageSource';
 import { recognizeLocalImage } from '@/features/scan-ocr/data/ocr';
 import { isGenerationConfigured, requestGeneratedQuestions } from '@/features/quiz-generation/data/edgeFunctionClient';
+import { generationJobs } from '@/features/quiz-generation/data/generationJobStorage';
+import { generationNetworkAvailable, observeGenerationWake } from '@/features/quiz-generation/data/connectivity';
 
 export const dependencies = {
   assistant, battleSession: createBattleSessionUseCases(battleSession), leaderboard: createLeaderboardUseCases(leaderboardRepository),
@@ -22,7 +24,7 @@ export const dependencies = {
   release: releaseService,
   deleteCurrentAccount,
   intake: { pickSourceDocument, captureSourceImage, pickSourceImages, recognizeLocalImage },
-  generation: { configured: isGenerationConfigured, generate: requestGeneratedQuestions },
+  generation: { configured: isGenerationConfigured, generate: requestGeneratedQuestions, jobs: generationJobs, online: generationNetworkAvailable, observeWake: observeGenerationWake },
   questionSets: learning.questionSets,
   sources: learning.sources,
   learning,

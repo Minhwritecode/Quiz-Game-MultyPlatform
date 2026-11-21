@@ -33,7 +33,18 @@ test('server pull cannot overwrite a local conflict; resolution explicitly rebas
  expect(next.baseRevision).toBe('8');expect(next.mutationId).not.toBe(pending.mutationId);
 });
 
-const nativeSet:QuestionSet={...set,id:'10000000-0000-4000-8000-000000000001',questions:set.questions.map(q=>({...q,id:'20000000-0000-4000-8000-000000000001'}))};
+const nativeSet:QuestionSet={...set,tags:[],sourceDocumentId:null,id:'10000000-0000-4000-8000-000000000001',questions:set.questions.map(q=>({...q,id:'20000000-0000-4000-8000-000000000001'}))};
+test('subject tags and source identity round-trip through cloud document state',async()=>{
+ const {service,remote}=setup();
+ const sourceSet={...nativeSet,subject:'Biology',tags:['exam','chapter 2'],sourceDocumentId:'30000000-0000-4000-8000-000000000001'};
+ await service.save('A',sourceSet);
+ const pending=(await service.list('A')).pending[0]!;
+ expect(pending.document).toMatchObject({subject:'Biology',tags:['exam','chapter 2'],sourceDocumentId:sourceSet.sourceDocumentId});
+ remote.push.mockResolvedValue({conflict:false,document:{...pending.document,revision:'1'}});
+ await service.sync('A');
+ expect((await service.list('A')).documents[0]).toMatchObject({tags:['exam','chapter 2'],sourceDocumentId:sourceSet.sourceDocumentId});
+});
+
 test('native save keeps set and question IDs across saves without importing clones',async()=>{
  const {service,remote}=setup();
  await service.save('A',nativeSet);
@@ -114,7 +125,7 @@ test.each([{cursor:'9',hasMore:false},{cursor:'10',hasMore:true}])('cursor %j ca
  const {service,remote,store}=setup();
  const before={...emptyCloudState(),cursor:'10'};
  await store.save('A',before);
- remote.pull.mockResolvedValue({...page,documents:[{...nativeSet,revision:'11',deleted:true}]});
+ remote.pull.mockResolvedValue({...page,documents:[{id:nativeSet.id,title:nativeSet.title,subject:nativeSet.subject,tags:[],sourceDocumentId:null,questions:nativeSet.questions,revision:'11',updatedAt:nativeSet.updatedAt,deleted:true}]});
  await expect(service.sync('A')).rejects.toThrow('cursor');
  expect(await service.list('A')).toEqual(before);
 });

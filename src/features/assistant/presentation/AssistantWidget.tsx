@@ -30,7 +30,8 @@ export function AssistantWidget() {
   const [conversationId, setConversationId] = useState(() => Crypto.randomUUID());
   const [historyVisible, setHistoryVisible] = useState(false);
   const [hydrated, setHydrated] = useState(false);
-  const owner = useRef(userId); owner.current = userId;
+  const owner = useRef(userId);
+  useEffect(() => { owner.current = userId; }, [userId]);
   const scroll = useRef<ElementRef<typeof ScrollView>>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [pdf, setPdf] = useState<PdfAttachment | null>(null);
@@ -42,6 +43,8 @@ export function AssistantWidget() {
   useEffect(() => {
     let active = true;
     request.current?.abort(); request.current = null;
+    // Reset user-scoped history before loading the next account.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setBusy(false); setMessages([]); setConversations([]); setDraft(''); setDocumentText(undefined);setPdf(null);setPartial(''); setNotice(''); setHelp(null); setHydrated(false); setHistoryVisible(false); setConversationId(Crypto.randomUUID());
     if (!userId) setHydrated(true);
     else void dependencies.assistant.load(userId).then(saved => {

@@ -31,8 +31,13 @@ async function syncNow() {
     await refresh();
     if (!account || !(await canSync()) || owner() !== account) return;
     try {
+      await learningSync.sync(account, ['source_documents']);
+      if (owner() !== account) return;
       await cloudSets.sync(account);
-      if (owner() === account) { await learningSync.sync(account); usePapyrusStore.getState().setSyncMessage(''); }
+      if (owner() === account) {
+        await learningSync.sync(account, ['attempts']);
+        usePapyrusStore.getState().setSyncMessage('');
+      }
     } finally { if (owner() === account) await refresh(); }
   })().finally(() => { running = null; });
   return running;

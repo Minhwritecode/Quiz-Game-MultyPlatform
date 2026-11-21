@@ -45,7 +45,10 @@
 - [x] Replace the hardcoded generation preview with source-backed generated state when Supabase is configured.
 - [x] Add editable review actions: edit question, edit option, change answer, remove question (UI code; component test pending).
 - [x] Add client parser tests with malformed questions, code fences and duplicate questions.
-- [ ] Acceptance: a signed-in user can submit confirmed text and save only schema-valid questions; no provider key reaches the app.
+- [x] Stream validated questions into the review screen; preserve partial answers and support cancel/retry.
+- [x] Queue generation offline, recover interrupted jobs, regenerate a question and fill missing questions.
+- [x] Enforce a separate generation quota and preserve subject/tags/source-document metadata through sync.
+- [ ] Runtime acceptance: deploy the migration and Edge Function, then verify a signed-in Gemini stream and quota in the hosted development project.
 
 ### Week 3 — Auth, profile and sync outbox
 
@@ -106,7 +109,7 @@
 
 - **Implemented slices:** local study/result, editable review, camera permission handling, account-set manual sync and server battle/Realtime. Local API/domain evidence is recorded in the delivery checklist.
 - **Cloud:** five migrations deployed; RLS/RPC grants and anonymous-denial probes verified. Authenticated app/device journeys remain pending.
-- **Missing:** complete auth, live/streaming AI, PDF/documents, full library CRUD, resume/history, automatic/attempt sync, QR and global leaderboard.
+- **Missing:** hosted acceptance for streaming AI/quota, PDF documents, full library CRUD, in-progress study resume, QR and global leaderboard.
 - **Still open:** component/E2E/native tests, signed builds and report/Figma/device reconciliation.
 - **Broader reference scope:** X1–X6 in the audit tracks guest/host modes, programming categories, RAG/providers, ranked duels, moderation/media and billing/self-hosting. These are not covered by the original eight-week core delivery order.
 
@@ -130,3 +133,15 @@ See [Group A in the project plan](PROJECT-PLAN.md#group-a--clean-architecture-16
 - [x] Revision policy adopted consistently; timestamp LWW superseded.
 
 Evidence and scope limits: [Group B in the project plan](PROJECT-PLAN.md#group-b--learning-data-synchronization-17-november-2026). Native acceptance and cross-device preferences remain open.
+
+## Group C checkpoint — 17 November 2026
+
+- [x] End-to-end SSE implementation from Gemini through Edge Function to incremental app parsing, with strict question validation.
+- [x] Partial-result persistence, offline queue, retry/backoff, cancellation and interrupted-job recovery.
+- [x] Single-question regeneration and fill-missing flow.
+- [x] Separate daily generation quota and idempotent request keys.
+- [x] Subject, tags and source-document metadata carried through local and cloud set storage; documents sync before sets.
+- [x] TypeScript, 32 Jest suites / 93 tests, architecture graph and five architecture regression tests pass.
+- [ ] Hosted Supabase migration/Edge Function deployment and real Gemini streaming acceptance.
+
+See [Group C in the project plan](PROJECT-PLAN.md#group-c--ai-question-generation-17-november-2026). Code and local checks are complete; hosted runtime acceptance remains open.

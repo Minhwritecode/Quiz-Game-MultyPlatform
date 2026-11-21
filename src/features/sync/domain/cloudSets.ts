@@ -3,7 +3,7 @@ import { AppError } from '@/core/domain/failure';
 import type { QuestionSet } from '@/core/domain/models';
 
 const question = z.object({id:z.string().uuid(),content:z.string().min(1),options:z.array(z.string().min(1)).length(4),correctIndex:z.number().int().min(0).max(3),explanation:z.string(),position:z.number().int().nonnegative()});
-export const cloudSetSchema=z.object({id:z.string().uuid(),title:z.string(),subject:z.string(),questions:z.array(question),revision:z.string().regex(/^\d+$/),updatedAt:z.string(),deleted:z.boolean()});
+export const cloudSetSchema=z.object({id:z.string().uuid(),title:z.string(),subject:z.string(),tags:z.array(z.string().min(1).max(30)).max(10).default([]),sourceDocumentId:z.string().uuid().nullable().default(null),questions:z.array(question),revision:z.string().regex(/^\d+$/),updatedAt:z.string(),deleted:z.boolean()});
 export type CloudSet=z.infer<typeof cloudSetSchema>;
 export type PendingSet={mutationId:string;baseRevision:string;document:CloudSet;failures:number;retryAt:number;conflict?:CloudSet};
 export type CloudState={cursor:string;documents:CloudSet[];pending:PendingSet[];imports:Record<string,string>};
@@ -26,7 +26,7 @@ export class CloudSets {
    const id=state.imports[set.id]??this.uuid();
    if(state.pending.some(p=>p.document.id===id))throw new Error('Sync or resolve the existing pending change first.');
    const existing=state.documents.find(d=>d.id===id);
-   const document:CloudSet={...set,id,questions:set.questions.map((q,i)=>({...q,id:existing?.questions[i]?.id??this.uuid(),position:i})),revision:existing?.revision??'0',deleted:false};
+   const document:CloudSet={...set,id,tags:set.tags??[],sourceDocumentId:set.sourceDocumentId??null,questions:set.questions.map((q,i)=>({...q,id:existing?.questions[i]?.id??this.uuid(),position:i})),revision:existing?.revision??'0',deleted:false};
    cloudSetSchema.parse(document);
    state.imports[set.id]=id;
    state.pending.push({mutationId:this.uuid(),baseRevision:document.revision,document,failures:0,retryAt:0});
@@ -37,7 +37,7 @@ export class CloudSets {
    const state=await this.store.load(owner),existing=state.documents.find(d=>d.id===set.id);
    const pending=state.pending.find(p=>p.document.id===set.id);
    if(pending?.conflict)throw new AppError('conflict','Giải quyết xung đột trong màn Đồng bộ trước khi sửa tiếp.');
-   const document=cloudSetSchema.parse({...set,revision:existing?.revision??'0',deleted:false});
+   const document=cloudSetSchema.parse({...set,tags:set.tags??[],sourceDocumentId:set.sourceDocumentId??null,revision:existing?.revision??'0',deleted:false});
    state.pending=state.pending.filter(p=>p.document.id!==set.id);
    state.pending.push({mutationId:this.uuid(),baseRevision:document.revision,document,failures:0,retryAt:0});
    state.documents=[document,...state.documents.filter(d=>d.id!==set.id)];

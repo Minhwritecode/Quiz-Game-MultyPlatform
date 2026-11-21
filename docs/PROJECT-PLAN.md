@@ -411,22 +411,25 @@ editable text, and recover gracefully from permission or recognition failure.
 
 ### Phase 6 - Streaming AI question generation
 
-- [ ] Define the generation request and validated question entity in Domain.
-- [ ] Implement the Edge Function authentication and input-length checks.
-- [ ] Store provider keys only in Supabase secrets.
-- [ ] Add timeout, cancellation and rate-limit handling.
-- [ ] Stream JSON objects through a stable SSE-compatible contract.
-- [ ] Parse partial chunks incrementally and emit complete question objects.
-- [ ] Validate exactly four options, index range, non-empty text and duplicates.
-- [ ] Reject or quarantine malformed questions instead of crashing the screen.
-- [ ] Show questions as they arrive, with cancel and retry controls.
-- [ ] Require user confirmation before text is sent to the LLM endpoint.
-- [ ] Let the user edit, delete and regenerate individual questions.
-- [ ] Add generation-job persistence for offline retry as P1.
+- [x] Define the generation request and validated question entity in Domain.
+- [x] Implement the Edge Function authentication and input-length checks.
+- [x] Read provider credentials only from Edge Function environment secrets.
+- [x] Add timeout, client cancellation and a generation-specific daily quota (20 requests/account/day).
+- [x] Stream JSON objects through a stable SSE-compatible contract.
+- [x] Parse partial chunks incrementally and emit complete question objects.
+- [x] Validate four distinct options, answer index, non-empty fields and duplicate questions.
+- [x] Ignore malformed provider objects without crashing the screen.
+- [x] Show valid questions as they arrive; retain partial results and support cancel/retry.
+- [x] Send source text only after the user presses the explicit Generate action.
+- [x] Let the user edit, delete and regenerate individual questions, and fill missing questions.
+- [x] Persist owner-scoped generation jobs, partial questions and retry state for resume after reopening.
+- [x] Preserve subject, tags and source-document ID through local storage and cloud set sync.
 
-**Exit gate:** the document-to-reviewed-question flow works with a configured
-provider in a development environment and has deterministic parser/use-case
-tests independent of the provider.
+**Code gate:** implemented and covered by deterministic client/parser/job tests.
+**Runtime gate remains open:** deploy the quota/metadata migration and Edge Function,
+then verify a real authenticated Gemini stream, cancellation and quota against the
+development Supabase project. This workspace has no Deno, Supabase CLI or working
+Docker daemon, so code-level checks do not claim hosted deployment.
 
 ### Phase 7 - Question-set library and offline study
 
@@ -766,3 +769,14 @@ Verification: TypeScript passed; 28 Jest suites / 82 tests passed, including eng
 Limits kept separate: this is foreground/reconnect sync, not an OS background task while the app is terminated. Native airplane-mode/relaunch acceptance still needs a device run; no APK was built. In-progress study resume remains local and account-scoped; completed attempts synchronize. Automatic preferences sync remains a separate open item. Existing guest history is not silently assigned to whichever account signs in.
 
 Deployment verification — 17 November 2026: migration `20261116182313_learning_sync.sql` was applied to hosted Papyrus project `rqfolapnysclnmolrsva`. `origin/main` was fetched and merged into the release branch without conflicts; TypeScript, all 82 Jest tests and all five architecture regression tests passed again after the merge. The earlier quota-related deployment interruption did not apply the migration; this retry completed successfully.
+
+## Group C — AI question generation (17 November 2026)
+
+- [x] Replace one-shot JSON response with Gemini SSE → authenticated Edge Function SSE → incremental app parser; emit only schema-valid, distinct questions.
+- [x] Add one-question regeneration and missing-question fill, excluding existing question text from the generation request.
+- [x] Persist account-scoped offline jobs, retry/backoff, cancellation, partial results and running-job recovery after screen/app restart.
+- [x] Add a generation-specific 20-request UTC daily quota and idempotency keys, independent of Papybot quota.
+- [x] Persist subject, tags and source-document UUID in SQLite/cloud question-set metadata; sync source documents before dependent sets.
+- [x] Verify SSE parsing, malformed/duplicate rejection, Gemini chunk extraction, generation jobs, metadata roundtrip and source-before-set ordering with local tests.
+
+Verification on this worktree: TypeScript passed; 32 Jest suites / 93 tests passed; architecture graph plus five regression tests passed; `git diff --check` passed. Hosted migration execution, Edge Function deployment and a real Gemini request remain unverified because Deno/Supabase CLI are unavailable and Docker daemon access is denied. Do not treat Group C as cloud-runtime accepted until that separate check passes.

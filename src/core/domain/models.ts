@@ -13,6 +13,8 @@ export type QuestionSet = {
   id: string;
   title: string;
   subject: string;
+  tags?: string[];
+  sourceDocumentId?: string | null;
   questions: Question[];
   updatedAt: string;
   syncStatus: SyncStatus;
@@ -80,6 +82,7 @@ export type GenerationRequest = {
   questionCount: number;
   difficulty: QuestionDifficulty;
   languageCode: string;
+  excludeQuestions?: string[];
 };
 
 export type Room = {

@@ -18,7 +18,10 @@ export default function PapyrusScene({ reduceMotion = false }: { reduceMotion?: 
   const [ready, setReady] = useState(false);
   useEffect(() => {
     const browserPrefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
-    setReady(!reduceMotion && !browserPrefersReducedMotion && supportsWebGL2());
+    let active = true;
+    // Defer capability probing until after hydration.
+    void Promise.resolve().then(() => { if (active) setReady(!reduceMotion && !browserPrefersReducedMotion && supportsWebGL2()); });
+    return () => { active = false; };
   }, [reduceMotion]);
 
   return <View style={{ flex: 1, minHeight: 260 }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" pointerEvents="none">

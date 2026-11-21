@@ -94,7 +94,7 @@ it('wakes immediately on start and refreshes the signed-in library after syncing
   await settle();
   expect(f.observeSyncWake).toHaveBeenCalledTimes(1);
   expect(f.cloudSets.sync).toHaveBeenCalledWith('alice');
-  expect(f.learningSync.sync).toHaveBeenCalledWith('alice');
+  expect(f.learningSync.sync.mock.calls).toEqual([['alice',['source_documents']],['alice',['attempts']]]);
   expect(f.view.questionSets).toEqual([questionSet('downloaded')]);
   expect(f.view.syncMessage).toBe('');
 });
@@ -110,7 +110,7 @@ it('shows guest data without cloud access and wakes on login', async () => {
   expect(f.view.questionSets).toEqual([]);
   await settle();
   expect(f.cloudSets.sync).toHaveBeenCalledWith('alice');
-  expect(f.learningSync.sync).toHaveBeenCalledWith('alice');
+  expect(f.learningSync.sync.mock.calls).toEqual([['alice',['source_documents']],['alice',['attempts']]]);
   expect(f.view.questionSets).toEqual([questionSet('alice')]);
 });
 
@@ -124,7 +124,7 @@ it.each(['network reconnect', 'foreground'])('wakes through observeSyncWake on %
   f.signal();
   await settle();
   expect(f.cloudSets.sync).toHaveBeenCalledTimes(1);
-  expect(f.learningSync.sync).toHaveBeenCalledWith('alice');
+  expect(f.learningSync.sync.mock.calls).toEqual([['alice',['source_documents']],['alice',['attempts']]]);
   expect(jest.getTimerCount()).toBe(1);
 });
 
@@ -134,12 +134,12 @@ it('retries a failed sync after 30 seconds and clears its error on success', asy
   dispose = f.learning.start();
   await settle();
   expect(f.view.syncMessage).toBe('Chưa đồng bộ được. Dữ liệu vẫn được giữ trên thiết bị.');
-  expect(f.learningSync.sync).not.toHaveBeenCalled();
+  expect(f.learningSync.sync.mock.calls).toEqual([['alice',['source_documents']]]);
   await jest.advanceTimersByTimeAsync(29999);
   expect(f.cloudSets.sync).toHaveBeenCalledTimes(1);
   await jest.advanceTimersByTimeAsync(1);
   expect(f.cloudSets.sync).toHaveBeenCalledTimes(2);
-  expect(f.learningSync.sync).toHaveBeenCalledWith('alice');
+  expect(f.learningSync.sync.mock.calls).toEqual([['alice',['source_documents']],['alice',['source_documents']],['alice',['attempts']]]);
   expect(f.view.syncMessage).toBe('');
   await jest.advanceTimersByTimeAsync(30000);
   expect(f.cloudSets.sync).toHaveBeenCalledTimes(3);
@@ -160,7 +160,7 @@ it('hides the old library immediately and ignores its late sync response after s
   oldSync.resolve(undefined);
   await settle();
   expect(f.cloudSets.sync.mock.calls).toEqual([['alice'], ['bob']]);
-  expect(f.learningSync.sync.mock.calls).toEqual([['bob']]);
+  expect(f.learningSync.sync.mock.calls).toEqual([['alice',['source_documents']],['bob',['source_documents']],['bob',['attempts']]]);
   expect(f.view.questionSets).toEqual([questionSet('bob')]);
   expect(f.view.replaceQuestionSets.mock.calls.length).toBeGreaterThan(0);
   for (const [sets] of f.view.replaceQuestionSets.mock.calls) expect(sets).toEqual([questionSet('bob')]);
