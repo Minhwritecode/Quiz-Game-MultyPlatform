@@ -99,8 +99,13 @@ export function isValidQuestion(question: Question): boolean {
     question.correctIndex >= 0 && question.correctIndex < question.options.length;
 }
 
+export function calculateSpeedScore(isCorrect: boolean, remainingMs: number): number {
+  if (!isCorrect) return 0;
+  return 1000 + Math.min(500, Math.max(0, Math.floor(remainingMs / 100)));
+}
+
 /**
- * 10-tier speed scoring (inspired by competitive quiz ranking systems).
+ * 10-tier competitive speed scoring (inspired by competitive quiz ranking systems).
  * Base: 1000 pts always for correct answer.
  * Speed bonus (0–500): based on how quickly player answered relative to timeLimit.
  * Tier breakdown (elapsed ratio → bonus):
@@ -108,7 +113,7 @@ export function isValidQuestion(question: Question): boolean {
  *   <30% → 280   <40% → 220   <55% → 165   <70% → 110
  *   <85% → 55    else → 0
  */
-export function calculateSpeedScore(
+export function calculateTieredSpeedScore(
   isCorrect: boolean,
   remainingMs: number,
   timeLimitMs = 15_000,

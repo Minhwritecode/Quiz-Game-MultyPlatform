@@ -22,7 +22,7 @@ function ConfettiOverlay({ visible }: { visible: boolean }) {
   const COLORS = ['#4F46E5', '#FBBF24', '#10B981', '#F43F5E', '#06B6D4', '#8B5CF6'];
   const particles = useRef(
     Array.from({ length: 20 }, (_, i) => ({
-      x: new Animated.Value(0.1 + (i % 10) * 0.08),
+      x: 5 + (i % 10) * 9.5,
       y: new Animated.Value(0),
       op: new Animated.Value(1),
       color: COLORS[i % COLORS.length],
@@ -48,13 +48,13 @@ function ConfettiOverlay({ visible }: { visible: boolean }) {
 
   if (!visible) return null;
   return (
-    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, pointerEvents: 'none' }}>
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
       {particles.map((p, i) => (
         <Animated.View
           key={i}
           style={{
             position: 'absolute',
-            left: `${p.x._value * 100}%` as unknown as number,
+            left: `${p.x}%`,
             top: 0,
             width: p.size,
             height: p.size,
@@ -658,8 +658,8 @@ export default function BattleScreen() {
         </View>
       )}
       </GameEnvironment>
+      <ConfettiOverlay visible={showConfetti} />
     </Screen>
-    <ConfettiOverlay visible={showConfetti} />
   );
 }
 

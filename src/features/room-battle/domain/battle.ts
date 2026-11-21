@@ -26,6 +26,7 @@ export const battleSchema = z.object({
       options: z.array(z.string()),
       correctIndex: z.number().optional(),
       explanation: z.string().optional(),
+      codeSnippet: z.string().optional(),
     })
     .nullable(),
 });
