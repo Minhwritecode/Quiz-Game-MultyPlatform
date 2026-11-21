@@ -140,3 +140,80 @@ export async function fetchCloudProfileSnapshot(): Promise<CloudProfileSnapshot 
     return null;
   }
 }
+
+export interface LiveMatchmakingResult {
+  status: 'searching' | 'matched' | 'idle';
+  isHuman: boolean;
+  opponentId?: string;
+  opponentName?: string;
+  opponentElo?: number;
+}
+
+export async function enqueueLiveDuelQueue(input: {
+  categoryId: DuelCategoryId;
+  rated: boolean;
+  eloRating: number;
+  displayName: string;
+  inviteCode?: string | null;
+  eloBand?: number;
+}): Promise<LiveMatchmakingResult | null> {
+  if (!supabase) return null;
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData.session) return null;
+    const { data, error } = await supabase.rpc('enqueue_duel_matchmaking', {
+      p_category_id: input.categoryId,
+      p_rated: input.rated,
+      p_elo_rating: input.eloRating,
+      p_display_name: input.displayName,
+      p_invite_code: input.inviteCode ?? null,
+      p_elo_band: input.eloBand ?? 250,
+    });
+    if (error || !data) return null;
+    return {
+      status: data.status === 'matched' ? 'matched' : 'searching',
+      isHuman: Boolean(data.isHuman),
+      opponentId: data.opponentId ? String(data.opponentId) : undefined,
+      opponentName: data.opponentName ? String(data.opponentName) : undefined,
+      opponentElo: typeof data.opponentElo === 'number' ? data.opponentElo : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function pollLiveDuelQueue(
+  categoryId: DuelCategoryId,
+  eloBand: number
+): Promise<LiveMatchmakingResult | null> {
+  if (!supabase) return null;
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData.session) return null;
+    const { data, error } = await supabase.rpc('poll_duel_matchmaking', {
+      p_category_id: categoryId,
+      p_elo_band: eloBand,
+    });
+    if (error || !data) return null;
+    return {
+      status: data.status === 'matched' ? 'matched' : data.status === 'searching' ? 'searching' : 'idle',
+      isHuman: Boolean(data.isHuman),
+      opponentId: data.opponentId ? String(data.opponentId) : undefined,
+      opponentName: data.opponentName ? String(data.opponentName) : undefined,
+      opponentElo: typeof data.opponentElo === 'number' ? data.opponentElo : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function cancelLiveDuelQueue(): Promise<void> {
+  if (!supabase) return;
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData.session) return;
+    await supabase.rpc('cancel_duel_matchmaking');
+  } catch {
+    // Ignore
+  }
+}

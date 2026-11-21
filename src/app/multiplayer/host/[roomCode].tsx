@@ -16,6 +16,8 @@ import { roomApi } from '@/features/multiplayer/services/room.api';
 import { gameApi } from '@/features/multiplayer/services/game.api';
 import { socket, SOCKET_EVENTS } from '@/features/multiplayer/services/socket';
 import type { RoomData } from '@/features/multiplayer/domain/models';
+import { useMultiplayerStore } from '@/features/multiplayer/state/useMultiplayerStore';
+import { RoomQrCodeModal } from '@/features/multiplayer/components/RoomQrCodeModal';
 
 export default function HostRoomScreen() {
   const router = useRouter();
@@ -28,6 +30,11 @@ export default function HostRoomScreen() {
   const [timePerQuestion, setTimePerQuestion] = useState(20);
   const [readTimeSec, setReadTimeSec] = useState<0 | 3 | 5 | 10>(3);
   const [reactionsEnabled, setReactionsEnabled] = useState(true);
+  const [qrModalOpen, setQrModalOpen] = useState(false);
+  const autoAdvance = useMultiplayerStore((s) => s.autoAdvance);
+  const autoAdvanceDelaySec = useMultiplayerStore((s) => s.autoAdvanceDelaySec);
+  const setAutoAdvance = useMultiplayerStore((s) => s.setAutoAdvance);
+  const setAutoAdvanceDelaySec = useMultiplayerStore((s) => s.setAutoAdvanceDelaySec);
 
   const handleKickPlayer = (playerId: string, nickname: string) => {
     Alert.alert('Mời rời phòng', `Bạn muốn mời "${nickname}" ra khỏi phòng đấu?`, [
@@ -253,6 +260,48 @@ export default function HostRoomScreen() {
                         </Text>
                       </Pressable>
                     </View>
+                    <View style={styles.configRow}>
+                      <Text style={[typography.caption, { color: palette.ink, fontWeight: '700', flex: 1 }]}>
+                        ⏩ Tự động qua câu (Auto-advance)
+                      </Text>
+                      <View style={styles.timeChips}>
+                        <Pressable
+                          onPress={() => setAutoAdvance(!autoAdvance)}
+                          style={[
+                            styles.timeChip,
+                            { backgroundColor: autoAdvance ? palette.indigo : palette.paperMuted },
+                          ]}
+                        >
+                          <Text style={{ color: autoAdvance ? '#FFFFFF' : palette.ink, fontSize: 12, fontWeight: '700' }}>
+                            {autoAdvance ? 'Bật' : 'Tắt'}
+                          </Text>
+                        </Pressable>
+                        {autoAdvance &&
+                          ([3, 5, 8] as const).map((sec) => (
+                            <Pressable
+                              key={sec}
+                              onPress={() => setAutoAdvanceDelaySec(sec)}
+                              style={[
+                                styles.timeChip,
+                                {
+                                  backgroundColor:
+                                    autoAdvanceDelaySec === sec ? palette.mint : palette.paperMuted,
+                                },
+                              ]}
+                            >
+                              <Text
+                                style={{
+                                  color: autoAdvanceDelaySec === sec ? '#FFFFFF' : palette.ink,
+                                  fontSize: 12,
+                                  fontWeight: '700',
+                                }}
+                              >
+                                {sec}s
+                              </Text>
+                            </Pressable>
+                          ))}
+                      </View>
+                    </View>
                   </View>
                 )}
 
@@ -266,7 +315,7 @@ export default function HostRoomScreen() {
                     <Button
                       variant="ghost"
                       icon="qr-code-outline"
-                      onPress={() => Alert.alert('Mã QR', `Mã QR liên kết tới phòng: ${roomCode}`)}
+                      onPress={() => setQrModalOpen(true)}
                     >
                       Mã QR
                     </Button>
@@ -364,6 +413,11 @@ export default function HostRoomScreen() {
               </Text>
             </Card>
           }
+        />
+        <RoomQrCodeModal
+          visible={qrModalOpen}
+          roomCode={roomCode || 'LIVE'}
+          onClose={() => setQrModalOpen(false)}
         />
       </View>
     </Screen>

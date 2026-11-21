@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Badge, Button, Card, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
@@ -12,7 +12,12 @@ import {
   type DuelCategoryId,
 } from '../domain/elo';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
-import { syncDuelResultToCloud } from '@/features/profile/data/profileCloudSync';
+import {
+  cancelLiveDuelQueue,
+  enqueueLiveDuelQueue,
+  pollLiveDuelQueue,
+  syncDuelResultToCloud,
+} from '@/features/profile/data/profileCloudSync';
 import { sfx } from '@/core/audio/sfx';
 import { ReportQuestionButton } from '@/shared/ReportQuestionButton';
 import { LiveReactionsBar } from './LiveReactionsBar';
@@ -87,11 +92,13 @@ export function RankedDuelArena({
   const [rated, setRated] = useState(true);
   const [waitSeconds, setWaitSeconds] = useState(0);
   const [inviteCode, setInviteCode] = useState<string | null>(null);
+  const [joinInviteInput, setJoinInviteInput] = useState('');
 
-  const [opponent, setOpponent] = useState<{ name: string; elo: number; accuracy: number }>({
+  const [opponent, setOpponent] = useState<{ name: string; elo: number; accuracy: number; isHuman?: boolean }>({
     name: 'Học giả Nova',
     elo: 1200,
     accuracy: 0.72,
+    isHuman: false,
   });
   const [qIndex, setQIndex] = useState(0);
   const [timeLeft, setTimeLeft] = useState(12);
@@ -156,13 +163,37 @@ export function RankedDuelArena({
     [activeQ, picked, timeLeft, qIndex, opponent, myScore, oppScore, questions.length, recordCategoryElo, category, rated, onMatchFinished]
   );
 
-  // Widening ELO queue timer -> matches tiered bot after 4s preview (ADR-006 widening band 100 -> 500)
+  // Live 1v1 Realtime Queue -> pairs with waiting human player first, falls back to tiered bot after 5s
   useEffect(() => {
     if (phase !== 'searching') return;
-    if (waitSeconds >= 4) {
+    let active = true;
+
+    const band = eloSearchBand(waitSeconds * 2);
+    void pollLiveDuelQueue(category, band).then((res) => {
+      if (!active || !res) return;
+      if (res.status === 'matched' && res.opponentName) {
+        setOpponent({
+          name: res.opponentName,
+          elo: res.opponentElo ?? currentCatElo,
+          accuracy: 0.78,
+          isHuman: true,
+        });
+        setQIndex(0);
+        setMyScore(0);
+        setOppScore(0);
+        setPicked(null);
+        setTimeLeft(12);
+        finishHandledRef.current = false;
+        setPhase('playing');
+      }
+    });
+
+    if (waitSeconds >= 5) {
       const bot = pickTieredBot(currentCatElo);
       const tid = setTimeout(() => {
-        setOpponent(bot);
+        if (!active) return;
+        void cancelLiveDuelQueue();
+        setOpponent({ ...bot, isHuman: false });
         setQIndex(0);
         setMyScore(0);
         setOppScore(0);
@@ -171,11 +202,17 @@ export function RankedDuelArena({
         finishHandledRef.current = false;
         setPhase('playing');
       }, 250);
-      return () => clearTimeout(tid);
+      return () => {
+        active = false;
+        clearTimeout(tid);
+      };
     }
     const timer = setInterval(() => setWaitSeconds((w) => w + 1), 1000);
-    return () => clearInterval(timer);
-  }, [phase, waitSeconds, currentCatElo]);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [phase, waitSeconds, currentCatElo, category]);
 
   // Countdown during active duel question
   useEffect(() => {
@@ -188,11 +225,36 @@ export function RankedDuelArena({
     return () => clearInterval(timer);
   }, [phase, timeLeft, picked, handleAnswer]);
 
-  const startSearch = (isRated: boolean) => {
+  const startSearch = (isRated: boolean, customInvite?: string | null) => {
+    const activeInvite = customInvite !== undefined ? customInvite : isRated ? null : inviteCode;
     setRated(isRated);
-    setInviteCode(null);
+    if (isRated) setInviteCode(null);
     setWaitSeconds(0);
     setPhase('searching');
+    void enqueueLiveDuelQueue({
+      categoryId: category,
+      rated: isRated,
+      eloRating: currentCatElo,
+      displayName: playerName || 'Học giả',
+      inviteCode: activeInvite,
+      eloBand: 150,
+    }).then((res) => {
+      if (res?.status === 'matched' && res.opponentName) {
+        setOpponent({
+          name: res.opponentName,
+          elo: res.opponentElo ?? currentCatElo,
+          accuracy: 0.78,
+          isHuman: true,
+        });
+        setQIndex(0);
+        setMyScore(0);
+        setOppScore(0);
+        setPicked(null);
+        setTimeLeft(12);
+        finishHandledRef.current = false;
+        setPhase('playing');
+      }
+    });
   };
 
   const createFriendInvite = async () => {
@@ -273,11 +335,44 @@ export function RankedDuelArena({
                 </Text>
                 <Text style={[typography.title, { color: palette.ink, letterSpacing: 3 }]}>{inviteCode}</Text>
               </View>
-              <Button variant="primary" onPress={() => startSearch(false)}>
+              <Button variant="primary" onPress={() => startSearch(false, inviteCode)}>
                 Vào sân ngay
               </Button>
             </View>
           ) : null}
+
+          {/* Join Friend's Invite Code Input */}
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: spacing.md, alignItems: 'center' }}>
+            <TextInput
+              value={joinInviteInput}
+              onChangeText={(t) => setJoinInviteInput(t.toUpperCase())}
+              placeholder="Nhập mã lời mời bạn bè (6 ký tự)..."
+              placeholderTextColor={palette.inkMuted}
+              maxLength={8}
+              style={{
+                flex: 1,
+                minHeight: 42,
+                borderWidth: 1,
+                borderColor: palette.paperMuted,
+                backgroundColor: palette.paper,
+                borderRadius: radii.sm,
+                paddingHorizontal: 12,
+                color: palette.ink,
+                fontWeight: '700',
+              }}
+            />
+            <Button
+              variant="secondary"
+              disabled={joinInviteInput.trim().length < 4}
+              onPress={() => {
+                const code = joinInviteInput.trim().toUpperCase();
+                setInviteCode(code);
+                startSearch(false, code);
+              }}
+            >
+              Vào mã
+            </Button>
+          </View>
         </Card>
       </View>
     );
@@ -290,16 +385,23 @@ export function RankedDuelArena({
       <Card style={styles.searchCard}>
         <Ionicons name="radio-outline" size={44} color={palette.indigo} />
         <Text style={[typography.title, { color: palette.ink, marginTop: spacing.sm }]}>
-          Đang ghép đối thủ {rated ? 'Ranked' : 'Giao hữu'}...
+          Đang ghép đối thủ {rated ? 'Ranked (Realtime Queue)' : 'Giao hữu'}...
         </Text>
         <Badge tone="primary">
           Dải ELO hiện tại: {Math.max(100, currentCatElo - band)} – {currentCatElo + band} (±{band})
         </Badge>
         <Text style={[typography.caption, { color: palette.inkMuted, textAlign: 'center', marginTop: spacing.xs }]}>
-          Thời gian chờ: {waitSeconds}s · Tự động ghép đối thủ ngang hạng nếu hàng chờ vắng.
+          Thời gian chờ: {waitSeconds}s · Ưu tiên ghép Người chơi thật trên Supabase Queue, tự động gọi Bot học giả nếu hàng chờ vắng.
         </Text>
         <View style={{ marginTop: spacing.md, width: '100%' }}>
-          <Button variant="ghost" onPress={() => setPhase('lobby')} fullWidth>
+          <Button
+            variant="ghost"
+            onPress={() => {
+              void cancelLiveDuelQueue();
+              setPhase('lobby');
+            }}
+            fullWidth
+          >
             Hủy tìm trận
           </Button>
         </View>
@@ -327,7 +429,7 @@ export function RankedDuelArena({
           </View>
           <View style={[styles.vsSide, { alignItems: 'flex-end' }]}>
             <Text style={[typography.caption, { color: palette.gold, fontWeight: '800' }]} numberOfLines={1}>
-              {opponent.name} ({opponent.elo})
+              {opponent.isHuman ? '👤 ' : '🤖 '}{opponent.name} ({opponent.elo})
             </Text>
             <Text style={[typography.title, { color: palette.ink, fontSize: 20 }]}>{oppScore}</Text>
           </View>

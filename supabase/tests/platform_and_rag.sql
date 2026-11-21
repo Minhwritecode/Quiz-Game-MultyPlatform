@@ -124,8 +124,35 @@ select pg_temp.assert_true(
   'review_question_report updates moderation status'
 );
 
--- 6. Outsider isolation check
+-- 6. Live 1v1 Matchmaking Queue + Auto-Moderation Gate + Superadmin + Billing Ledger
+select pg_temp.assert_true(
+  (public.enqueue_duel_matchmaking('coding', true, 1218, 'Học giả Alpha', null, 250)->>'status') = 'searching',
+  'first player enters 1v1 matchmaking queue in searching state'
+);
+
+select pg_temp.assert_true(
+  (public.auto_moderate_question_report('66666666-6666-4666-8666-666666666601')).ai_confidence > 0,
+  'auto_moderate_question_report produces AI verdict and confidence score'
+);
+
+select pg_temp.assert_true(
+  ((public.get_superadmin_overview()->'metrics'->>'totalSets')::integer) >= 1,
+  'get_superadmin_overview returns platform metrics'
+);
+
+select (public.create_billing_checkout_session('archmage_monthly', 'stripe')->>'subscriptionId')::uuid as sub_id \gset
+select pg_temp.assert_true(
+  (public.confirm_billing_payment(:'sub_id', 'stripe_pi_test_001')->>'membershipTier') = 'archmage',
+  'confirm_billing_payment upgrades profile to archmage VIP and credits AI tokens'
+);
+select pg_temp.assert_true(public.get_ai_token_balance() = 150, 'billing payment adds +100 AI tokens to wallet');
+
+-- 7. Outsider isolation check
 select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222292', true);
+select pg_temp.assert_true(
+  (public.enqueue_duel_matchmaking('coding', true, 1240, 'Học giả Beta', null, 250)->>'status') = 'matched',
+  'second player in ELO band matches live human opponent in 1v1 queue'
+);
 select pg_temp.assert_true((select count(*) = 0 from public.knowledge_spaces), 'outsider cannot read private knowledge spaces');
 select pg_temp.assert_true((select count(*) = 0 from public.duel_matches), 'outsider cannot read private duel matches');
 

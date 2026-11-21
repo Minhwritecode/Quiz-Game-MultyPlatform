@@ -7,8 +7,9 @@ import type { GeneratedQuiz, QuizDifficulty } from '../domain/models';
 export interface KnowledgeDoc {
   id: string;
   name: string;
-  kind: 'pdf' | 'md' | 'txt' | 'note';
+  kind: 'pdf' | 'docx' | 'md' | 'txt' | 'note';
   excerpt: string;
+  fileBase64?: string;
   chunkCount?: number;
   synced?: boolean;
   addedAt: string;
@@ -198,6 +199,7 @@ export const useKnowledgeSpacesStore = create<KnowledgeSpacesState>()(
                   name: doc.name,
                   kind: doc.kind,
                   raw_text: doc.excerpt,
+                  file_base64: doc.fileBase64 || undefined,
                 },
               });
 

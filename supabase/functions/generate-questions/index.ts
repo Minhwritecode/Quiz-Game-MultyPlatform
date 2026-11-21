@@ -15,6 +15,7 @@ import {
   type RetrievedChunk,
   type VerifiedCitation,
 } from "../_shared/rag.ts";
+import { extractDocumentTextFromBase64 } from "../_shared/doc-parser.ts";
 
 type RequestBody = {
   mode?: "text" | "topic" | "rag";
@@ -22,6 +23,8 @@ type RequestBody = {
   topic?: string;
   space_id?: string;
   prompt?: string;
+  file_base64?: string;
+  file_name?: string;
   documents?: Array<{ name: string; content: string }>;
   include_code_snippet?: boolean;
   question_count: number;
@@ -111,8 +114,9 @@ Deno.serve(async (request) => {
   } else if (mode === "rag") {
     const hasSpace = typeof body.space_id === "string" && body.space_id.trim().length > 0;
     const hasDocs = Array.isArray(body.documents) && body.documents.length > 0;
-    if (!hasSpace && !hasDocs) {
-      return new Response(JSON.stringify({ error: "Provide space_id or documents for RAG generation" }), {
+    const hasFile = typeof body.file_base64 === "string" && body.file_base64.trim().length > 0;
+    if (!hasSpace && !hasDocs && !hasFile) {
+      return new Response(JSON.stringify({ error: "Provide space_id, documents, or file_base64 for RAG generation" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -208,6 +212,23 @@ Deno.serve(async (request) => {
             content: String(row.content ?? ""),
             similarity: Number(row.similarity ?? 0.5),
           }));
+        }
+      }
+
+      if (typeof body.file_base64 === "string" && body.file_base64.trim().length > 0) {
+        const fname = body.file_name || "document.pdf";
+        const kind = fname.toLowerCase().endsWith(".docx") ? "docx" : "pdf";
+        const extracted = await extractDocumentTextFromBase64(body.file_base64, kind, fname);
+        if (extracted) {
+          for (const ch of chunkDocument(extracted)) {
+            candidates.push({
+              documentName: fname,
+              headingPath: ch.headingPath,
+              pageNumber: ch.pageNumber,
+              content: ch.content,
+              similarity: 0.75,
+            });
+          }
         }
       }
 

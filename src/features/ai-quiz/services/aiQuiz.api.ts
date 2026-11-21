@@ -5,7 +5,9 @@ import type {
   GenerateRagPayload,
   GenerateTopicPayload,
   QuestionCitation,
+  QuizDifficulty,
 } from '../domain/models';
+import { readDocumentPayload } from './documentTextExtractor';
 
 export const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://localhost:5000';
 
@@ -254,6 +256,48 @@ export const aiQuizApi = {
     difficulty: 'easy' | 'medium' | 'hard',
     questionsCount: number
   ): Promise<GeneratedQuiz> {
+    const cleanName = fileName.replace(/\.[^/.]+$/, '');
+    const docPayload = await readDocumentPayload(fileUri, fileName);
+
+    // 1. Primary path: Supabase Edge Function with binary PDF/DOCX extraction (file_base64)
+    if (supabase && (docPayload.fileBase64 || docPayload.extractedText)) {
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (sessionData.session) {
+          const { data, error } = await supabase.functions.invoke('generate-questions', {
+            body: {
+              mode: 'rag',
+              file_name: fileName,
+              file_base64: docPayload.fileBase64 || undefined,
+              documents: docPayload.extractedText
+                ? [{ name: fileName, content: docPayload.extractedText }]
+                : undefined,
+              question_count: questionsCount,
+              difficulty,
+              language: 'vi',
+            },
+          });
+
+          if (!error && Array.isArray(data?.questions) && data.questions.length > 0) {
+            return {
+              id: `quiz-pdf-${Date.now()}`,
+              title: `Trắc nghiệm tài liệu: ${cleanName}`,
+              description: `Bóc tách trực tiếp từ file ${docPayload.kind.toUpperCase()} "${fileName}" qua Supabase RAG.`,
+              difficulty,
+              source: 'pdf',
+              provider: String(data.provider ?? 'gemini'),
+              runId: data.run_id ? String(data.run_id) : undefined,
+              tokenBalance: typeof data.token_balance === 'number' ? data.token_balance : undefined,
+              questions: mapEdgeQuestions(data.questions as EdgeQuestionRow[]),
+              createdAt: new Date().toISOString(),
+            };
+          }
+        }
+      } catch {
+        // Fall through to secondary backend or offline fallback
+      }
+    }
+
     try {
       const formData = new FormData();
       formData.append('pdf', {
@@ -287,7 +331,6 @@ export const aiQuizApi = {
       // Fallback
     }
 
-    const cleanName = fileName.replace(/\.[^/.]+$/, '');
     return {
       id: `quiz-pdf-${Date.now()}`,
       title: `Trắc nghiệm PDF: ${cleanName}`,
@@ -307,5 +350,62 @@ export const aiQuizApi = {
       })),
       createdAt: new Date().toISOString(),
     };
+  },
+
+  async fetchGenerationRuns(): Promise<GeneratedQuiz[]> {
+    if (!supabase) return [];
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData.session) return [];
+      const { data, error } = await supabase
+        .from('generation_runs')
+        .select('id, mode, prompt, difficulty, provider, questions, created_at')
+        .eq('status', 'completed')
+        .order('created_at', { ascending: false })
+        .limit(15);
+
+      if (error || !Array.isArray(data)) return [];
+      return data
+        .filter((row) => Array.isArray(row.questions) && row.questions.length > 0)
+        .map((row) => ({
+          id: `run-${row.id}`,
+          runId: String(row.id),
+          title: row.prompt
+            ? `Run: ${String(row.prompt).slice(0, 48)}`
+            : `Lần sinh AI (${String(row.mode ?? 'rag').toUpperCase()})`,
+          description: `Lịch sử Generation Run · Provider: ${String(row.provider ?? 'gemini')}`,
+          difficulty: (['easy', 'medium', 'hard'].includes(String(row.difficulty))
+            ? row.difficulty
+            : 'medium') as QuizDifficulty,
+          source: (row.mode === 'rag' ? 'rag' : row.mode === 'pdf' ? 'pdf' : 'topic') as GeneratedQuiz['source'],
+          provider: String(row.provider ?? 'gemini'),
+          questions: mapEdgeQuestions(row.questions as EdgeQuestionRow[]),
+          createdAt: String(row.created_at ?? new Date().toISOString()),
+        }));
+    } catch {
+      return [];
+    }
+  },
+
+  async syncRunQuestions(runId: string, questions: GeneratedQuestion[]): Promise<void> {
+    if (!supabase || !runId) return;
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData.session) return;
+      await supabase.rpc('update_generation_run_questions', {
+        p_run_id: runId,
+        p_questions: questions.map((q, idx) => ({
+          content: q.question,
+          options: q.options,
+          correct_index: q.correctAnswer,
+          explanation: q.explanation ?? '',
+          code_snippet: q.codeSnippet,
+          citations: q.citations,
+          position: idx,
+        })),
+      });
+    } catch {
+      // Best-effort sync
+    }
   },
 };

@@ -10,6 +10,8 @@ import { radii, spacing, typography } from '@/core/theme/tokens';
 import { useI18n } from '@/core/i18n';
 import { ModerationQueueModal } from '@/features/moderation/components/ModerationQueueModal';
 import { useModerationStore } from '@/features/moderation/state/useModerationStore';
+import { VipCheckoutModal } from '@/features/membership/presentation/VipCheckoutModal';
+import { useMembershipStore } from '@/features/membership/state/useMembershipStore';
 
 function PreferenceRow({
   icon,
@@ -43,6 +45,8 @@ export default function SettingsScreen() {
   const [busy,setBusy]=useState(false);
   const [notice,setNotice]=useState('');
   const [moderationOpen, setModerationOpen] = useState(false);
+  const [billingOpen, setBillingOpen] = useState(false);
+  const membershipTier = useMembershipStore((s) => s.tier);
   const openReportCount = useModerationStore((s) => s.reports.filter((r) => r.status === 'open').length);
   useEffect(()=>{const refresh=()=>{void dependencies.reminders.enabled().then(setReminder).catch(()=>undefined);};refresh();const listener=AppState.addEventListener('change',state=>{if(state==='active')refresh();});return ()=>listener.remove();},[]);
   const toggleReminder=async(value:boolean)=>{if(busy)return;setBusy(true);setNotice('');try{await dependencies.reminders.setEnabled(value);setReminder(value);}catch(e){setNotice(e instanceof Error?e.message:'Không đổi được lịch nhắc.');}finally{setBusy(false);}};
@@ -159,12 +163,12 @@ export default function SettingsScreen() {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={[typography.body, { color: palette.ink, fontWeight: '700' }]}>
-              {language === 'vi' ? 'Kiểm duyệt câu hỏi (Moderation)' : 'Question Moderation Queue'}
+              {language === 'vi' ? 'Kiểm duyệt AI & Superadmin Console' : 'AI Moderation & Superadmin Console'}
             </Text>
             <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
               {language === 'vi'
-                ? 'Duyệt, đánh dấu đã sửa hoặc bỏ qua các câu hỏi bị báo lỗi'
-                : 'Review, resolve, or dismiss flagged questions'}
+                ? 'AI Auto-Gate duyệt báo cáo câu hỏi, quản lý User/Role và kho đề chung'
+                : 'AI Auto-Gate reports, manage users/roles and community sets'}
             </Text>
           </View>
           {openReportCount > 0 ? (
@@ -173,8 +177,28 @@ export default function SettingsScreen() {
             <Ionicons name="chevron-forward" size={20} color={palette.indigo} />
           )}
         </Pressable>
+        <View style={[styles.separator, { backgroundColor: palette.paperMuted }]} />
+        <Pressable accessibilityRole="button" style={styles.row} onPress={() => setBillingOpen(true)}>
+          <View style={[styles.iconWrap, { backgroundColor: palette.paper }]}>
+            <Ionicons name="card-outline" size={20} color={palette.gold} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[typography.body, { color: palette.ink, fontWeight: '700' }]}>
+              {language === 'vi' ? 'Nâng cấp VIP & Nạp AI Token (Checkout)' : 'VIP & AI Token Checkout'}
+            </Text>
+            <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
+              {language === 'vi'
+                ? 'Cổng thanh toán Stripe / VietQR / Apple Pay / Google Pay & lịch sử gói'
+                : 'Stripe / Apple Pay / Google Pay checkout & billing history'}
+            </Text>
+          </View>
+          <Badge tone={membershipTier === 'archmage' ? 'reward' : 'primary'}>
+            {membershipTier === 'archmage' ? '👑 VIP' : 'Nâng cấp'}
+          </Badge>
+        </Pressable>
       </Card>
       <ModerationQueueModal visible={moderationOpen} onClose={() => setModerationOpen(false)} />
+      <VipCheckoutModal visible={billingOpen} onClose={() => setBillingOpen(false)} />
 
       {Platform.OS !== 'web' && <Card style={{marginTop:spacing.lg}}>
         <PreferenceRow icon="notifications-outline" title="Nhắc học mỗi ngày" subtitle="19:00 theo giờ điện thoại · không gửi nội dung tài liệu"><Switch accessibilityLabel="Nhắc học lúc 19 giờ" disabled={busy} value={reminder} onValueChange={value=>void toggleReminder(value)}/></PreferenceRow>

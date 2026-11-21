@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { GeneratedQuiz, GenerateRagPayload, QuizDifficulty } from '../domain/models';
+import type { GeneratedQuestion, GeneratedQuiz, GenerateRagPayload, QuizDifficulty } from '../domain/models';
 import { aiQuizApi } from '../services/aiQuiz.api';
 
 interface AiQuizState {
@@ -9,6 +9,10 @@ interface AiQuizState {
   error: string | null;
   tokenBalance: number | null;
   refreshTokenBalance: () => Promise<void>;
+  loadCloudRuns: () => Promise<void>;
+  selectRunFromHistory: (quizId: string) => void;
+  updateGeneratedQuestion: (index: number, updated: GeneratedQuestion) => void;
+  discardGeneratedQuestion: (index: number) => void;
   generateFromTopic: (
     topic: string,
     difficulty: QuizDifficulty,
@@ -20,7 +24,7 @@ interface AiQuizState {
   clearCurrentQuiz: () => void;
 }
 
-export const useAiQuizStore = create<AiQuizState>((set) => ({
+export const useAiQuizStore = create<AiQuizState>((set, get) => ({
   generatedQuiz: null,
   history: [],
   isLoading: false,
@@ -31,6 +35,54 @@ export const useAiQuizStore = create<AiQuizState>((set) => ({
     const balance = await aiQuizApi.fetchTokenBalance();
     if (balance !== null) {
       set({ tokenBalance: balance });
+    }
+  },
+
+  loadCloudRuns: async () => {
+    const cloudRuns = await aiQuizApi.fetchGenerationRuns();
+    if (cloudRuns.length === 0) return;
+    set((state) => {
+      const existingIds = new Set(state.history.map((h) => h.runId || h.id));
+      const merged = [
+        ...state.history,
+        ...cloudRuns.filter((r) => !existingIds.has(r.runId || r.id)),
+      ];
+      return { history: merged.slice(0, 20) };
+    });
+  },
+
+  selectRunFromHistory: (quizId) => {
+    const found = get().history.find((h) => h.id === quizId || h.runId === quizId);
+    if (found) {
+      set({ generatedQuiz: found, error: null });
+    }
+  },
+
+  updateGeneratedQuestion: (index, updated) => {
+    const current = get().generatedQuiz;
+    if (!current) return;
+    const nextQuestions = current.questions.map((q, idx) => (idx === index ? updated : q));
+    const nextQuiz: GeneratedQuiz = { ...current, questions: nextQuestions };
+    set((state) => ({
+      generatedQuiz: nextQuiz,
+      history: state.history.map((h) => (h.id === nextQuiz.id ? nextQuiz : h)),
+    }));
+    if (nextQuiz.runId) {
+      void aiQuizApi.syncRunQuestions(nextQuiz.runId, nextQuestions);
+    }
+  },
+
+  discardGeneratedQuestion: (index) => {
+    const current = get().generatedQuiz;
+    if (!current || current.questions.length <= 1) return;
+    const nextQuestions = current.questions.filter((_, idx) => idx !== index);
+    const nextQuiz: GeneratedQuiz = { ...current, questions: nextQuestions };
+    set((state) => ({
+      generatedQuiz: nextQuiz,
+      history: state.history.map((h) => (h.id === nextQuiz.id ? nextQuiz : h)),
+    }));
+    if (nextQuiz.runId) {
+      void aiQuizApi.syncRunQuestions(nextQuiz.runId, nextQuestions);
     }
   },
 
@@ -77,6 +129,7 @@ export const useAiQuizStore = create<AiQuizState>((set) => ({
       set((state) => ({
         generatedQuiz: quiz,
         history: [quiz, ...state.history],
+        tokenBalance: typeof quiz.tokenBalance === 'number' ? quiz.tokenBalance : state.tokenBalance,
         isLoading: false,
       }));
       return quiz;

@@ -15,6 +15,10 @@ import { radii, spacing, typography } from '@/core/theme/tokens';
 import { useQuizStore } from '@/features/quiz-library/state/useQuizStore';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import type { QuizQuestion } from '@/features/quiz-library/domain/models';
+import {
+  evaluateQuizDraftModeration,
+  type DraftModerationGateResult,
+} from '@/features/moderation/state/useModerationStore';
 
 export default function CreateQuizScreen() {
   const router = useRouter();
@@ -35,6 +39,12 @@ export default function CreateQuizScreen() {
     },
   ]);
   const [openCodeMap, setOpenCodeMap] = useState<Record<number, boolean>>({});
+  const [gateResult, setGateResult] = useState<DraftModerationGateResult | null>(null);
+
+  const handleRunModerationGate = () => {
+    const res = evaluateQuizDraftModeration(title, questions);
+    setGateResult(res);
+  };
 
   const handleAddQuestion = () => {
     setQuestions((prev) => [
@@ -303,6 +313,36 @@ export default function CreateQuizScreen() {
           </Card>
         ))}
 
+        {/* AI Auto-Moderation Gate Preview (ADR-007) */}
+        {gateResult && (
+          <Card
+            style={[
+              styles.card,
+              {
+                borderColor: gateResult.passed ? '#10B981' : '#F59E0B',
+                borderWidth: 1.5,
+              },
+            ]}
+          >
+            <Text style={[typography.title, { color: gateResult.passed ? '#10B981' : '#D97706', fontSize: 15 }]}>
+              {gateResult.passed
+                ? `🛡️ AI Auto-Moderation Gate: Đạt chuẩn (${gateResult.score}/100)`
+                : `⚠️ AI Auto-Moderation Gate: Cần rà soát (${gateResult.score}/100)`}
+            </Text>
+            {gateResult.issues.length === 0 ? (
+              <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 4 }]}>
+                Tất cả câu hỏi và đáp án đều rõ ràng, không trùng lặp và tuân thủ tiêu chuẩn cộng đồng.
+              </Text>
+            ) : (
+              gateResult.issues.map((iss, idx) => (
+                <Text key={idx} style={[typography.caption, { color: palette.danger, marginTop: 3 }]}>
+                  • {iss}
+                </Text>
+              ))
+            )}
+          </Card>
+        )}
+
         {/* Buttons */}
         <View style={styles.actionRow}>
           <Button
@@ -311,6 +351,14 @@ export default function CreateQuizScreen() {
             onPress={handleAddQuestion}
           >
             + Thêm câu hỏi
+          </Button>
+
+          <Button
+            variant="ghost"
+            icon="shield-checkmark-outline"
+            onPress={handleRunModerationGate}
+          >
+            🛡️ AI Kiểm duyệt đề ({gateResult ? `${gateResult.score}/100` : 'Auto-Gate'})
           </Button>
 
           <Button

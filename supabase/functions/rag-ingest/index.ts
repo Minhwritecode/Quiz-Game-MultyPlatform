@@ -2,6 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { corsHeaders } from "../_shared/cors.ts";
 import { chunkDocument, cleanDocumentText, sha256Hex } from "../_shared/rag.ts";
 import { generateEmbedding768, resolveProviderConfig } from "../_shared/llm-provider.ts";
+import { extractDocumentTextFromBase64 } from "../_shared/doc-parser.ts";
 
 type IngestRequest = {
   space_id?: string;
@@ -9,7 +10,8 @@ type IngestRequest = {
   space_subject?: string;
   name: string;
   kind?: "pdf" | "docx" | "md" | "txt" | "note";
-  raw_text: string;
+  raw_text?: string;
+  file_base64?: string;
 };
 
 Deno.serve(async (request) => {
@@ -50,9 +52,13 @@ Deno.serve(async (request) => {
   let body: IngestRequest;
   try {
     const rawBody = await request.text();
-    if (rawBody.length > 500_000) throw new Error("Payload too large");
+    if (rawBody.length > 5_000_000) throw new Error("Payload too large");
     body = JSON.parse(rawBody);
-    if (!body || typeof body.name !== "string" || typeof body.raw_text !== "string") {
+    if (
+      !body ||
+      typeof body.name !== "string" ||
+      (typeof body.raw_text !== "string" && typeof body.file_base64 !== "string")
+    ) {
       throw new Error("Invalid payload");
     }
   } catch {
@@ -62,7 +68,30 @@ Deno.serve(async (request) => {
     });
   }
 
-  const cleaned = cleanDocumentText(body.raw_text);
+  const inferredKind: "pdf" | "docx" | "md" | "txt" | "note" =
+    body.kind && ["pdf", "docx", "md", "txt", "note"].includes(body.kind)
+      ? body.kind
+      : body.name.toLowerCase().endsWith(".docx")
+      ? "docx"
+      : body.name.toLowerCase().endsWith(".pdf")
+      ? "pdf"
+      : body.name.toLowerCase().endsWith(".md")
+      ? "md"
+      : "txt";
+
+  let extractedText = typeof body.raw_text === "string" ? body.raw_text : "";
+  if (typeof body.file_base64 === "string" && body.file_base64.trim().length > 0) {
+    const parsedFromBinary = await extractDocumentTextFromBase64(
+      body.file_base64,
+      inferredKind,
+      body.name,
+    );
+    if (parsedFromBinary) {
+      extractedText = parsedFromBinary;
+    }
+  }
+
+  const cleaned = cleanDocumentText(extractedText);
   if (!cleaned || cleaned.length > 250_000) {
     return new Response(JSON.stringify({ error: "Document text must be 1-250000 characters" }), {
       status: 400,

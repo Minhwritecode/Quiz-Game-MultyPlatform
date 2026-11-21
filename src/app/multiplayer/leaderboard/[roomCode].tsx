@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Badge, Button, Card, Screen, TopBar, usePalette } from '@/shared/ui';
@@ -14,6 +14,30 @@ export default function MultiplayerLeaderboardScreen() {
   const { roomCode } = useLocalSearchParams<{ roomCode: string }>();
   const leaderboard = useMultiplayerStore((state) => state.leaderboard);
   const setFinalResults = useMultiplayerStore((state) => state.setFinalResults);
+  const autoAdvance = useMultiplayerStore((state) => state.autoAdvance);
+  const autoAdvanceDelaySec = useMultiplayerStore((state) => state.autoAdvanceDelaySec);
+  const setAutoAdvance = useMultiplayerStore((state) => state.setAutoAdvance);
+  const [countdown, setCountdown] = useState<number>(autoAdvanceDelaySec);
+
+  const handleNextQuestion = useCallback(() => {
+    if (roomCode) {
+      socket.emit(SOCKET_EVENTS.NEXT_QUESTION, roomCode);
+    }
+    router.replace({
+      pathname: '/multiplayer/question/[roomCode]',
+      params: { roomCode },
+    });
+  }, [roomCode, router]);
+
+  useEffect(() => {
+    if (!autoAdvance) return;
+    if (countdown <= 0) {
+      const tid = setTimeout(() => handleNextQuestion(), 0);
+      return () => clearTimeout(tid);
+    }
+    const timer = setInterval(() => setCountdown((c) => Math.max(0, c - 1)), 1000);
+    return () => clearInterval(timer);
+  }, [autoAdvance, countdown, handleNextQuestion]);
 
   // Fallback demo players if none provided yet
   const displayList: LeaderboardPlayer[] =
@@ -51,16 +75,6 @@ export default function MultiplayerLeaderboardScreen() {
       socket.off(SOCKET_EVENTS.QUIZ_FINISHED, onQuizFinished);
     };
   }, [roomCode, router, setFinalResults]);
-
-  const handleNextQuestion = () => {
-    if (roomCode) {
-      socket.emit(SOCKET_EVENTS.NEXT_QUESTION, roomCode);
-    }
-    router.replace({
-      pathname: '/multiplayer/question/[roomCode]',
-      params: { roomCode },
-    });
-  };
 
   return (
     <Screen scroll={false}>
@@ -115,12 +129,22 @@ export default function MultiplayerLeaderboardScreen() {
         />
 
         <View style={styles.footerActions}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.xs }}>
+            <Badge tone={autoAdvance ? 'primary' : 'neutral'}>
+              {autoAdvance ? `⏩ Tự động qua câu sau ${countdown}s` : '⏸ Chế độ qua câu thủ công'}
+            </Badge>
+            <Pressable onPress={() => setAutoAdvance(!autoAdvance)}>
+              <Text style={[typography.caption, { color: palette.indigo, fontWeight: '700' }]}>
+                {autoAdvance ? 'Tạm dừng đếm ngược' : 'Bật tự động'}
+              </Text>
+            </Pressable>
+          </View>
           <Button
             variant="reward"
             icon="arrow-forward-outline"
             onPress={handleNextQuestion}
           >
-            Tiếp tục câu kế tiếp →
+            {autoAdvance ? `Tiếp tục câu kế tiếp (${countdown}s) →` : 'Tiếp tục câu kế tiếp →'}
           </Button>
         </View>
       </View>

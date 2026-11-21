@@ -16,6 +16,7 @@ import { Badge, Button, Card, Screen, TopBar, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { useAiQuizStore } from '@/features/ai-quiz/state/useAiQuizStore';
 import type { QuizDifficulty } from '@/features/ai-quiz/domain/models';
+import { readDocumentPayload } from '@/features/ai-quiz/services/documentTextExtractor';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { useQuizStore } from '@/features/quiz-library/state/useQuizStore';
 import { useKnowledgeSpacesStore } from '@/features/ai-quiz/state/useKnowledgeSpacesStore';
@@ -25,9 +26,14 @@ export default function AiQuizScreen() {
   const palette = usePalette();
   const {
     generatedQuiz,
+    history,
     isLoading,
     tokenBalance,
     refreshTokenBalance,
+    loadCloudRuns,
+    selectRunFromHistory,
+    updateGeneratedQuestion,
+    discardGeneratedQuestion,
     generateFromTopic,
     generateFromSpace,
     generateFromPdf,
@@ -54,17 +60,24 @@ export default function AiQuizScreen() {
   const [ragFocusPrompt, setRagFocusPrompt] = useState('');
   const [noteTitle, setNoteTitle] = useState('');
   const [noteExcerpt, setNoteExcerpt] = useState('');
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const activeSpace = spaces.find((s) => s.id === selectedSpaceId) ?? spaces[0] ?? null;
 
   useEffect(() => {
     void refreshTokenBalance();
     void syncSpacesFromCloud();
-  }, [refreshTokenBalance, syncSpacesFromCloud]);
+    void loadCloudRuns();
+  }, [refreshTokenBalance, syncSpacesFromCloud, loadCloudRuns]);
 
   const handlePickDocument = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: 'application/pdf',
+        type: [
+          'application/pdf',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'text/plain',
+          'text/markdown',
+        ],
         copyToCacheDirectory: true,
       });
 
@@ -79,7 +92,7 @@ export default function AiQuizScreen() {
         }
       }
     } catch {
-      Alert.alert('Thông báo', 'Không thể đọc file PDF đã chọn.');
+      Alert.alert('Thông báo', 'Không thể đọc file tài liệu đã chọn.');
     }
   };
 
@@ -276,7 +289,7 @@ export default function AiQuizScreen() {
                 </View>
               ) : mode === 'pdf' ? (
                 <View style={styles.inputGroup}>
-                  <Text style={[typography.title, { color: palette.ink }]}>Tài liệu PDF (tối đa 20MB)</Text>
+                  <Text style={[typography.title, { color: palette.ink }]}>Tài liệu PDF / DOCX (tối đa 20MB)</Text>
                   <Pressable
                     onPress={handlePickDocument}
                     style={[styles.dropZone, { borderColor: palette.indigo, backgroundColor: palette.paperRaised }]}
@@ -287,10 +300,10 @@ export default function AiQuizScreen() {
                       ellipsizeMode="middle"
                       style={[typography.title, { color: palette.ink, marginTop: spacing.sm, maxWidth: '90%', textAlign: 'center' }]}
                     >
-                      {pdfFile ? pdfFile.name : 'Nhấn để chọn file PDF'}
+                      {pdfFile ? pdfFile.name : 'Nhấn để chọn file PDF / DOCX'}
                     </Text>
                     <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
-                      {pdfFile ? `${((pdfFile.size || 0) / 1024).toFixed(1)} KB` : 'Slide bài giảng, tài liệu ôn tập, đề cương...'}
+                      {pdfFile ? `${((pdfFile.size || 0) / 1024).toFixed(1)} KB · Bóc tách binary trực tiếp` : 'Hỗ trợ bóc tách binary .PDF, .DOCX, .MD, .TXT...'}
                     </Text>
                   </Pressable>
                 </View>
@@ -417,20 +430,29 @@ export default function AiQuizScreen() {
                             icon="cloud-upload-outline"
                             onPress={async () => {
                               const pickedDoc = await DocumentPicker.getDocumentAsync({
-                                type: ['application/pdf', 'text/plain', 'text/markdown'],
+                                type: [
+                                  'application/pdf',
+                                  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                                  'text/plain',
+                                  'text/markdown',
+                                ],
                                 copyToCacheDirectory: true,
                               });
                               if (!pickedDoc.canceled && pickedDoc.assets?.[0]) {
                                 const file = pickedDoc.assets[0];
+                                const payload = await readDocumentPayload(file.uri, file.name);
                                 addDocument(activeSpace.id, {
                                   name: file.name,
-                                  kind: file.name.endsWith('.pdf') ? 'pdf' : file.name.endsWith('.md') ? 'md' : 'txt',
-                                  excerpt: `Tài liệu tải lên (${((file.size ?? 0) / 1024).toFixed(1)} KB) sẵn sàng trích dẫn RAG.`,
+                                  kind: payload.kind,
+                                  fileBase64: payload.fileBase64 || undefined,
+                                  excerpt:
+                                    payload.extractedText.slice(0, 400) ||
+                                    `Tài liệu ${payload.kind.toUpperCase()} (${((file.size ?? 0) / 1024).toFixed(1)} KB) đã nạp binary vào RAG.`,
                                 });
                               }
                             }}
                           >
-                            Nạp file PDF/MD/TXT
+                            Nạp file PDF/DOCX/MD
                           </Button>
                         </View>
                       </View>
@@ -505,6 +527,34 @@ export default function AiQuizScreen() {
                   </Text>
                 </View>
               )}
+
+              {/* Past Generation Runs History Drawer */}
+              {history.length > 0 && (
+                <View style={{ marginTop: spacing.lg, borderTopWidth: 1, borderTopColor: palette.paperMuted, paddingTop: spacing.md }}>
+                  <Text style={[typography.caption, { color: palette.indigo, fontWeight: '800', marginBottom: 8 }]}>
+                    🕘 LỊCH SỬ GENERATION RUNS ({history.length}) — NHẤN ĐỂ MỞ LẠI & SỬA CÂU HỎI
+                  </Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                    {history.map((run) => (
+                      <Pressable
+                        key={run.id}
+                        onPress={() => selectRunFromHistory(run.id)}
+                        style={[
+                          styles.choiceChip,
+                          { borderColor: palette.paperMuted, backgroundColor: palette.paperRaised, alignItems: 'flex-start' },
+                        ]}
+                      >
+                        <Text style={[typography.caption, { color: palette.ink, fontWeight: '700' }]} numberOfLines={1}>
+                          {run.title}
+                        </Text>
+                        <Text style={{ fontSize: 11, color: palette.inkMuted }}>
+                          {run.questions.length} câu · {run.difficulty.toUpperCase()}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
             </Card>
           </>
         ) : (
@@ -534,47 +584,113 @@ export default function AiQuizScreen() {
             </View>
 
             <Text style={[typography.title, { color: palette.ink, marginTop: spacing.lg, marginBottom: spacing.sm }]}>
-              Xem trước câu hỏi ({generatedQuiz.questions.length})
+              Xem trước & chỉnh sửa từng câu trước khi xuất ({generatedQuiz.questions.length})
             </Text>
 
-            {generatedQuiz.questions.map((q, idx) => (
-              <View key={idx} style={[styles.previewItem, { borderColor: palette.paperMuted, backgroundColor: palette.paperRaised }]}>
-                <Text style={[typography.title, { color: palette.indigo }]}>
-                  Câu {idx + 1}: {q.question}
-                </Text>
-                {q.codeSnippet ? (
-                  <View style={styles.previewCodeBlock}>
-                    <Text style={styles.previewCodeText}>{q.codeSnippet}</Text>
-                  </View>
-                ) : null}
-                <View style={styles.optionsList}>
-                  {q.options.map((opt, oIdx) => (
-                    <Text
-                      key={oIdx}
-                      style={[
-                        typography.caption,
-                        {
-                          color: oIdx === q.correctAnswer ? '#10B981' : palette.inkMuted,
-                          fontWeight: oIdx === q.correctAnswer ? '700' : '400',
-                          marginTop: 4,
-                        },
-                      ]}
-                    >
-                      {String.fromCharCode(65 + oIdx)}. {opt} {oIdx === q.correctAnswer ? '✓ (Đáp án đúng)' : ''}
+            {generatedQuiz.questions.map((q, idx) => {
+              const isEditing = editingIdx === idx;
+              return (
+                <View key={idx} style={[styles.previewItem, { borderColor: palette.paperMuted, backgroundColor: palette.paperRaised }]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                    <Text style={[typography.title, { color: palette.indigo, flex: 1 }]}>
+                      Câu {idx + 1}: {q.question}
                     </Text>
-                  ))}
-                </View>
-                {q.citations && q.citations.length > 0 ? (
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: spacing.xs }}>
-                    {q.citations.map((cit, cIdx) => (
-                      <Badge key={`${cit.label}-${cIdx}`} tone="primary">
-                        [{cit.label}] {cit.documentName}{cit.pageNumber ? ` · Tr.${cit.pageNumber}` : ''}
-                      </Badge>
-                    ))}
+                    <View style={{ flexDirection: 'row', gap: 6 }}>
+                      <Pressable
+                        onPress={() => setEditingIdx(isEditing ? null : idx)}
+                        style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: palette.indigoTint }}
+                      >
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: palette.indigo }}>
+                          {isEditing ? '✓ Xong' : '✏️ Sửa'}
+                        </Text>
+                      </Pressable>
+                      {generatedQuiz.questions.length > 1 && (
+                        <Pressable
+                          onPress={() => discardGeneratedQuestion(idx)}
+                          style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: palette.dangerTint }}
+                        >
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: palette.danger }}>🗑️ Bỏ</Text>
+                        </Pressable>
+                      )}
+                    </View>
                   </View>
-                ) : null}
-              </View>
-            ))}
+
+                  {isEditing ? (
+                    <View style={{ marginTop: spacing.xs, gap: 6 }}>
+                      <TextInput
+                        value={q.question}
+                        onChangeText={(txt) => updateGeneratedQuestion(idx, { ...q, question: txt })}
+                        placeholder="Nội dung câu hỏi..."
+                        placeholderTextColor={palette.inkMuted}
+                        style={[styles.input, { marginTop: 0, minHeight: 40, color: palette.ink, borderColor: palette.indigo, backgroundColor: palette.paper }]}
+                      />
+                      {q.options.map((opt, oIdx) => (
+                        <View key={oIdx} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Pressable
+                            onPress={() => updateGeneratedQuestion(idx, { ...q, correctAnswer: oIdx })}
+                            style={{
+                              width: 28,
+                              height: 28,
+                              borderRadius: 14,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              backgroundColor: q.correctAnswer === oIdx ? '#10B981' : palette.paperMuted,
+                            }}
+                          >
+                            <Text style={{ color: q.correctAnswer === oIdx ? '#FFF' : palette.ink, fontWeight: '800', fontSize: 12 }}>
+                              {String.fromCharCode(65 + oIdx)}
+                            </Text>
+                          </Pressable>
+                          <TextInput
+                            value={opt}
+                            onChangeText={(txt) => {
+                              const nextOpts = [...q.options];
+                              nextOpts[oIdx] = txt;
+                              updateGeneratedQuestion(idx, { ...q, options: nextOpts });
+                            }}
+                            style={[styles.input, { flex: 1, marginTop: 0, minHeight: 36, color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paper }]}
+                          />
+                        </View>
+                      ))}
+                    </View>
+                  ) : (
+                    <>
+                      {q.codeSnippet ? (
+                        <View style={styles.previewCodeBlock}>
+                          <Text style={styles.previewCodeText}>{q.codeSnippet}</Text>
+                        </View>
+                      ) : null}
+                      <View style={styles.optionsList}>
+                        {q.options.map((opt, oIdx) => (
+                          <Text
+                            key={oIdx}
+                            style={[
+                              typography.caption,
+                              {
+                                color: oIdx === q.correctAnswer ? '#10B981' : palette.inkMuted,
+                                fontWeight: oIdx === q.correctAnswer ? '700' : '400',
+                                marginTop: 4,
+                              },
+                            ]}
+                          >
+                            {String.fromCharCode(65 + oIdx)}. {opt} {oIdx === q.correctAnswer ? '✓ (Đáp án đúng)' : ''}
+                          </Text>
+                        ))}
+                      </View>
+                    </>
+                  )}
+                  {q.citations && q.citations.length > 0 ? (
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: spacing.xs }}>
+                      {q.citations.map((cit, cIdx) => (
+                        <Badge key={`${cit.label}-${cIdx}`} tone="primary">
+                          [{cit.label}] {cit.documentName}{cit.pageNumber ? ` · Tr.${cit.pageNumber}` : ''}
+                        </Badge>
+                      ))}
+                    </View>
+                  ) : null}
+                </View>
+              );
+            })}
 
             <View style={styles.resultActions}>
               <Button icon="play" variant="reward" onPress={handleStartLive}>
