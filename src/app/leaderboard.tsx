@@ -16,6 +16,7 @@ import { radii, spacing, typography } from '@/core/theme/tokens';
 import { useAuthStore } from '@/core/state/useAuthStore';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { useStreakStore } from '@/features/streak/state/useStreakStore';
+import { getEloTier } from '@/features/room-battle/domain/elo';
 import { useI18n } from '@/core/i18n';
 import {
   fetchGlobalLeaderboard,
@@ -92,6 +93,8 @@ export default function LeaderboardScreen() {
   const user = useAuthStore((s) => s.user);
   const localScore = usePapyrusStore((s) => s.totalScore);
   const localGamesPlayed = usePapyrusStore((s) => s.gamesPlayed);
+  const eloRating = usePapyrusStore((s) => s.eloRating);
+  const eloTier = getEloTier(eloRating);
   const localStreak = useStreakStore((s) => s.currentStreak);
   const { t } = useI18n();
   const { width } = useWindowDimensions();
@@ -228,12 +231,12 @@ export default function LeaderboardScreen() {
               <Badge tone="fire">{myEntry ? `#${myEntry.rank}` : t.leaderboard.rank1}</Badge>
             </Card>
 
-            {/* ── My rank snapshot ── */}
+            {/* ── My rank snapshot + ELO Rating ── */}
             {myEntry ? (
               <Card style={[styles.myRank, { borderColor: palette.indigo }]}>
                 <Ionicons name="person-circle" size={20} color={palette.indigo} />
                 <Text style={[typography.caption, { color: palette.indigo, flex: 1, fontWeight: '700' }]} numberOfLines={1}>
-                  Hạng của bạn: #{myEntry.rank} / {entries.length}
+                  Hạng #{myEntry.rank} · {eloTier.badge} {eloRating} ELO
                 </Text>
                 <Text style={[typography.caption, { color: palette.inkMuted, fontWeight: '700' }]}>
                   {myEntry.scoreLabel}

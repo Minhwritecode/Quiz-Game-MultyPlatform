@@ -1,5 +1,7 @@
 export type SyncStatus = 'synced' | 'pending' | 'failed';
 
+export type QuestionType = 'multiple_choice' | 'true_false';
+
 export type Question = {
   id: string;
   content: string;
@@ -7,6 +9,8 @@ export type Question = {
   correctIndex: number;
   explanation: string;
   position: number;
+  /** Optional question type; defaults to 4-option multiple_choice */
+  questionType?: QuestionType;
   /** Optional code snippet shown before answer options (displayed in monospace block) */
   codeSnippet?: string;
 };
@@ -91,12 +95,16 @@ export type Room = {
 };
 
 export function isValidQuestion(question: Question): boolean {
-  return question.content.trim().length > 0 &&
-    question.options.length === 4 &&
+  const expectedLength = question.questionType === 'true_false' ? 2 : 4;
+  return (
+    question.content.trim().length > 0 &&
+    question.options.length === expectedLength &&
     question.options.every((option) => option.trim().length > 0) &&
-    new Set(question.options.map(option=>option.trim().toLocaleLowerCase())).size === 4 &&
+    new Set(question.options.map((option) => option.trim().toLocaleLowerCase())).size === expectedLength &&
     Number.isInteger(question.correctIndex) &&
-    question.correctIndex >= 0 && question.correctIndex < question.options.length;
+    question.correctIndex >= 0 &&
+    question.correctIndex < question.options.length
+  );
 }
 
 export function calculateSpeedScore(isCorrect: boolean, remainingMs: number): number {

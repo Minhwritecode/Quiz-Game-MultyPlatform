@@ -13,6 +13,7 @@ import { radii, spacing, typography } from '@/core/theme/tokens';
 import { useAuthStore } from '@/core/state/useAuthStore';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { dependencies } from '@/composition/dependencies';
+import { getEloTier } from '@/features/room-battle/domain/elo';
 
 function StatBox({
   label,
@@ -59,6 +60,10 @@ export default function ProfileScreen() {
   const totalScore = usePapyrusStore((s) => s.totalScore);
   const bestScore = usePapyrusStore((s) => s.bestScore);
   const wins = usePapyrusStore((s) => s.wins);
+  const eloRating = usePapyrusStore((s) => s.eloRating);
+  const eloPeak = usePapyrusStore((s) => s.eloPeak);
+  const lastEloDelta = usePapyrusStore((s) => s.lastEloDelta);
+  const eloTier = getEloTier(eloRating);
 
   const [name, setName] = useState(user?.displayName ?? '');
   const [busy, setBusy] = useState(false);
@@ -114,6 +119,27 @@ export default function ProfileScreen() {
               {user.email}
             </Text>
           ) : null}
+
+          {/* ── Competitive ELO Rank Badge ── */}
+          <View style={[styles.eloBadgeRow, { backgroundColor: palette.paperRaised, borderColor: eloTier.color }]}>
+            <Text style={{ fontSize: 18 }}>{eloTier.badge}</Text>
+            <Text style={[typography.caption, { color: eloTier.color, fontWeight: '800' }]}>
+              {eloTier.labelVi} · {eloRating} ELO
+            </Text>
+            {lastEloDelta !== 0 ? (
+              <Text
+                style={[
+                  typography.caption,
+                  { color: lastEloDelta > 0 ? palette.mint : palette.danger, fontWeight: '800' },
+                ]}
+              >
+                ({lastEloDelta > 0 ? `+${lastEloDelta}` : lastEloDelta})
+              </Text>
+            ) : null}
+            <Text style={[typography.caption, { color: palette.inkMuted }]}>
+              · Đỉnh {eloPeak}
+            </Text>
+          </View>
 
           {/* ── Stats row ── */}
           <View style={styles.statsRow}>
@@ -195,6 +221,18 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#FFFFFF',
     letterSpacing: 1,
+  },
+  eloBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    borderRadius: radii.pill,
+    borderWidth: 1.5,
   },
   statsRow: {
     flexDirection: 'row',

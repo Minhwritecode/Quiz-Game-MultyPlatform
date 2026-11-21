@@ -5,6 +5,8 @@ import { Badge, Button, Card, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { calculateTieredSpeedScore } from '@/core/domain/models';
 import { sfx } from '@/core/audio/sfx';
+import { ReportQuestionButton } from '@/shared/ReportQuestionButton';
+import { LiveReactionsBar } from './LiveReactionsBar';
 
 export type TurnTopicId =
   | 'javascript'
@@ -424,7 +426,13 @@ export function TurnPvpArena({
             <Badge tone="primary">
               {TOPICS.find((t) => t.id === activeQuestion.topic)?.label} · {activeQuestion.difficulty.toUpperCase()}
             </Badge>
-            <Badge tone={timeLeft <= 5 ? 'danger' : 'neutral'}>{timeLeft}s</Badge>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Badge tone={timeLeft <= 5 ? 'danger' : 'neutral'}>{timeLeft}s</Badge>
+              <ReportQuestionButton
+                questionKey={`turnpvp-${activeQuestion.topic}-${round}`}
+                questionContent={activeQuestion.prompt}
+              />
+            </View>
           </View>
 
           <Text style={[typography.heading, { color: palette.ink, fontSize: 19, marginVertical: spacing.md }]}>
@@ -517,6 +525,10 @@ export function TurnPvpArena({
           ))}
         </View>
       </Card>
+
+      {(phase === 'turn_result' || phase === 'finished') && (
+        <LiveReactionsBar label="Phản ứng trực tiếp sau lượt đấu 🔥" />
+      )}
 
       <Button variant="ghost" icon="arrow-back" onPress={onExit} fullWidth>
         Quay lại sảnh đấu trường

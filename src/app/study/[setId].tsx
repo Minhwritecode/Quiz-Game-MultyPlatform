@@ -225,6 +225,11 @@ export default function StudyScreen() {
 
       {/* Question Card */}
       <Card style={styles.questionCard}>
+        {question.questionType === 'true_false' ? (
+          <View style={{ marginBottom: spacing.xs, alignSelf: 'flex-start' }}>
+            <Badge tone="primary">ĐÚNG / SAI</Badge>
+          </View>
+        ) : null}
         <Text style={[typography.heading, { color: palette.ink, lineHeight: 32 }]}>
           {question.content}
         </Text>

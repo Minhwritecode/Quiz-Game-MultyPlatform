@@ -1,9 +1,11 @@
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Platform, Share, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Button, Card, Screen, TopBar, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { useMultiplayerStore } from '@/features/multiplayer/state/useMultiplayerStore';
 import type { LeaderboardPlayer } from '@/features/multiplayer/domain/models';
+import { LiveReactionsBar } from '@/features/room-battle/components/LiveReactionsBar';
+import { buildLeaderboardCsv } from '@/features/study/domain/sessionReport';
 
 export default function MultiplayerResultsScreen() {
   const router = useRouter();
@@ -24,6 +26,24 @@ export default function MultiplayerResultsScreen() {
   const handleFinish = () => {
     reset();
     router.replace('/');
+  };
+
+  const handleExportReport = async () => {
+    const csv = buildLeaderboardCsv(roomCode || 'LIVE', displayResults);
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `papyrus-session-${roomCode || 'results'}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      return;
+    }
+    await Share.share({
+      title: `Báo cáo phòng ${roomCode || ''}`,
+      message: csv,
+    }).catch(() => undefined);
   };
 
   return (
@@ -87,7 +107,14 @@ export default function MultiplayerResultsScreen() {
           }}
         />
 
+        <View style={{ marginBottom: spacing.xs }}>
+          <LiveReactionsBar label="Gửi biểu cảm chúc mừng cả phòng 🎉" />
+        </View>
+
         <View style={styles.footer}>
+          <Button variant="secondary" icon="download-outline" onPress={() => void handleExportReport()}>
+            📊 Xuất báo cáo phiên đấu (CSV)
+          </Button>
           <Button variant="reward" icon="home-outline" onPress={handleFinish}>
             Về Trang chủ Papyrus
           </Button>

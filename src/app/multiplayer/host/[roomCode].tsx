@@ -26,6 +26,23 @@ export default function HostRoomScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [maxPlayers, setMaxPlayers] = useState(6);
   const [timePerQuestion, setTimePerQuestion] = useState(20);
+  const [readTimeSec, setReadTimeSec] = useState<0 | 3 | 5 | 10>(3);
+  const [reactionsEnabled, setReactionsEnabled] = useState(true);
+
+  const handleKickPlayer = (playerId: string, nickname: string) => {
+    Alert.alert('Mời rời phòng', `Bạn muốn mời "${nickname}" ra khỏi phòng đấu?`, [
+      { text: 'Hủy', style: 'cancel' },
+      {
+        text: 'Mời ra',
+        style: 'destructive',
+        onPress: () => {
+          setRoom((prev) =>
+            prev ? { ...prev, players: prev.players.filter((p) => p.playerId !== playerId) } : prev
+          );
+        },
+      },
+    ]);
+  };
 
   const loadRoom = useCallback(async () => {
     if (!roomCode) return;
@@ -199,6 +216,43 @@ export default function HostRoomScreen() {
                         ))}
                       </View>
                     </View>
+                    <View style={styles.configRow}>
+                      <Text style={[typography.caption, { color: palette.ink, fontWeight: '700' }]}>👀 Thời gian đọc đề</Text>
+                      <View style={styles.timeChips}>
+                        {([0, 3, 5, 10] as const).map((sec) => (
+                          <Pressable
+                            key={sec}
+                            onPress={() => setReadTimeSec(sec)}
+                            style={[
+                              styles.timeChip,
+                              {
+                                backgroundColor: readTimeSec === sec ? palette.indigo : palette.paperMuted,
+                              },
+                            ]}
+                          >
+                            <Text style={{ color: readTimeSec === sec ? '#FFFFFF' : palette.ink, fontSize: 12, fontWeight: '700' }}>
+                              {sec === 0 ? 'Tắt' : `${sec}s`}
+                            </Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    </View>
+                    <View style={styles.configRow}>
+                      <Text style={[typography.caption, { color: palette.ink, fontWeight: '700', flex: 1 }]}>
+                        🎉 Biểu cảm trực tiếp (Reactions)
+                      </Text>
+                      <Pressable
+                        onPress={() => setReactionsEnabled((v) => !v)}
+                        style={[
+                          styles.timeChip,
+                          { backgroundColor: reactionsEnabled ? palette.mint : palette.paperMuted },
+                        ]}
+                      >
+                        <Text style={{ color: reactionsEnabled ? '#FFFFFF' : palette.ink, fontSize: 12, fontWeight: '700' }}>
+                          {reactionsEnabled ? 'Đang bật' : 'Đã tắt'}
+                        </Text>
+                      </Pressable>
+                    </View>
                   </View>
                 )}
 
@@ -285,9 +339,21 @@ export default function HostRoomScreen() {
                 </View>
               </View>
 
-              <Text style={[styles.playerScore, { color: palette.indigo }]}>
-                {item.score} đ
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
+                <Text style={[styles.playerScore, { color: palette.indigo }]}>
+                  {item.score} đ
+                </Text>
+                {!item.isHost && (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Mời ${item.nickname} rời phòng`}
+                    onPress={() => handleKickPlayer(item.playerId, item.nickname)}
+                    style={[styles.kickBtn, { backgroundColor: palette.dangerTint }]}
+                  >
+                    <Ionicons name="person-remove-outline" size={16} color={palette.danger} />
+                  </Pressable>
+                )}
+              </View>
             </Card>
           )}
           ListEmptyComponent={
@@ -405,4 +471,5 @@ const styles = StyleSheet.create({
   stepBtn: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   timeChips: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
   timeChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: radii.sm },
+  kickBtn: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
 });

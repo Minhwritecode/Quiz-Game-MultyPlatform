@@ -17,6 +17,8 @@ import { useStreakStore } from '@/features/streak/state/useStreakStore';
 
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { TurnPvpArena } from '@/features/room-battle/components/TurnPvpArena';
+import { LiveReactionsBar } from '@/features/room-battle/components/LiveReactionsBar';
+import { ReportQuestionButton } from '@/shared/ReportQuestionButton';
 
 const SCHOLAR_COLORS = ['#3B82F6', '#F59E0B', '#10B981', '#EC4899', '#8B5CF6', '#06B6D4'];
 
@@ -658,15 +660,21 @@ export default function BattleScreen() {
           {question && battle.phase !== 'finished' && (
             <Card style={styles.activeQuestionCard}>
               <View style={styles.questionHeader}>
-                <Badge tone="primary">
-                  {language === 'vi' ? `CÂU ${question.position + 1}` : `Q ${question.position + 1}`}
-                </Badge>
-                {remainingSeconds !== null && <Badge tone={remainingSeconds <= 5 ? "danger" : "neutral"}>{remainingSeconds}s</Badge>}
-                {battle.answered && (
-                  <Badge tone="success">
-                    {language === 'vi' ? 'ĐÃ TRẢ LỜI' : 'ANSWERED'}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <Badge tone="primary">
+                    {language === 'vi' ? `CÂU ${question.position + 1}` : `Q ${question.position + 1}`}
                   </Badge>
-                )}
+                  {remainingSeconds !== null && <Badge tone={remainingSeconds <= 5 ? "danger" : "neutral"}>{remainingSeconds}s</Badge>}
+                  {battle.answered && (
+                    <Badge tone="success">
+                      {language === 'vi' ? 'ĐÃ TRẢ LỜI' : 'ANSWERED'}
+                    </Badge>
+                  )}
+                </View>
+                <ReportQuestionButton
+                  questionKey={`battle-${battle.id}-${question.position}`}
+                  questionContent={question.content}
+                />
               </View>
 
               <Text style={[typography.heading, { color: palette.ink, marginVertical: spacing.md }]}>
@@ -780,6 +788,10 @@ export default function BattleScreen() {
               ))}
             </View>
           </Card>
+
+          {battle.phase === 'finished' && (
+            <LiveReactionsBar label={language === 'vi' ? 'Gửi biểu cảm mừng chung cuộc 🎉' : 'Send end-of-match reactions 🎉'} />
+          )}
         </View>
       )}
 

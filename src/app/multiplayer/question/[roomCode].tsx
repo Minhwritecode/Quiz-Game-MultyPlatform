@@ -16,6 +16,7 @@ import { socket, SOCKET_EVENTS } from '@/features/multiplayer/services/socket';
 import { useMultiplayerStore } from '@/features/multiplayer/state/useMultiplayerStore';
 import { OPTION_SHAPES, calculateSpeedPoints } from '@/features/multiplayer/domain/shapes';
 import { PlayerRevealModal } from '@/features/multiplayer/components/PlayerRevealModal';
+import { ReportQuestionButton } from '@/shared/ReportQuestionButton';
 import type { CurrentQuestionData, LeaderboardPlayer } from '@/features/multiplayer/domain/models';
 
 export default function MultiplayerQuestionScreen() {
@@ -223,6 +224,12 @@ export default function MultiplayerQuestionScreen() {
 
         {/* QUESTION CARD */}
         <Card style={styles.questionCard}>
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: spacing.xs }}>
+            <ReportQuestionButton
+              questionKey={`live-${roomCode}-${questionData.index}`}
+              questionContent={questionData.question}
+            />
+          </View>
           <Text style={[styles.promptText, { color: palette.ink }]}>
             {questionData.question}
           </Text>

@@ -1,11 +1,17 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Platform, Share, StyleSheet, Text, View } from 'react-native';
 import { Badge, Button, Card, Screen, StatCard, TopBar, usePalette } from '@/shared/ui';
 import type { Attempt } from '@/core/domain/models';
 import { dependencies } from '@/composition/dependencies';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { useI18n } from '@/core/i18n';
+import { usePapyrusStore } from '@/core/state/usePapyrusStore';
+import {
+  buildStudySessionReport,
+  formatMsSeconds,
+  formatStudyReportSummary,
+} from '@/features/study/domain/sessionReport';
 
 export default function StudyResultScreen() {
   const { setId, attemptId } = useLocalSearchParams<{ setId: string; attemptId?: string }>();
@@ -46,6 +52,23 @@ export default function StudyResultScreen() {
 
   const accuracy = attempt.total === 0 ? 0 : Math.round((attempt.correctCount / attempt.total) * 100);
   const isMastered = accuracy >= 80;
+  const setTitle = usePapyrusStore.getState().questionSets.find((s) => s.id === (setId ?? attempt.questionSetId))?.title ?? 'Phiên ôn tập Papyrus';
+  const sessionReport = buildStudySessionReport(attempt, setTitle);
+
+  const handleShareReport = async () => {
+    const summary = formatStudyReportSummary(sessionReport);
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      const blob = new Blob([summary], { type: 'text/plain;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `papyrus-report-${attempt.id}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+      return;
+    }
+    await Share.share({ title: 'Báo cáo phiên học Papyrus', message: summary }).catch(() => undefined);
+  };
 
   return (
     <Screen>
@@ -100,6 +123,38 @@ export default function StudyResultScreen() {
         />
       </View>
 
+      {/* Session Performance Report Card */}
+      <Card style={styles.actionCard}>
+        <Text style={[typography.title, { color: palette.ink, marginBottom: spacing.xs }]}>
+          📊 {language === 'vi' ? 'Phân tích tốc độ & hiệu suất' : 'Session Performance Report'}
+        </Text>
+        <View style={styles.reportMetricsRow}>
+          <View style={[styles.reportPill, { backgroundColor: palette.paper }]}>
+            <Text style={[typography.caption, { color: palette.inkMuted }]}>Tốc độ TB</Text>
+            <Text style={[typography.title, { color: palette.indigo, fontSize: 16 }]}>
+              {formatMsSeconds(sessionReport.avgTimeMs)}
+            </Text>
+          </View>
+          <View style={[styles.reportPill, { backgroundColor: palette.paper }]}>
+            <Text style={[typography.caption, { color: palette.inkMuted }]}>Nhanh nhất</Text>
+            <Text style={[typography.title, { color: palette.mint, fontSize: 16 }]}>
+              {formatMsSeconds(sessionReport.fastestCorrectMs)}
+            </Text>
+          </View>
+          <View style={[styles.reportPill, { backgroundColor: palette.paper }]}>
+            <Text style={[typography.caption, { color: palette.inkMuted }]}>Hoàn thành</Text>
+            <Text style={[typography.title, { color: palette.gold, fontSize: 16 }]}>
+              {sessionReport.participationPercent}%
+            </Text>
+          </View>
+        </View>
+        <View style={{ marginTop: spacing.sm }}>
+          <Button icon="share-outline" variant="secondary" onPress={() => void handleShareReport()} fullWidth>
+            {language === 'vi' ? 'Xuất & Chia sẻ báo cáo phiên học' : 'Export & Share Session Report'}
+          </Button>
+        </View>
+      </Card>
+
       {/* Next Actions */}
       <Card style={styles.actionCard}>
         <Text style={[typography.title, { color: palette.ink }]}>{t.result.whatNext}</Text>
@@ -148,6 +203,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm,
     marginBottom: spacing.md,
+  },
+  reportMetricsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  reportPill: {
+    flex: 1,
+    minWidth: 90,
+    padding: spacing.sm,
+    borderRadius: radii.sm,
+    alignItems: 'center',
   },
   actionCard: {
     padding: spacing.lg,

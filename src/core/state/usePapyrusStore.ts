@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { seedQuestionSets } from '@/core/data/seed';
 import type { QuestionSet, SourceDocument } from '@/core/domain/models';
+import { computeNextElo, ELO_INITIAL } from '@/features/room-battle/domain/elo';
 
 type PapyrusState = {
   questionSets: QuestionSet[];
@@ -15,12 +16,15 @@ type PapyrusState = {
   theme: 'system' | 'light' | 'dark';
   render3DMode: boolean;
   bgmMuted: boolean;
-  /** Persistent game stats */
+  /** Persistent game stats & competitive ELO rating */
   gamesPlayed: number;
   totalScore: number;
   bestScore: number;
   wins: number;
-  recordGameResult: (score: number, isWin: boolean) => void;
+  eloRating: number;
+  eloPeak: number;
+  lastEloDelta: number;
+  recordGameResult: (score: number, isWin: boolean, opponentElo?: number) => void;
   setTheme: (theme: 'system' | 'light' | 'dark') => void;
   hydrateQuestionSets: (load: () => Promise<QuestionSet[]>) => Promise<void>;
   saveSourceDocument: (document: SourceDocument) => void;
@@ -53,13 +57,28 @@ export const usePapyrusStore = create<PapyrusState>()(
       totalScore: 0,
       bestScore: 0,
       wins: 0,
-      recordGameResult: (score, isWin) =>
-        set((state) => ({
-          gamesPlayed: state.gamesPlayed + 1,
-          totalScore: state.totalScore + score,
-          bestScore: Math.max(state.bestScore, score),
-          wins: state.wins + (isWin ? 1 : 0),
-        })),
+      eloRating: ELO_INITIAL,
+      eloPeak: ELO_INITIAL,
+      lastEloDelta: 0,
+      recordGameResult: (score, isWin, opponentElo) =>
+        set((state) => {
+          const opp = opponentElo ?? state.eloRating;
+          const { nextRating, delta } = computeNextElo(
+            state.eloRating,
+            opp,
+            isWin ? 1 : 0,
+            state.gamesPlayed
+          );
+          return {
+            gamesPlayed: state.gamesPlayed + 1,
+            totalScore: state.totalScore + score,
+            bestScore: Math.max(state.bestScore, score),
+            wins: state.wins + (isWin ? 1 : 0),
+            eloRating: nextRating,
+            eloPeak: Math.max(state.eloPeak, nextRating),
+            lastEloDelta: delta,
+          };
+        }),
       setTheme: (theme) => set({ theme }),
       hydrateQuestionSets: async (load) => {
         const stored = await load();
@@ -113,6 +132,9 @@ export const usePapyrusStore = create<PapyrusState>()(
         totalScore: state.totalScore,
         bestScore: state.bestScore,
         wins: state.wins,
+        eloRating: state.eloRating,
+        eloPeak: state.eloPeak,
+        lastEloDelta: state.lastEloDelta,
       }),
     }
   )

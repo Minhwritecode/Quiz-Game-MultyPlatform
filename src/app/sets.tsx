@@ -1,12 +1,19 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Modal, Platform, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Badge, Button, Card, EmptyState, IconTile, Screen, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { useI18n } from '@/core/i18n';
 import { dependencies } from '@/composition/dependencies';
+import { saveQuestionSet } from '@/features/question-sets/domain/saveQuestionSet';
+import {
+  exportQuestionSetToCsv,
+  parseQuizCsv,
+  SAMPLE_QUIZ_CSV,
+} from '@/features/question-sets/domain/csvTransfer';
+import type { QuestionSet } from '@/core/domain/models';
 
 export default function LibraryScreen() {
   const router = useRouter();
@@ -16,6 +23,50 @@ export default function LibraryScreen() {
   const sets = usePapyrusStore((state) => state.questionSets);
   const [actionBusyId, setActionBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState('');
+  const [csvModalOpen, setCsvModalOpen] = useState(false);
+  const [csvText, setCsvText] = useState('');
+  const [csvError, setCsvError] = useState('');
+  const [csvBusy, setCsvBusy] = useState(false);
+
+  const handleImportCsv = async () => {
+    if (csvBusy) return;
+    setCsvError('');
+    setCsvBusy(true);
+    try {
+      const parsed = parseQuizCsv(csvText);
+      const newSet: QuestionSet = {
+        id: `csv-set-${Date.now()}`,
+        title: parsed.title,
+        subject: parsed.subject,
+        questions: parsed.questions,
+        updatedAt: new Date().toISOString(),
+        syncStatus: 'pending',
+      };
+      await saveQuestionSet(dependencies.questionSets, newSet);
+      usePapyrusStore.getState().saveQuestionSet(newSet);
+      setCsvModalOpen(false);
+      setCsvText('');
+    } catch (err) {
+      setCsvError(err instanceof Error ? err.message : 'Không thể đọc dữ liệu CSV.');
+    } finally {
+      setCsvBusy(false);
+    }
+  };
+
+  const handleExportCsv = async (set: QuestionSet) => {
+    const csv = exportQuestionSetToCsv(set);
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${set.title.replace(/[^a-z0-9-_]+/gi, '_') || 'papyrus-quiz'}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      return;
+    }
+    await Share.share({ title: `${set.title}.csv`, message: csv }).catch(() => undefined);
+  };
 
   const filtered = useMemo(
     () => sets.filter((item) => `${item.title} ${item.subject}`.toLowerCase().includes(query.toLowerCase())),
@@ -64,6 +115,9 @@ export default function LibraryScreen() {
         <View style={styles.headerActions}>
           <Button icon="add" onPress={() => router.push('/create/generate?mode=manual')} variant="primary">{t.home.createManualBtn}</Button>
           <Button icon="sparkles" onPress={() => router.push('/create/scan')} variant="secondary">{t.home.createAiBtn}</Button>
+          <Button icon="cloud-upload-outline" onPress={() => { setCsvError(''); setCsvModalOpen(true); }} variant="ghost">
+            {language === 'vi' ? 'Nhập CSV' : 'Import CSV'}
+          </Button>
         </View>
       </View>
       {actionError ? <Text accessibilityRole="alert" style={[typography.caption, { color: palette.danger, marginBottom: spacing.md }]}>{actionError}</Text> : null}
@@ -161,6 +215,18 @@ export default function LibraryScreen() {
                     </Pressable>
                   </>
                 )}
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Xuất CSV: ${set.title}`}
+                  disabled={actionBusyId === set.id}
+                  onPress={(event) => {
+                    event.stopPropagation();
+                    void handleExportCsv(set);
+                  }}
+                  style={styles.utilityIconBtn}
+                >
+                  <Ionicons name="download-outline" size={18} color={palette.mint} />
+                </Pressable>
                 <Pressable accessibilityRole="button" accessibilityLabel={`${t.home.editSet}: ${set.title}`} disabled={actionBusyId === set.id} onPress={(event) => { event.stopPropagation(); router.push({ pathname: '/create/generate', params: { mode: 'manual', setId: set.id } }); }} style={styles.utilityIconBtn}>
                   <Ionicons name="create-outline" size={18} color={palette.indigo} />
                 </Pressable>
@@ -173,6 +239,63 @@ export default function LibraryScreen() {
           </Card>
         ))
       )}
+
+      {/* Bulk CSV Import Modal */}
+      <Modal visible={csvModalOpen} transparent animationType="fade" onRequestClose={() => setCsvModalOpen(false)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setCsvModalOpen(false)}>
+          <Pressable style={styles.modalWrap} onPress={() => undefined}>
+            <Card style={styles.modalCard}>
+              <Text style={[typography.title, { color: palette.ink }]}>📥 Nhập bộ câu hỏi hàng loạt (CSV)</Text>
+              <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 4 }]}>
+                Dán nội dung file CSV chuẩn (hỗ trợ mẫu 12 cột hoặc mẫu gọn Question,A,B,C,D,Correct).
+              </Text>
+
+              <Pressable
+                onPress={() => {
+                  setCsvText(SAMPLE_QUIZ_CSV);
+                  setCsvError('');
+                }}
+                style={[styles.samplePill, { backgroundColor: palette.indigoTint, borderColor: palette.indigo }]}
+              >
+                <Ionicons name="document-text-outline" size={15} color={palette.indigo} />
+                <Text style={[typography.caption, { color: palette.indigo, fontWeight: '700' }]}>
+                  Chèn nhanh dữ liệu CSV mẫu
+                </Text>
+              </Pressable>
+
+              <TextInput
+                value={csvText}
+                onChangeText={setCsvText}
+                multiline
+                autoCapitalize="none"
+                autoCorrect={false}
+                placeholder='"Question","A","B","C","D","Correct"'
+                placeholderTextColor={palette.inkMuted}
+                style={[styles.csvInput, { color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paper }]}
+              />
+
+              {csvError ? (
+                <Text accessibilityRole="alert" style={[typography.caption, { color: palette.danger, marginBottom: spacing.sm }]}>
+                  {csvError}
+                </Text>
+              ) : null}
+
+              <View style={styles.modalActions}>
+                <View style={{ flex: 1 }}>
+                  <Button variant="ghost" onPress={() => setCsvModalOpen(false)} fullWidth>
+                    Hủy
+                  </Button>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Button variant="primary" disabled={csvBusy || !csvText.trim()} onPress={() => void handleImportCsv()} fullWidth>
+                    {csvBusy ? 'Đang nhập...' : 'Nhập vào thư viện'}
+                  </Button>
+                </View>
+              </View>
+            </Card>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </Screen>
   );
 }
@@ -225,4 +348,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   utilityIconBtn: { width: 44, height: 44, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(79, 70, 229, 0.08)' },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.55)', justifyContent: 'center', alignItems: 'center', padding: spacing.lg },
+  modalWrap: { width: '100%', maxWidth: 520 },
+  modalCard: { padding: spacing.lg, borderRadius: radii.lg },
+  samplePill: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingHorizontal: spacing.sm, paddingVertical: 6, borderRadius: radii.pill, borderWidth: 1, marginTop: spacing.sm },
+  csvInput: { minHeight: 130, maxHeight: 220, borderWidth: 1, borderRadius: radii.sm, padding: spacing.sm, marginVertical: spacing.md, fontFamily: 'monospace', fontSize: 12, textAlignVertical: 'top' },
+  modalActions: { flexDirection: 'row', gap: spacing.sm },
 });

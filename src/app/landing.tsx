@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Badge, Button, Card, Screen, TopBar, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import QuestArena3D from '@/shared/visuals/QuestArena3D';
+import { useMembershipStore } from '@/features/membership/state/useMembershipStore';
 
 const FAQS = [
   {
@@ -70,6 +71,22 @@ const GUILD_FEED = [
   { title: 'PvP Theo lượt · Giải thuật & Python', players: '2/4 học giả', tag: 'PvP Turn' },
 ];
 
+const USE_CASES = [
+  { icon: 'school-outline' as const, title: 'Lớp học & Ôn thi', desc: 'Tạo đề từ PDF bài giảng, bật thời gian đọc đề 3–10s và xuất báo cáo CSV cuối giờ.' },
+  { icon: 'people-outline' as const, title: 'Team Building & Sự kiện', desc: 'Quét mã QR vào phòng không cần đăng ký, tung biểu cảm trực tiếp siêu sôi động.' },
+  { icon: 'briefcase-outline' as const, title: 'Đào tạo Doanh nghiệp', desc: 'Nhập bộ câu hỏi hàng loạt từ CSV, đo tốc độ phản xạ & tỷ lệ hoàn thành từng phiên.' },
+  { icon: 'code-slash-outline' as const, title: 'Đấu trường Lập trình ELO', desc: 'Câu hỏi kèm Code Snippet, PvP chọn chủ đề theo lượt và leo hạng ELO chuẩn quốc tế.' },
+];
+
+const PLAN_ROWS: Array<{ feature: string; free: string; vip: string }> = [
+  { feature: 'Số người chơi / phòng', free: 'Tối đa 10', vip: 'Mở rộng ưu tiên' },
+  { feature: 'Số bộ câu hỏi & Nhập CSV', free: 'Không giới hạn cục bộ', vip: 'Không giới hạn + Cloud' },
+  { feature: 'Lượt Scan OCR & AI mỗi ngày', free: '3 lượt / ngày', vip: 'Không giới hạn' },
+  { feature: 'Phòng đấu tạo mỗi ngày', free: '3 phòng / ngày', vip: 'Không giới hạn' },
+  { feature: 'Hệ số thưởng EXP & Hào quang 3D', free: '1x EXP', vip: '2x EXP + Hào quang Vàng' },
+  { feature: 'Báo cáo phiên đấu & Đấu ELO', free: 'Có sẵn ✓', vip: 'Đầy đủ ✓' },
+];
+
 export default function LandingShowcaseScreen() {
   const router = useRouter();
   const palette = usePalette();
@@ -78,6 +95,8 @@ export default function LandingShowcaseScreen() {
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
   const [quickRoomCode, setQuickRoomCode] = useState('');
   const [interactive3D, setInteractive3D] = useState(false);
+  const tier = useMembershipStore((s) => s.tier);
+  const toggleTier = useMembershipStore((s) => s.toggleTier);
 
   const handleQuickJoin = () => {
     const code = quickRoomCode.trim().toUpperCase();
@@ -329,6 +348,65 @@ export default function LandingShowcaseScreen() {
           </Card>
         </View>
 
+        {/* ── 5B. REAL-WORLD USE CASES ── */}
+        <Text style={[typography.title, { color: palette.ink, fontSize: 19, marginTop: spacing.lg, marginBottom: spacing.sm }]}>
+          Phù hợp cho mọi bối cảnh học tập & sự kiện
+        </Text>
+        <View style={[styles.pillarsGrid, isWide && styles.pillarsGridWide]}>
+          {USE_CASES.map((uc) => (
+            <Card key={uc.title} style={styles.useCaseCard}>
+              <View style={[styles.featIconWrap, { backgroundColor: palette.indigoTint }]}>
+                <Ionicons name={uc.icon} size={20} color={palette.indigo} />
+              </View>
+              <Text style={[typography.title, { color: palette.ink, fontSize: 15, marginTop: spacing.xs }]}>
+                {uc.title}
+              </Text>
+              <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 4, lineHeight: 18 }]}>
+                {uc.desc}
+              </Text>
+            </Card>
+          ))}
+        </View>
+
+        {/* ── 5C. FREE VS VIP PRO PLAN COMPARISON ── */}
+        <Text style={[typography.title, { color: palette.ink, fontSize: 19, marginTop: spacing.lg, marginBottom: spacing.sm }]}>
+          So sánh gói Học Giả (Free) & Đại Pháp Sư (VIP)
+        </Text>
+        <Card style={styles.planCard}>
+          <View style={[styles.planHeaderRow, { borderBottomColor: palette.paperMuted }]}>
+            <Text style={[typography.caption, { color: palette.inkMuted, fontWeight: '800', flex: 1.4 }]}>
+              TÍNH NĂNG
+            </Text>
+            <Text style={[typography.caption, { color: palette.ink, fontWeight: '800', flex: 0.8, textAlign: 'center' }]}>
+              Free
+            </Text>
+            <Text style={[typography.caption, { color: palette.gold, fontWeight: '800', flex: 0.9, textAlign: 'center' }]}>
+              👑 VIP
+            </Text>
+          </View>
+          {PLAN_ROWS.map((row) => (
+            <View key={row.feature} style={[styles.planRow, { borderBottomColor: palette.paperMuted }]}>
+              <Text style={[typography.caption, { color: palette.ink, flex: 1.4, fontWeight: '600' }]}>
+                {row.feature}
+              </Text>
+              <Text style={[typography.caption, { color: palette.inkMuted, flex: 0.8, textAlign: 'center' }]}>
+                {row.free}
+              </Text>
+              <Text style={[typography.caption, { color: palette.indigo, flex: 0.9, textAlign: 'center', fontWeight: '700' }]}>
+                {row.vip}
+              </Text>
+            </View>
+          ))}
+          <View style={styles.planCtaRow}>
+            <Badge tone={tier === 'archmage' ? 'reward' : 'neutral'}>
+              {tier === 'archmage' ? '👑 Bạn đang dùng VIP Archmage' : '📜 Gói hiện tại: Học Giả Free'}
+            </Badge>
+            <Button variant={tier === 'archmage' ? 'secondary' : 'reward'} icon="sparkles" onPress={toggleTier}>
+              {tier === 'archmage' ? 'Chuyển về Free (Demo)' : 'Trải nghiệm VIP ngay'}
+            </Button>
+          </View>
+        </Card>
+
         {/* ── 6. FAQ ACCORDION ── */}
         <Text style={[typography.title, { color: palette.ink, fontSize: 19, marginTop: spacing.lg, marginBottom: spacing.sm }]}>
           Câu hỏi thường gặp (FAQ)
@@ -482,6 +560,11 @@ const styles = StyleSheet.create({
   pillarsGrid: { gap: spacing.sm },
   pillarsGridWide: { flexDirection: 'row', flexWrap: 'wrap' },
   pillarCard: { padding: spacing.md, borderRadius: radii.md, flex: 1, minWidth: 240 },
+  useCaseCard: { padding: spacing.md, borderRadius: radii.md, flexBasis: '47%', flexGrow: 1, minWidth: 220 },
+  planCard: { padding: spacing.md, borderRadius: radii.lg, marginBottom: spacing.sm },
+  planHeaderRow: { flexDirection: 'row', alignItems: 'center', paddingBottom: spacing.sm, borderBottomWidth: 1, gap: spacing.xs },
+  planRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.sm, borderBottomWidth: 1, gap: spacing.xs },
+  planCtaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },
   pillarTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
   featIconWrap: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   stepsWrap: { gap: spacing.xs, marginBottom: spacing.sm },

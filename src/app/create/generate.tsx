@@ -9,7 +9,7 @@ import { dependencies } from '@/composition/dependencies';
 import { saveQuestionSet } from '@/features/question-sets/domain/saveQuestionSet';
 import { useI18n } from '@/core/i18n';
 import { parseGeneratedQuestions } from '@/features/quiz-generation/domain/parseGeneratedQuestions';
-import type { Question } from '@/core/domain/models';
+import { isValidQuestion, type Question, type QuestionType } from '@/core/domain/models';
 import { spacing, typography } from '@/core/theme/tokens';
 
 export default function GenerateScreen() {
@@ -79,7 +79,7 @@ export default function GenerateScreen() {
 
   const save = async () => {
     if (busy) return;
-    if (!title.trim() || !subject.trim() || questions.length === 0 || questions.some((question) => !question.content.trim() || question.options.some((option) => !option.trim()) || new Set(question.options.map((option) => option.trim().toLocaleLowerCase())).size !== 4)) {
+    if (!title.trim() || !subject.trim() || questions.length === 0 || questions.some((question) => !isValidQuestion(question))) {
       setMessage(manualMode ? t.home.saveError : 'Enter a title, subject, and complete all question options before saving.');
       return;
     }
@@ -117,7 +117,45 @@ export default function GenerateScreen() {
     {questions.length === 0 && <Card><Text style={[typography.body, { color: palette.inkMuted }]}>No questions remain. Generate a new set or go back to your source.</Text></Card>}
     <Button variant="secondary" disabled={busy || questions.length >= 30} onPress={()=>setQuestions(current=>[...current,{id:`manual-${Date.now()}`,content:'',options:['','','',''],correctIndex:0,explanation:'',position:current.length}])}>{t.home.addQuestion}</Button>
     {questions.map((question, index) => <Card key={question.id} style={styles.question}>
-      <View style={styles.questionHeader}><Text style={[typography.label, { color: palette.indigo }]}>{t.home.questionLabel.toLocaleUpperCase()} {index + 1}</Text><Pressable accessibilityRole="button" accessibilityLabel={`${t.home.removeQuestion} ${index + 1}`} onPress={() => removeQuestion(question.id)} style={styles.removeButton}><Ionicons name="trash-outline" size={20} color={palette.danger} /></Pressable></View>
+      <View style={styles.questionHeader}>
+        <Text style={[typography.label, { color: palette.indigo }]}>{t.home.questionLabel.toLocaleUpperCase()} {index + 1}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          {(['multiple_choice', 'true_false'] as QuestionType[]).map((qType) => {
+            const active = (question.questionType ?? 'multiple_choice') === qType;
+            return (
+              <Pressable
+                key={qType}
+                accessibilityRole="button"
+                onPress={() =>
+                  updateQuestion(question.id, (current) => ({
+                    ...current,
+                    questionType: qType,
+                    options:
+                      qType === 'true_false'
+                        ? [language === 'vi' ? 'Đúng' : 'True', language === 'vi' ? 'Sai' : 'False']
+                        : current.options.length === 4
+                        ? current.options
+                        : ['', '', '', ''],
+                    correctIndex: qType === 'true_false' ? Math.min(current.correctIndex, 1) : current.correctIndex,
+                  }))
+                }
+                style={[
+                  styles.typeChip,
+                  {
+                    backgroundColor: active ? palette.indigo : palette.paper,
+                    borderColor: active ? palette.indigo : palette.paperMuted,
+                  },
+                ]}
+              >
+                <Text style={{ fontSize: 11, fontWeight: '700', color: active ? '#FFFFFF' : palette.inkMuted }}>
+                  {qType === 'true_false' ? (language === 'vi' ? 'Đúng / Sai' : 'True / False') : '4 lựa chọn'}
+                </Text>
+              </Pressable>
+            );
+          })}
+          <Pressable accessibilityRole="button" accessibilityLabel={`${t.home.removeQuestion} ${index + 1}`} onPress={() => removeQuestion(question.id)} style={styles.removeButton}><Ionicons name="trash-outline" size={20} color={palette.danger} /></Pressable>
+        </View>
+      </View>
       <TextInput testID={`question-${index}-content`} accessibilityLabel={`${t.home.questionLabel} ${index+1}`} placeholder={t.home.questionLabel} value={question.content} onChangeText={(content) => updateQuestion(question.id, (current) => ({ ...current, content }))} multiline textAlignVertical="top" style={[styles.questionInput, { color: palette.ink, borderColor: palette.paperMuted }]} />
       <Pressable
         accessibilityRole="button"
@@ -162,7 +200,8 @@ const styles = StyleSheet.create({
   controls: { padding: spacing.xl },
   choiceRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },
   question: { marginBottom: spacing.md, gap: spacing.sm },
-  questionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  questionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: spacing.xs },
+  typeChip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, borderWidth: 1 },
   questionInput: { minHeight: 62, borderWidth: 1, borderRadius: 12, padding: spacing.md, fontSize: 16, lineHeight: 22 },
   optionRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   answerMark: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
