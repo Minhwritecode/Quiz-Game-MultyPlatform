@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Animated, AppState, Easing, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Animated, AppState, Easing, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { Badge, Button, Card, IconTile, Screen, usePalette } from '@/shared/ui';
@@ -12,6 +12,8 @@ import { useI18n } from '@/core/i18n';
 import { GameEnvironment } from '@/shared/GameEnvironment';
 import { CharacterAvatar } from '@/shared/CharacterAvatar';
 import { sfx } from '@/core/audio/sfx';
+import { useMembershipStore } from '@/features/membership/state/useMembershipStore';
+import { useStreakStore } from '@/features/streak/state/useStreakStore';
 
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 
@@ -78,6 +80,7 @@ export default function BattleScreen() {
   const { language, t } = useI18n();
   const user = useAuthStore((s) => s.user);
   const recordGameResult = usePapyrusStore((s) => s.recordGameResult);
+  const isVip = useMembershipStore((state) => state.tier === 'archmage');
   const params = useLocalSearchParams<{ code?: string }>();
   const [code, setCode] = useState(params.code ?? '');
   const [roomId, setRoomId] = useState<string | null>(null);
@@ -187,6 +190,12 @@ export default function BattleScreen() {
       appState.remove();
     };
   }, [roomId, t.battle.lostConnection, t.battle.reconnecting]);
+
+  useEffect(() => {
+    if (battle?.phase === 'finished') {
+      useStreakStore.getState().recordActivity('battle');
+    }
+  }, [battle?.phase]);
 
   const run = async (action: () => Promise<void>) => {
     if (busy) return;
@@ -403,12 +412,20 @@ export default function BattleScreen() {
                     icon="play"
                     onPress={() =>
                       void run(async () => {
+                        if (!useMembershipStore.getState().canCreateBattle()) {
+                          Alert.alert(
+                            'Đạt giới hạn tạo phòng hôm nay',
+                            'Học Giả Tập Sự được tạo tối đa 3 phòng đấu/ngày. Bạn có thể nâng cấp lên VIP để tạo phòng không giới hạn!'
+                          );
+                          return;
+                        }
                         const room = await dependencies.rooms.create({
                           setId: set.id,
                           questionCount,
                           secondsPerQuestion,
                           mode: roomMode,
                         });
+                        useMembershipStore.getState().consumeBattle();
                         await enter(room.id);
                       })
                     }
@@ -471,6 +488,7 @@ export default function BattleScreen() {
                       showName={true}
                       isDisconnected={!p.connected}
                       reconnectCountdown={30}
+                      hasGoldenAura={p.userId === user?.id && isVip}
                     />
                     {p.userId === battle.hostId && (
                       <View style={styles.hostCrown}>
@@ -616,11 +634,12 @@ export default function BattleScreen() {
                       size={36}
                       showName={false}
                       isDisconnected={!p.connected}
+                      hasGoldenAura={p.userId === user?.id && isVip}
                     />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={[typography.body, { color: palette.ink, fontWeight: '700' }]}>
-                      {p.name} {p.userId === battle.hostId && (language === 'vi' ? '(Chủ phòng)' : '(Host)')} {p.userId === user?.id && (language === 'vi' ? '(Bạn)' : '(You)')}
+                      {p.name} {p.userId === battle.hostId && (language === 'vi' ? '(Chủ phòng)' : '(Host)')} {p.userId === user?.id && (language === 'vi' ? (isVip ? '(Bạn 👑 VIP)' : '(Bạn)') : (isVip ? '(You 👑 VIP)' : '(You)'))}
                     </Text>
                     <Text style={[typography.caption, { color: palette.inkMuted }]}>
                       {p.connected

@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Badge, BrandMark, Button, Card, IconTile, Screen, SectionHeading, StatCard, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
@@ -8,6 +8,11 @@ import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { useAuthStore } from '@/core/state/useAuthStore';
 import { useI18n } from '@/core/i18n';
 import PapyrusScene from '@/shared/visuals/PapyrusScene';
+import { StreakBadge } from '@/features/streak/presentation/StreakBadge';
+import { VipBadge } from '@/features/membership/presentation/VipBadge';
+import { RenderModeToggle } from '@/shared/RenderModeToggle';
+import { SoundToggle } from '@/shared/SoundToggle';
+import { useStreakStore } from '@/features/streak/state/useStreakStore';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -27,6 +32,10 @@ export default function HomeScreen() {
     if (code.length !== 6) return;
     router.push({ pathname: '/battle', params: { code } });
   };
+
+  useEffect(() => {
+    useStreakStore.getState().refreshStreakStatus();
+  }, []);
 
   return (
     <Screen bottomNav>
@@ -48,6 +57,14 @@ export default function HomeScreen() {
             <Ionicons name="person-circle-outline" size={36} color={palette.indigo} />
           </Pressable>
         </View>
+      </View>
+
+      {/* Gamified Utility Bar: Streak 🔥, VIP 👑, 2D/3D Mode 🔮, BGM 🔊 */}
+      <View style={styles.utilityBar}>
+        <StreakBadge />
+        <VipBadge />
+        <RenderModeToggle compact />
+        <SoundToggle />
       </View>
 
       <Card color={palette.indigo} style={[styles.heroCard, isWide && styles.heroCardWide]}>
@@ -122,12 +139,17 @@ export default function HomeScreen() {
         <QuickAction icon="skull-outline" tint="danger" title={t.survival.title} description={t.survival.subtitle} onPress={() => router.push('/games/survival')} palette={palette} />
         <QuickAction icon="extension-puzzle-outline" tint="reward" title={t.home.featMatchTitle} description={t.home.featMatchSub} onPress={() => router.push('/games/match')} palette={palette} />
         <QuickAction icon="cloud-done-outline" tint="primary" title={t.home.featSyncTitle} description={t.home.featSyncSub} onPress={() => router.push('/sync')} palette={palette} />
+        {/* NEW: Multiplayer features từ client/ */}
+        <QuickAction icon="sparkles-outline" tint="reward" title="🤖 AI Quiz" description="Tạo quiz từ chủ đề hoặc PDF" onPress={() => router.push('/ai-quiz')} palette={palette} />
+        <QuickAction icon="people-outline" tint="success" title="🎮 Multiplayer" description="Tạo / Tham gia phòng quiz real-time" onPress={() => router.push('/multiplayer/join')} palette={palette} />
+        <QuickAction icon="library-outline" tint="primary" title="📚 Quiz Library" description="Thư viện quiz & tạo thủ công" onPress={() => router.push('/quiz-library')} palette={palette} />
+        <QuickAction icon="rocket-outline" tint="reward" title="🌐 Showcase & FAQ" description="Giới thiệu tính năng & Hỏi đáp" onPress={() => router.push('/landing')} palette={palette} />
       </View>
     </Screen>
   );
 }
 
-function QuickAction({ icon, tint, title, description, onPress, palette }: { icon: 'create-outline' | 'scan-outline' | 'skull-outline' | 'extension-puzzle-outline' | 'cloud-done-outline'; tint: 'primary' | 'success' | 'danger' | 'reward'; title: string; description: string; onPress: () => void; palette: ReturnType<typeof usePalette> }) {
+function QuickAction({ icon, tint, title, description, onPress, palette }: { icon: 'create-outline' | 'scan-outline' | 'skull-outline' | 'extension-puzzle-outline' | 'cloud-done-outline' | 'sparkles-outline' | 'people-outline' | 'library-outline' | 'rocket-outline'; tint: 'primary' | 'success' | 'danger' | 'reward'; title: string; description: string; onPress: () => void; palette: ReturnType<typeof usePalette> }) {
   return <Card onPress={onPress} style={styles.quickCard}>
     <IconTile icon={icon} tint={tint} />
     <Text style={[typography.title, { color: palette.ink, marginTop: spacing.md }]}>{title}</Text>
@@ -139,6 +161,7 @@ const styles = StyleSheet.create({
   topHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing.md, gap: spacing.sm },
   brandIdentity: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, flex: 1 },
   topRightControls: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  utilityBar: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap', marginBottom: spacing.sm },
   langPillButton: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: spacing.md, borderRadius: radii.pill, borderWidth: 1.5 },
   profileButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   heroCard: { padding: spacing.xl, borderRadius: radii.lg, borderWidth: 0, overflow: 'hidden', marginTop: spacing.sm },
@@ -153,7 +176,7 @@ const styles = StyleSheet.create({
   joinText: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, flex: 1, minWidth: 240 },
   joinCopy: { flex: 1 },
   joinControls: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm, flex: 1, justifyContent: 'flex-end' },
-  codeInput: { minWidth: 160, flex: 1, maxWidth: 260, minHeight: 48, borderWidth: 1, borderRadius: radii.md, paddingHorizontal: spacing.md, fontSize: 16, fontWeight: '700', letterSpacing: 1.5 },
+  codeInput: { minWidth: 120, flex: 1, maxWidth: 260, minHeight: 48, borderWidth: 1, borderRadius: radii.md, paddingHorizontal: spacing.md, fontSize: 16, fontWeight: '700', letterSpacing: 1.5 },
   emptyCard: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.md },
   setCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.sm, padding: spacing.md, borderRadius: radii.md },
   setCopy: { flex: 1, minWidth: 100 },

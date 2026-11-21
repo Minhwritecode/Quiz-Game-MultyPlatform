@@ -2,20 +2,25 @@ import * as Haptics from 'expo-haptics';
 import { Platform } from 'react-native';
 
 /**
- * Papyrus Fantasy RPG Sound Effects Engine
- * Uses Web Audio API on web/hybrid platforms for zero-latency synthesized
- * sound effects (Kenney RPG style) and Expo Haptics on mobile for tactile feedback.
+ * Papyrus Fantasy RPG Audio Engine
+ * Provides synthesized Web Audio sound effects (SFX) and ambient Lo-Fi Fantasy
+ * study background music (BGM) with tactile haptics on mobile.
  */
 class SoundEffectsManager {
   private ctx: AudioContext | null = null;
-  private muted: boolean = false;
+  private sfxMuted: boolean = false;
+  private bgmMuted: boolean = false;
+  private bgmPlaying: boolean = false;
+  private bgmTimer: any = null;
+  private bgmGainNode: GainNode | null = null;
 
   private getContext(): AudioContext | null {
-    if (this.muted) return null;
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       try {
         if (!this.ctx) {
-          const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+          const AudioContextClass =
+            window.AudioContext ||
+            (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
           if (AudioContextClass) {
             this.ctx = new AudioContextClass();
           }
@@ -32,18 +37,137 @@ class SoundEffectsManager {
   }
 
   public setMuted(muted: boolean) {
-    this.muted = muted;
+    this.sfxMuted = muted;
+    this.bgmMuted = muted;
+    if (muted) {
+      this.stopBGM();
+    }
   }
 
   public isMuted(): boolean {
-    return this.muted;
+    return this.sfxMuted && this.bgmMuted;
   }
+
+  public setSfxMuted(muted: boolean) {
+    this.sfxMuted = muted;
+  }
+
+  public isSfxMuted(): boolean {
+    return this.sfxMuted;
+  }
+
+  public setBgmMuted(muted: boolean) {
+    this.bgmMuted = muted;
+    if (muted) {
+      this.stopBGM();
+    } else if (!this.bgmPlaying) {
+      this.playBGM();
+    }
+  }
+
+  public isBgmMuted(): boolean {
+    return this.bgmMuted;
+  }
+
+  public isBgmActive(): boolean {
+    return this.bgmPlaying && !this.bgmMuted;
+  }
+
+  // --- BACKGROUND MUSIC ENGINE (Lo-Fi Fantasy Academy) ---
+
+  public playBGM() {
+    if (this.bgmMuted || this.bgmPlaying) return;
+    const ctx = this.getContext();
+    if (!ctx) return;
+
+    this.bgmPlaying = true;
+    this.bgmGainNode = ctx.createGain();
+    this.bgmGainNode.gain.setValueAtTime(0.08, ctx.currentTime);
+    this.bgmGainNode.connect(ctx.destination);
+
+    // Ethereal chord progressions: Am9 -> Fmaj7 -> Cmaj9 -> Gsus4
+    const chords = [
+      [220.0, 261.63, 329.63, 392.0, 493.88], // Am9
+      [174.61, 220.0, 261.63, 329.63, 392.0], // Fmaj7
+      [261.63, 329.63, 392.0, 493.88, 587.33], // Cmaj9
+      [196.0, 261.63, 293.66, 392.0, 440.0],  // Gsus4
+    ];
+
+    let chordIndex = 0;
+
+    const playChordStep = () => {
+      if (!this.bgmPlaying || this.bgmMuted || !this.ctx || !this.bgmGainNode) return;
+      const now = this.ctx.currentTime;
+      const currentChord = chords[chordIndex % chords.length];
+      chordIndex++;
+      if (!currentChord) return;
+
+      // Play soft warm chord tones
+      currentChord.forEach((freq, noteIdx) => {
+        try {
+          const osc = this.ctx!.createOscillator();
+          const noteGain = this.ctx!.createGain();
+
+          osc.type = noteIdx === 0 ? 'sine' : 'triangle';
+          osc.frequency.setValueAtTime(freq, now + noteIdx * 0.12);
+
+          // Soft ambient envelope
+          const start = now + noteIdx * 0.12;
+          noteGain.gain.setValueAtTime(0.001, start);
+          noteGain.gain.linearRampToValueAtTime(0.04, start + 0.4);
+          noteGain.gain.exponentialRampToValueAtTime(0.0001, start + 3.4);
+
+          osc.connect(noteGain);
+          noteGain.connect(this.bgmGainNode!);
+
+          osc.start(start);
+          osc.stop(start + 3.5);
+        } catch {
+          // Fallback
+        }
+      });
+
+      this.bgmTimer = setTimeout(playChordStep, 3600);
+    };
+
+    playChordStep();
+  }
+
+  public stopBGM() {
+    this.bgmPlaying = false;
+    if (this.bgmTimer) {
+      clearTimeout(this.bgmTimer);
+      this.bgmTimer = null;
+    }
+    if (this.bgmGainNode && this.ctx) {
+      try {
+        this.bgmGainNode.gain.linearRampToValueAtTime(0.001, this.ctx.currentTime + 0.5);
+      } catch {
+        // Fallback
+      }
+    }
+  }
+
+  public toggleBGM(): boolean {
+    if (this.bgmPlaying && !this.bgmMuted) {
+      this.stopBGM();
+      this.setBgmMuted(true);
+      return false;
+    } else {
+      this.setBgmMuted(false);
+      this.playBGM();
+      return true;
+    }
+  }
+
+  // --- SOUND EFFECTS (SFX) ---
 
   /**
    * Tia chùm sét tri thức (Knowledge Beam / Spell Cast)
    */
   public playSpellCast() {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
+    if (this.sfxMuted) return;
     const ctx = this.getContext();
     if (!ctx) return;
 
@@ -75,6 +199,7 @@ class SoundEffectsManager {
    */
   public playCorrect() {
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+    if (this.sfxMuted) return;
     const ctx = this.getContext();
     if (!ctx) return;
 
@@ -109,6 +234,7 @@ class SoundEffectsManager {
    */
   public playWrong() {
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => undefined);
+    if (this.sfxMuted) return;
     const ctx = this.getContext();
     if (!ctx) return;
 
@@ -139,6 +265,7 @@ class SoundEffectsManager {
    */
   public playCardFlip() {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
+    if (this.sfxMuted) return;
     const ctx = this.getContext();
     if (!ctx) return;
 
@@ -169,6 +296,7 @@ class SoundEffectsManager {
    */
   public playCrystalBreak() {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => undefined);
+    if (this.sfxMuted) return;
     const ctx = this.getContext();
     if (!ctx) return;
 
@@ -203,6 +331,7 @@ class SoundEffectsManager {
    */
   public playCombo() {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => undefined);
+    if (this.sfxMuted) return;
     const ctx = this.getContext();
     if (!ctx) return;
 
@@ -233,6 +362,7 @@ class SoundEffectsManager {
    */
   public playLevelUp() {
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+    if (this.sfxMuted) return;
     const ctx = this.getContext();
     if (!ctx) return;
 

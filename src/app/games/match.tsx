@@ -20,6 +20,10 @@ import { CharacterHero, CharacterAction } from '@/shared/CharacterHero';
 import { GameEnvironment } from '@/shared/GameEnvironment';
 import { MagicParticles } from '@/shared/MagicParticles';
 import { sfx } from '@/core/audio/sfx';
+import { RenderModeToggle } from '@/shared/RenderModeToggle';
+import { SoundToggle } from '@/shared/SoundToggle';
+import { useStreakStore } from '@/features/streak/state/useStreakStore';
+import { useMembershipStore } from '@/features/membership/state/useMembershipStore';
 
 // ─── 3D Flip Card Component ───────────────────────────────────────────────
 const CYAN = '#06B6D4';
@@ -228,6 +232,7 @@ export default function MatchGameScreen() {
   const palette = usePalette();
   const { t, language } = useI18n();
   const { width } = useWindowDimensions();
+  const isVip = useMembershipStore((state) => state.tier === 'archmage');
 
   const questionSets = usePapyrusStore((s) => s.questionSets);
   const [activeSetId, setActiveSetId] = useState<string | null>(setId ?? null);
@@ -388,6 +393,7 @@ export default function MatchGameScreen() {
 
           if (nextMatched === totalPairs) {
             sfx.playLevelUp();
+            useStreakStore.getState().recordActivity('study_quiz');
             setIsGameOver(true);
             setIsTimerRunning(false);
             setCharacterAction('victory');
@@ -438,8 +444,9 @@ export default function MatchGameScreen() {
     const base = totalPairs * 20;
     const speedBonus = Math.max(0, 50 - Math.floor(seconds / 2));
     const comboBonus = maxCombo * 10;
-    return base + speedBonus + comboBonus;
-  }, [totalPairs, seconds, maxCombo]);
+    const total = base + speedBonus + comboBonus;
+    return total * (isVip ? 2 : 1);
+  }, [totalPairs, seconds, maxCombo, isVip]);
 
   const formatTimer = (totalSeconds: number) => {
     const mins = Math.floor(totalSeconds / 60);
@@ -479,6 +486,10 @@ export default function MatchGameScreen() {
           <Text style={[typography.body, { color: 'rgba(254,243,199,0.65)', marginTop: 4 }]}>
             {t.match.subtitle}
           </Text>
+        </View>
+        <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+          <RenderModeToggle compact />
+          <SoundToggle />
         </View>
       </View>
 
@@ -658,7 +669,9 @@ export default function MatchGameScreen() {
                 <Text style={[typography.title, { color: palette.danger }]}>x{maxCombo}</Text>
               </View>
               <View style={[styles.victoryRow, { borderTopWidth: 1, borderColor: palette.paperMuted, paddingTop: 10 }]}>
-                <Text style={[typography.title, { color: palette.indigo }]}>{t.match.xpEarned}</Text>
+                <Text style={[typography.title, { color: palette.indigo }]}>
+                  {isVip ? `${t.match.xpEarned} (👑 ×2 VIP)` : t.match.xpEarned}
+                </Text>
                 <Text style={[typography.display, { color: palette.gold, fontSize: 24 }]}>+{xpEarned} XP</Text>
               </View>
             </View>

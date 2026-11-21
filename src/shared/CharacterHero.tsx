@@ -1,7 +1,11 @@
 import { useEffect, useRef } from 'react';
 import { Animated, Image, StyleSheet, Text, View } from 'react-native';
-import { colors, radii, shadows, spacing, typography } from '@/core/theme/tokens';
+import { radii, spacing, typography } from '@/core/theme/tokens';
 import { usePalette } from './ui';
+import { Model3DView, Character3DAnimation } from './Model3DView';
+import { Model3DErrorBoundary } from './Model3DErrorBoundary';
+import { usePapyrusStore } from '@/core/state/usePapyrusStore';
+import { useMembershipStore } from '@/features/membership/state/useMembershipStore';
 
 export type CharacterAction = 'idle' | 'attack' | 'hurt' | 'victory';
 
@@ -12,6 +16,13 @@ const CHARACTER_FRAMES: Record<CharacterAction, any> = {
   victory: require('../../assets/characters/papyrus/victory.png'),
 };
 
+const ACTION_TO_3D_ANIMATION: Record<CharacterAction, Character3DAnimation> = {
+  idle: 'Idle',
+  attack: 'Cast_Spell',
+  hurt: 'Hit_Reaction',
+  victory: 'Victory_Dance',
+};
+
 interface CharacterHeroProps {
   action?: CharacterAction;
   size?: 'sm' | 'md' | 'lg';
@@ -19,6 +30,7 @@ interface CharacterHeroProps {
   maxHp?: number;
   name?: string;
   showHealthBar?: boolean;
+  mode?: '2d' | '3d';
 }
 
 export function CharacterHero({
@@ -28,16 +40,23 @@ export function CharacterHero({
   maxHp = 3,
   name = 'Papyrus Scholar',
   showHealthBar = false,
+  mode,
 }: CharacterHeroProps) {
   const palette = usePalette();
+  const globalRender3D = usePapyrusStore((state) => state.render3DMode);
+  const isVip = useMembershipStore((state) => state.tier === 'archmage');
+  const activeMode = mode !== undefined ? mode : globalRender3D ? '3d' : '2d';
+
   const floatAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const shakeAnim = useRef(new Animated.Value(0)).current;
 
   const dim = size === 'sm' ? 84 : size === 'lg' ? 180 : 124;
+  const height3D = size === 'sm' ? 130 : size === 'lg' ? 240 : 180;
 
-  // Gentle floating animation
+  // Gentle floating animation for 2D mode
   useEffect(() => {
+    if (activeMode === '3d') return;
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(floatAnim, {
@@ -54,10 +73,11 @@ export function CharacterHero({
     );
     loop.start();
     return () => loop.stop();
-  }, [floatAnim]);
+  }, [floatAnim, activeMode]);
 
-  // Action-driven triggers
+  // Action-driven triggers for 2D mode
   useEffect(() => {
+    if (activeMode === '3d') return;
     if (action === 'attack') {
       Animated.sequence([
         Animated.timing(scaleAnim, { toValue: 1.15, duration: 150, useNativeDriver: true }),
@@ -76,14 +96,16 @@ export function CharacterHero({
         Animated.timing(scaleAnim, { toValue: 1.0, duration: 200, useNativeDriver: true }),
       ]).start();
     }
-  }, [action, scaleAnim, shakeAnim]);
+  }, [action, scaleAnim, shakeAnim, activeMode]);
 
   return (
     <View style={styles.container}>
       {/* Name and Health Bar */}
       {showHealthBar && (
         <View style={styles.header}>
-          <Text style={[typography.caption, { color: palette.ink, fontWeight: '700' }]}>{name}</Text>
+          <Text style={[typography.caption, { color: palette.ink, fontWeight: '700' }]}>
+            {isVip ? `👑 ${name}` : name}
+          </Text>
           <View style={[styles.hpTrack, { backgroundColor: palette.paperMuted }]}>
             <View
               style={[
@@ -98,29 +120,65 @@ export function CharacterHero({
         </View>
       )}
 
-      {/* Floating Animated Character Sprite */}
-      <Animated.View
-        style={[
-          styles.spriteWrapper,
-          {
-            width: dim,
-            height: dim,
-            transform: [
-              { translateY: floatAnim },
-              { scale: scaleAnim },
-              { translateX: shakeAnim },
-            ],
-          },
-        ]}
-      >
-        <Image
-          source={CHARACTER_FRAMES[action] || CHARACTER_FRAMES.idle}
-          style={[styles.spriteImage, { width: dim, height: dim }]}
-          resizeMode="cover"
-        />
-        {/* Glowing Aura Ring */}
-        <View style={[styles.auraRing, { width: dim * 0.8, height: 12, backgroundColor: palette.indigoTint }]} />
-      </Animated.View>
+      {/* Render Mode: 3D Rigged WebGL or 2D Sprite */}
+      {activeMode === '3d' ? (
+        <View style={{ width: dim * 1.5, height: height3D, alignItems: 'center', justifyContent: 'center' }}>
+          {isVip && (
+            <View style={{ position: 'absolute', top: 4, zIndex: 10, backgroundColor: '#FEF3C7', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12, borderWidth: 1, borderColor: '#F59E0B' }}>
+              <Text style={{ fontSize: 10, fontWeight: '700', color: '#B45309' }}>👑 VIP ARCHMAGE</Text>
+            </View>
+          )}
+          <Model3DErrorBoundary>
+            <Model3DView
+              model="character"
+              height={height3D}
+              animationName={ACTION_TO_3D_ANIMATION[action]}
+              autoRotate={false}
+              interactive={true}
+              cameraOrbit="0deg 82deg 3.6m"
+              style={styles.model3dBox}
+            />
+          </Model3DErrorBoundary>
+        </View>
+      ) : (
+        /* Floating Animated Character Sprite */
+        <Animated.View
+          style={[
+            styles.spriteWrapper,
+            {
+              width: dim,
+              height: dim,
+              transform: [
+                { translateY: floatAnim },
+                { scale: scaleAnim },
+                { translateX: shakeAnim },
+              ],
+            },
+          ]}
+        >
+          {isVip && (
+            <View style={{ position: 'absolute', top: -14, zIndex: 10, backgroundColor: '#FEF3C7', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 10, borderWidth: 1, borderColor: '#F59E0B' }}>
+              <Text style={{ fontSize: 9, fontWeight: '700', color: '#B45309' }}>👑 VIP</Text>
+            </View>
+          )}
+          <Image
+            source={CHARACTER_FRAMES[action] || CHARACTER_FRAMES.idle}
+            style={[styles.spriteImage, { width: dim, height: dim }]}
+            resizeMode="cover"
+          />
+          {/* Glowing Aura Ring */}
+          <View
+            style={[
+              styles.auraRing,
+              {
+                width: dim * 0.8,
+                height: 12,
+                backgroundColor: isVip ? 'rgba(245, 158, 11, 0.45)' : palette.indigoTint,
+              },
+            ]}
+          />
+        </Animated.View>
+      )}
     </View>
   );
 }
@@ -160,5 +218,9 @@ const styles = StyleSheet.create({
     opacity: 0.6,
     transform: [{ scaleX: 1.2 }],
     zIndex: -1,
+  },
+  model3dBox: {
+    backgroundColor: 'transparent',
+    borderWidth: 0,
   },
 });

@@ -20,11 +20,37 @@ export function Screen({ children, scroll = true, bottomNav = false, contentStyl
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const desktopWeb = Platform.OS === 'web' && width >= 900;
-  const inner = <View style={[styles.content, { maxWidth: width >= 900 ? 1180 : 760 }, contentStyle]}>{children}</View>;
+  const maxWidth = width >= 900 ? 1180 : 760;
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: palette.paper }]} edges={['top', 'left', 'right']}>
       {bottomNav && desktopWeb && <DesktopNav />}
-      {scroll ? <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={[styles.scroll, { paddingBottom: bottomNav && !desktopWeb ? 96 + insets.bottom : spacing.xxxl }]} showsVerticalScrollIndicator={false}>{inner}</ScrollView> : inner}
+      {scroll ? (
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          contentContainerStyle={[
+            styles.scroll,
+            { paddingBottom: bottomNav && !desktopWeb ? 96 + insets.bottom : spacing.xxxl },
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={[styles.content, { maxWidth }, contentStyle]}>{children}</View>
+        </ScrollView>
+      ) : (
+        <View
+          style={[
+            styles.content,
+            styles.nonScrollContent,
+            {
+              maxWidth,
+              paddingBottom: bottomNav && !desktopWeb ? 96 + insets.bottom : 0,
+            },
+            contentStyle,
+          ]}
+        >
+          {children}
+        </View>
+      )}
       {bottomNav && !desktopWeb && <BottomNav />}
     </SafeAreaView>
   );
@@ -38,7 +64,7 @@ export function TopBar({ title, onBack, action }: { title: string; onBack?: () =
       <Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={onBack ?? (() => router.back())} style={styles.iconButton}>
         <Ionicons name="arrow-back" size={22} color={palette.ink} />
       </Pressable>
-      <Text style={[typography.title, { color: palette.ink }]}>{title}</Text>
+      <Text style={[typography.title, { color: palette.ink, flex: 1 }]} numberOfLines={1}>{title}</Text>
       <View style={styles.topAction}>{action}</View>
     </View>
   );
@@ -318,6 +344,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1 },
   scroll: { alignItems: 'center', paddingHorizontal: spacing.lg },
   content: { width: '100%', flexGrow: 1 },
+  nonScrollContent: { flex: 1, alignSelf: 'center', paddingHorizontal: spacing.lg },
   topBar: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   topAction: { marginLeft: 'auto', minWidth: 36, alignItems: 'flex-end' },
   iconButton: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },

@@ -11,6 +11,7 @@ interface CharacterAvatarProps {
   showName?: boolean;
   isDisconnected?: boolean;
   reconnectCountdown?: number;
+  hasGoldenAura?: boolean;
 }
 
 export function CharacterAvatar({
@@ -21,6 +22,7 @@ export function CharacterAvatar({
   showName = true,
   isDisconnected = false,
   reconnectCountdown = 30,
+  hasGoldenAura = false,
 }: CharacterAvatarProps) {
   const bounceAnim = useRef(new Animated.Value(0)).current;
   const shakeAnim = useRef(new Animated.Value(0)).current;
@@ -31,7 +33,7 @@ export function CharacterAvatar({
   // Active theme color (petrified stone gray + crystal frost when disconnected)
   const activeColor = isDisconnected ? '#64748B' : color;
   const skinColor = isDisconnected ? '#94A3B8' : '#FEF3C7';
-  const runeGlow = isDisconnected ? '#38BDF8' : activeColor;
+  const runeGlow = isDisconnected ? '#38BDF8' : hasGoldenAura ? '#F59E0B' : activeColor;
 
   useEffect(() => {
     Animated.timing(freezeAnim, {
@@ -99,7 +101,7 @@ export function CharacterAvatar({
 
   return (
     <View style={styles.wrapper}>
-      {/* Glow aura / Crystal Frost Shimmer */}
+      {/* Glow aura / Crystal Frost Shimmer / VIP Golden Aura */}
       <Animated.View
         style={[
           styles.aura,
@@ -109,6 +111,8 @@ export function CharacterAvatar({
             borderRadius: (size * 1.4) / 2,
             backgroundColor: runeGlow,
             opacity: isDisconnected ? 0.4 : glowAnim,
+            borderWidth: hasGoldenAura && !isDisconnected ? 2 : 0,
+            borderColor: '#F59E0B',
           },
         ]}
       />
@@ -125,6 +129,18 @@ export function CharacterAvatar({
           },
         ]}
       >
+        {hasGoldenAura && !isDisconnected && (
+          <Text
+            style={{
+              position: 'absolute',
+              top: -(size * 0.35),
+              zIndex: 10,
+              fontSize: Math.max(12, size * 0.28),
+            }}
+          >
+            👑
+          </Text>
+        )}
         {/* Wizard hat */}
         <View
           style={[
