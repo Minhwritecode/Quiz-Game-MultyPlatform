@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Easing, Image, Platform, StyleSheet, View } from 'react-native';
 
-const PAPYRUS_LOGO = require('../../../assets/icon.png');
+const PAPYRUS_LOGO = require('../../../assets/icon-ui.webp');
 
 export interface PapyrusSplashFallbackProps {
   reduceMotion?: boolean;

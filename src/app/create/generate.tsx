@@ -28,6 +28,7 @@ const displayQuestions = (job: GenerationJob) => {
   }));
 };
 const tagValues = (text: string) => [...new Set(text.split(',').map(tag => tag.trim()).filter(Boolean).map(tag => tag.slice(0, 30)))].slice(0, 10);
+const createLocalId = () => randomUUID() || `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 export default function GenerateScreen() {
   const account = useAuthStore(state => state.user?.id ?? 'guest');
@@ -51,7 +52,7 @@ function GenerationEditor() {
   const [sourceText, setSourceText] = useState(sourceDocument?.text ?? '');
   const [sourceDocumentId, setSourceDocumentId] = useState<string | null>(existingSet?.sourceDocumentId ?? sourceDocument?.id ?? null);
   const [sourceTitle, setSourceTitle] = useState(sourceDocument?.title ?? '');
-  const [questions, setQuestions] = useState<Question[]>(() => existingSet?.questions ?? (manualMode ? [{ id: randomUUID(), content: '', options: ['', '', '', ''], correctIndex: 0, explanation: '', position: 0 }] : []));
+  const [questions, setQuestions] = useState<Question[]>(() => existingSet?.questions ?? (manualMode ? [{ id: createLocalId(), content: '', options: ['', '', '', ''], correctIndex: 0, explanation: '', position: 0 }] : []));
   const [openCodeIds, setOpenCodeIds] = useState<Record<string, boolean>>({});
   const [count, setCount] = useState(10);
   const [difficulty, setDifficulty] = useState<'Easy' | 'Balanced' | 'Challenge'>('Balanced');
@@ -292,7 +293,7 @@ function GenerationEditor() {
     setBusy(true);
     const owner=useAuthStore.getState().user?.id;
     const questionSet: QuestionSet = {
-      id: existingSet?.id ?? randomUUID(), title: title.trim(), subject: subject.trim(),
+      id: existingSet?.id ?? createLocalId(), title: title.trim(), subject: subject.trim(),
       tags: tagValues(tagText), sourceDocumentId,
       updatedAt: new Date().toISOString(), syncStatus: 'pending', questions,
     };
@@ -345,8 +346,8 @@ function GenerationEditor() {
     <Text style={[typography.title, { color: palette.ink, marginTop: spacing.xl, marginBottom: spacing.md }]}>{manualMode ? t.home.correctAnswerHint : 'Review before saving'}</Text>
     {questions.length === 0 && <Card><Text style={[typography.body, { color: palette.inkMuted }]}>No questions yet. Generate from your saved source or write them manually.</Text></Card>}
     {!manualMode && questions.length > 0 && questions.length < count && <Button variant="secondary" disabled={busy} onPress={fillMissing}>{language === 'vi' ? 'Tạo bù ' + (count - questions.length) + ' câu còn thiếu' : 'Fill ' + (count - questions.length) + ' missing questions'}</Button>}
-    <Button variant="secondary" disabled={busy || questions.length >= 30} onPress={() => setQuestions(current => [...current, { id: randomUUID(), content: '', options: ['', '', '', ''], correctIndex: 0, explanation: '', position: current.length }])}>{t.home.addQuestion}</Button>
-    {questions.map((question, index) => <Card key={question.id} style={styles.question}>
+    <Button variant="secondary" disabled={busy || questions.length >= 30} onPress={() => setQuestions(current => [...current, { id: createLocalId(), content: '', options: ['', '', '', ''], correctIndex: 0, explanation: '', position: current.length }])}>{t.home.addQuestion}</Button>
+    {questions.map((question, index) => <Card key={question.id || `question-${index}`} style={styles.question}>
       <View style={styles.questionHeader}>
         <Text style={[typography.label, { color: palette.indigo }]}>{t.home.questionLabel.toLocaleUpperCase()} {index + 1}</Text>
         <View style={styles.questionActions}>

@@ -10,10 +10,10 @@ import { useMembershipStore } from '@/features/membership/state/useMembershipSto
 export type CharacterAction = 'idle' | 'attack' | 'hurt' | 'victory';
 
 const CHARACTER_FRAMES: Record<CharacterAction, any> = {
-  idle: require('../../assets/characters/papyrus/idle.png'),
-  attack: require('../../assets/characters/papyrus/attack.png'),
-  hurt: require('../../assets/characters/papyrus/hurt.png'),
-  victory: require('../../assets/characters/papyrus/victory.png'),
+  idle: require('../../assets/characters/papyrus/idle.webp'),
+  attack: require('../../assets/characters/papyrus/attack.webp'),
+  hurt: require('../../assets/characters/papyrus/hurt.webp'),
+  victory: require('../../assets/characters/papyrus/victory.webp'),
 };
 
 const ACTION_TO_3D_ANIMATION: Record<CharacterAction, Character3DAnimation> = {

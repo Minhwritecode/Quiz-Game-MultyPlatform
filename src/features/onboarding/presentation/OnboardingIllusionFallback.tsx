@@ -4,7 +4,7 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useI18n } from '@/core/i18n';
 import { ONBOARDING_ACT_SLIDES } from '../domain/onboardingState';
 
-const PAPYRUS_LOGO = require('../../../../assets/icon.png');
+const PAPYRUS_LOGO = require('../../../../assets/icon-ui.webp');
 
 export interface OnboardingIllusionFallbackProps {
   onComplete: () => void;

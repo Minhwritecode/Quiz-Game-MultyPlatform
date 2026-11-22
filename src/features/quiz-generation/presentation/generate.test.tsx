@@ -6,8 +6,8 @@ jest.mock('expo-router',()=>({useLocalSearchParams:()=>({}),useRouter:()=>({repl
 jest.mock('@expo/vector-icons',()=>({Ionicons:()=>null}));
 jest.mock('@/composition/dependencies',()=>({dependencies:{generation:{configured:false,generate:jest.fn()},questionSets:{save:jest.fn()}}}));
 jest.mock('@/shared/ui',()=>{
-  const {Text:MockText,Pressable:MockPressable}=jest.requireActual('react-native');
-  return {Screen:({children}:any)=>children,Card:({children}:any)=>children,TopBar:()=>null,PageHeader:()=>null,usePalette:()=>({}),Button:({children,onPress,disabled}:any)=><MockPressable accessibilityRole="button" disabled={disabled} onPress={onPress}><MockText>{children}</MockText></MockPressable>};
+  const {Text:MockText,Pressable:MockPressable,View:MockView}=jest.requireActual('react-native');
+  return {Screen:({children}:any)=><MockView>{children}</MockView>,Card:({children}:any)=><MockView>{children}</MockView>,TopBar:()=>null,PageHeader:()=>null,usePalette:()=>({}),Button:({children,onPress,disabled}:any)=><MockPressable accessibilityRole="button" disabled={disabled} onPress={onPress}><MockText>{children}</MockText></MockPressable>};
 });
 beforeEach(() => { usePapyrusStore.setState({language:'en'}); jest.clearAllMocks(); });
 test('generation screen starts empty and cannot save canned sample questions',async()=>{
