@@ -11,6 +11,7 @@ import { useAuthStore } from '@/core/state/useAuthStore';
 import { wrapRoot, reportFailure } from '@/core/observability/monitoring';
 import { ReleaseGate } from '@/shared/ReleaseGate';
 import { Button, Card, Screen } from '@/shared/ui';
+import { PapyrusSplash3D } from '@/shared/visuals/PapyrusSplash3D';
 import { sfx } from '@/core/audio/sfx';
 
 export function ErrorBoundary({error,retry}:ErrorBoundaryProps) {
@@ -30,6 +31,7 @@ function RootLayout() {
   const scheme=theme==='system'?systemScheme:theme;
   const reduceMotion=usePapyrusStore(s=>s.reduceMotion);
   const [systemMotion,setSystemMotion]=useState(false);
+  const [splashDone, setSplashDone] = useState(process.env.NODE_ENV === 'test');
   useEffect(()=>{void AccessibilityInfo.isReduceMotionEnabled().then(setSystemMotion);const listener=AccessibilityInfo.addEventListener('reduceMotionChanged',setSystemMotion);return ()=>listener.remove();},[]);
   const queryClient = useMemo(() => new QueryClient({ defaultOptions: { queries: { staleTime: 30_000, retry: 1 } } }), []);
   useEffect(() => dependencies.learning.start(), []);
@@ -56,7 +58,12 @@ function RootLayout() {
         <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
         <View style={styles.rootContainer}>
           <ReleaseGate><Stack key={authScope} screenOptions={{ headerShown: false, animation: reduceMotion || systemMotion ? 'none' : 'default' }} /><AssistantWidget /></ReleaseGate>
-
+          {!splashDone ? (
+            <PapyrusSplash3D
+              reduceMotion={reduceMotion || systemMotion}
+              onFinish={() => setSplashDone(true)}
+            />
+          ) : null}
         </View>
       </QueryClientProvider>
     </SafeAreaProvider>

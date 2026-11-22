@@ -38,6 +38,11 @@ export async function loadModelDataUri(model: Model3DType): Promise<string> {
       uri = mod.GLB_QUEST_EMBLEM_B64;
       break;
     }
+    case 'splashMorph': {
+      const mod = require('./models3d/splashMorph');
+      uri = mod.GLB_SPLASH_MORPH_B64;
+      break;
+    }
     case 'study':
     default: {
       const mod = require('./models3d/sanctuary');
