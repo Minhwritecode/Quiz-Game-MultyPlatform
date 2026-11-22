@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Modal,
@@ -31,16 +31,16 @@ const GOLD = '#FBBF24';
 const INDIGO = '#4F46E5';
 const VIOLET = '#7C3AED';
 
-function FlipCard({
+const FlipCard = memo(function FlipCard({
   card,
   width: cardWidth,
   palette,
-  onPress,
+  onPressCard,
 }: {
   card: MatchCard;
   width: number;
   palette: ReturnType<typeof usePalette>;
-  onPress: () => void;
+  onPressCard: (card: MatchCard) => void;
 }) {
   const flipAnim = useRef(new Animated.Value(0)).current;
   const shakeAnim = useRef(new Animated.Value(0)).current;
@@ -97,7 +97,7 @@ function FlipCard({
         height: cardH,
       }}
     >
-      <Pressable onPress={onPress} style={{ flex: 1 }}>
+      <Pressable onPress={() => onPressCard(card)} accessibilityRole="button" style={{ flex: 1 }}>
         {/* Back face (hidden) */}
         <Animated.View
           style={[
@@ -157,40 +157,50 @@ function FlipCard({
       </Pressable>
     </Animated.View>
   );
-}
+});
 
 // ─── Scroll Mascot Companion ───────────────────────────────────────────────
-function ScrollMascot({ action }: { action: 'idle' | 'happy' | 'sad' }) {
+const ScrollMascot = memo(function ScrollMascot({ action }: { action: 'idle' | 'happy' | 'sad' }) {
   const bounceAnim = useRef(new Animated.Value(0)).current;
   const rotateAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (action === 'happy') {
-      Animated.sequence([
+      const a1 = Animated.sequence([
         Animated.timing(bounceAnim, { toValue: -18, duration: 180, useNativeDriver: true }),
         Animated.timing(bounceAnim, { toValue: 0, duration: 180, useNativeDriver: true }),
         Animated.timing(bounceAnim, { toValue: -12, duration: 140, useNativeDriver: true }),
         Animated.timing(bounceAnim, { toValue: 0, duration: 140, useNativeDriver: true }),
-      ]).start();
-      Animated.sequence([
+      ]);
+      const a2 = Animated.sequence([
         Animated.timing(rotateAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
         Animated.timing(rotateAnim, { toValue: -1, duration: 200, useNativeDriver: true }),
         Animated.timing(rotateAnim, { toValue: 0, duration: 150, useNativeDriver: true }),
-      ]).start();
+      ]);
+      a1.start();
+      a2.start();
+      return () => {
+        a1.stop();
+        a2.stop();
+      };
     } else if (action === 'sad') {
-      Animated.sequence([
+      const a = Animated.sequence([
         Animated.timing(bounceAnim, { toValue: 5, duration: 200, useNativeDriver: true }),
         Animated.timing(bounceAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
-      ]).start();
+      ]);
+      a.start();
+      return () => a.stop();
     } else {
-      Animated.loop(
+      const loop = Animated.loop(
         Animated.sequence([
           Animated.timing(bounceAnim, { toValue: -5, duration: 1000, useNativeDriver: true }),
           Animated.timing(bounceAnim, { toValue: 0, duration: 1000, useNativeDriver: true }),
         ])
-      ).start();
+      );
+      loop.start();
+      return () => loop.stop();
     }
-  }, [action]);
+  }, [action, bounceAnim, rotateAnim]);
 
   const rotate = rotateAnim.interpolate({ inputRange: [-1, 0, 1], outputRange: ['-20deg', '0deg', '20deg'] });
   const emoji = action === 'happy' ? '🎉' : action === 'sad' ? '😔' : '📜';
@@ -205,7 +215,7 @@ function ScrollMascot({ action }: { action: 'idle' | 'happy' | 'sad' }) {
       </Text>
     </Animated.View>
   );
-}
+});
 
 interface MatchCard {
   id: string;
@@ -264,9 +274,25 @@ export default function MatchGameScreen() {
   const [particleTrigger, setParticleTrigger] = useState(0);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timeoutsRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+
+  const clearScheduledTimeouts = useCallback(() => {
+    timeoutsRef.current.forEach((id) => clearTimeout(id));
+    timeoutsRef.current = [];
+  }, []);
+
+  const scheduleTimeout = useCallback((fn: () => void, ms: number) => {
+    const id = setTimeout(() => {
+      timeoutsRef.current = timeoutsRef.current.filter((item) => item !== id);
+      fn();
+    }, ms);
+    timeoutsRef.current.push(id);
+    return id;
+  }, []);
 
   // Prepare cards when currentSet changes
   const initGame = () => {
+    clearScheduledTimeouts();
     if (!currentSet || currentSet.questions.length < 3) {
       setCards([]);
       setTotalPairs(0);
@@ -319,6 +345,7 @@ export default function MatchGameScreen() {
   useEffect(() => {
     initGame();
     return () => {
+      clearScheduledTimeouts();
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [currentSet?.id]);
@@ -338,7 +365,7 @@ export default function MatchGameScreen() {
     };
   }, [isTimerRunning, isGameOver]);
 
-  const handleCardPress = (card: MatchCard) => {
+  const handleCardPress = useCallback((card: MatchCard) => {
     if (isEvaluating || card.state === 'matched' || card.state === 'flipped') return;
 
     sfx.playCardFlip();
@@ -379,7 +406,7 @@ export default function MatchGameScreen() {
         setMascotAction('happy');
         setParticleTrigger((p) => p + 1);
 
-        setTimeout(() => {
+        scheduleTimeout(() => {
           setCards((prev) =>
             prev.map((c) =>
               c.id === first.id || c.id === second.id ? { ...c, state: 'matched' } : c
@@ -400,7 +427,7 @@ export default function MatchGameScreen() {
             setMascotAction('happy');
           } else {
             setCharacterAction('idle');
-            setTimeout(() => setMascotAction('idle'), 800);
+            scheduleTimeout(() => setMascotAction('idle'), 800);
           }
         }, 400);
       } else {
@@ -409,7 +436,7 @@ export default function MatchGameScreen() {
         setCombo(0);
         setCharacterAction('hurt');
         setMascotAction('sad');
-        setTimeout(() => {
+        scheduleTimeout(() => {
           setCards((prev) =>
             prev.map((c) =>
               c.id === first.id || c.id === second.id ? { ...c, state: 'wrong' } : c
@@ -417,7 +444,7 @@ export default function MatchGameScreen() {
           );
         }, 200);
 
-        setTimeout(() => {
+        scheduleTimeout(() => {
           setCards((prev) =>
             prev.map((c) =>
               c.id === first.id || c.id === second.id ? { ...c, state: 'hidden' } : c
@@ -426,11 +453,11 @@ export default function MatchGameScreen() {
           setSelectedCards([]);
           setIsEvaluating(false);
           setCharacterAction('idle');
-          setTimeout(() => setMascotAction('idle'), 400);
+          scheduleTimeout(() => setMascotAction('idle'), 400);
         }, 900);
       }
     }
-  };
+  }, [cards, combo, isEvaluating, isTimerRunning, matchedPairs, maxCombo, scheduleTimeout, selectedCards, totalPairs]);
 
   // Calculations for Victory
   const starsEarned = useMemo(() => {
@@ -576,7 +603,7 @@ export default function MatchGameScreen() {
               card={card}
               width={cardWidth}
               palette={palette}
-              onPress={() => handleCardPress(card)}
+              onPressCard={handleCardPress}
             />
           ))}
         </View>

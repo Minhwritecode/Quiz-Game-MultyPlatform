@@ -93,9 +93,17 @@ export default function LibraryScreen() {
     await Share.share({ title: `${set.title}.csv`, message: csv }).catch(() => undefined);
   };
 
-  const filtered = useMemo(
-    () => sets.filter((item) => `${item.title} ${item.subject}`.toLowerCase().includes(query.toLowerCase())),
-    [query, sets]
+  const filtered = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    if (!normalizedQuery) return sets;
+    return sets.filter((item) =>
+      `${item.title} ${item.subject}`.toLowerCase().includes(normalizedQuery)
+    );
+  }, [query, sets]);
+
+  const visibleSets = useMemo(
+    () => filtered.slice(0, visibleCount),
+    [filtered, visibleCount]
   );
 
   const removeSet = async (id: string) => {
@@ -160,7 +168,12 @@ export default function LibraryScreen() {
           style={[styles.searchInput, { color: palette.ink }]}
         />
         {query.length > 0 && (
-          <Pressable onPress={() => setQuery('')}>
+          <Pressable
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={language === 'vi' ? 'Xóa tìm kiếm' : 'Clear search'}
+            onPress={() => setQuery('')}
+          >
             <Ionicons name="close-circle" size={18} color={palette.inkMuted} />
           </Pressable>
         )}
@@ -189,7 +202,7 @@ export default function LibraryScreen() {
           }
         />
       ) : (
-        filtered.slice(0, visibleCount).map((set) => (
+        visibleSets.map((set) => (
           <Card
             key={set.id}
             onPress={() => router.push({ pathname: '/study/[setId]', params: { setId: set.id } })}
@@ -200,8 +213,8 @@ export default function LibraryScreen() {
               tint={set.questions.length ? 'primary' : 'reward'}
             />
             <View style={styles.copy}>
-              <Text style={[typography.title, { color: palette.ink }]}>{set.title}</Text>
-              <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
+              <Text style={[typography.title, { color: palette.ink }]} numberOfLines={2}>{set.title}</Text>
+              <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]} numberOfLines={1}>
                 {set.subject || t.library.uncategorized}
               </Text>
               <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 6 }]}>
@@ -364,7 +377,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     marginBottom: spacing.lg,
   },
-  headerTitles: { flex: 1 },
+  headerTitles: { flex: 1, minWidth: 0 },
   headerActions: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.xs },
   search: {
     minHeight: 48,
@@ -391,9 +404,9 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     borderRadius: radii.md,
   },
-  copy: { flex: 1 },
-  trailing: { alignItems: 'flex-end', gap: spacing.xs },
-  actionIcons: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
+  copy: { flex: 1, minWidth: 120 },
+  trailing: { alignItems: 'flex-end', gap: spacing.xs, flexShrink: 1 },
+  actionIcons: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 6, marginTop: 4 },
   gameIconBtn: {
     width: 44,
     height: 44,

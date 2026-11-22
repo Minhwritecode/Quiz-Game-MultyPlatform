@@ -1,6 +1,7 @@
-import React, { ReactNode, useEffect, useRef, useState } from 'react';
+import React, { ReactNode, memo, useEffect, useRef, useState } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { Model3DView } from './Model3DView';
 import { Model3DErrorBoundary } from './Model3DErrorBoundary';
 
@@ -15,37 +16,49 @@ interface GameEnvironmentProps {
 
 // ─── Shared Animated Helpers ───────────────────────────────────────────────
 
-function FloatingOrb({
+const FloatingOrb = memo(function FloatingOrb({
   color,
   size,
   startX,
   startY,
   duration,
+  reduceMotion,
 }: {
   color: string;
   size: number;
   startX: number;
   startY: number;
   duration: number;
+  reduceMotion: boolean;
 }) {
   const anim = useRef(new Animated.Value(0)).current;
-  const opacityAnim = useRef(new Animated.Value(0.3)).current;
+  const opacityAnim = useRef(new Animated.Value(0.45)).current;
 
   useEffect(() => {
-    Animated.loop(
+    if (reduceMotion) {
+      anim.setValue(0);
+      opacityAnim.setValue(0.45);
+      return;
+    }
+    const floatLoop = Animated.loop(
       Animated.sequence([
         Animated.timing(anim, { toValue: 1, duration, useNativeDriver: true }),
         Animated.timing(anim, { toValue: 0, duration, useNativeDriver: true }),
       ])
-    ).start();
-
-    Animated.loop(
+    );
+    const fadeLoop = Animated.loop(
       Animated.sequence([
         Animated.timing(opacityAnim, { toValue: 0.9, duration: duration * 0.6, useNativeDriver: true }),
         Animated.timing(opacityAnim, { toValue: 0.3, duration: duration * 0.6, useNativeDriver: true }),
       ])
-    ).start();
-  }, [anim, opacityAnim, duration]);
+    );
+    floatLoop.start();
+    fadeLoop.start();
+    return () => {
+      floatLoop.stop();
+      fadeLoop.stop();
+    };
+  }, [anim, opacityAnim, duration, reduceMotion]);
 
   const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [0, -35] });
 
@@ -68,15 +81,31 @@ function FloatingOrb({
       }}
     />
   );
-}
+});
 
-function StarParticle({ left, top, delay }: { left: number; top: number; delay: number }) {
+const StarParticle = memo(function StarParticle({
+  left,
+  top,
+  delay,
+  reduceMotion,
+}: {
+  left: number;
+  top: number;
+  delay: number;
+  reduceMotion: boolean;
+}) {
   const floatAnim = useRef(new Animated.Value(0)).current;
-  const opacityAnim = useRef(new Animated.Value(0)).current;
+  const opacityAnim = useRef(new Animated.Value(reduceMotion ? 0.5 : 0)).current;
 
   useEffect(() => {
+    if (reduceMotion) {
+      floatAnim.setValue(0);
+      opacityAnim.setValue(0.5);
+      return;
+    }
+    let loop: Animated.CompositeAnimation | null = null;
     const timer = setTimeout(() => {
-      Animated.loop(
+      loop = Animated.loop(
         Animated.parallel([
           Animated.sequence([
             Animated.timing(floatAnim, { toValue: -60, duration: 3000, useNativeDriver: true }),
@@ -87,10 +116,14 @@ function StarParticle({ left, top, delay }: { left: number; top: number; delay: 
             Animated.timing(opacityAnim, { toValue: 0, duration: 2200, useNativeDriver: true }),
           ]),
         ])
-      ).start();
+      );
+      loop.start();
     }, delay);
-    return () => clearTimeout(timer);
-  }, [floatAnim, opacityAnim, delay]);
+    return () => {
+      clearTimeout(timer);
+      loop?.stop();
+    };
+  }, [floatAnim, opacityAnim, delay, reduceMotion]);
 
   return (
     <Animated.View
@@ -111,21 +144,35 @@ function StarParticle({ left, top, delay }: { left: number; top: number; delay: 
       }}
     />
   );
-}
+});
 
-function CandleFlicker({ left, top }: { left: number; top: number }) {
-  const flicker = useRef(new Animated.Value(0.7)).current;
+const CandleFlicker = memo(function CandleFlicker({
+  left,
+  top,
+  reduceMotion,
+}: {
+  left: number;
+  top: number;
+  reduceMotion: boolean;
+}) {
+  const flicker = useRef(new Animated.Value(0.8)).current;
 
   useEffect(() => {
-    Animated.loop(
+    if (reduceMotion) {
+      flicker.setValue(0.85);
+      return;
+    }
+    const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(flicker, { toValue: 1.0, duration: 250, useNativeDriver: true }),
         Animated.timing(flicker, { toValue: 0.55, duration: 180, useNativeDriver: true }),
         Animated.timing(flicker, { toValue: 0.85, duration: 320, useNativeDriver: true }),
         Animated.timing(flicker, { toValue: 0.65, duration: 200, useNativeDriver: true }),
       ])
-    ).start();
-  }, [flicker]);
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [flicker, reduceMotion]);
 
   return (
     <View style={{ position: 'absolute', left, top, alignItems: 'center' }}>
@@ -149,21 +196,27 @@ function CandleFlicker({ left, top }: { left: number; top: number }) {
       />
     </View>
   );
-}
+});
 
 // ─── 4 Environment Architectural Backdrops ─────────────────────────────────
 
 /** Game 1: Đỉnh Tháp Hư Không (Celestial Spire) */
-function CelestialSpireBackdrop() {
-  const pulseAnim = useRef(new Animated.Value(0.4)).current;
+const CelestialSpireBackdrop = memo(function CelestialSpireBackdrop({ reduceMotion }: { reduceMotion: boolean }) {
+  const pulseAnim = useRef(new Animated.Value(0.6)).current;
   useEffect(() => {
-    Animated.loop(
+    if (reduceMotion) {
+      pulseAnim.setValue(0.65);
+      return;
+    }
+    const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, { toValue: 0.9, duration: 2000, useNativeDriver: true }),
         Animated.timing(pulseAnim, { toValue: 0.4, duration: 2000, useNativeDriver: true }),
       ])
-    ).start();
-  }, [pulseAnim]);
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulseAnim, reduceMotion]);
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
@@ -196,6 +249,7 @@ function CelestialSpireBackdrop() {
           left={15 + ((i * 37) % 330)}
           top={80 + ((i * 53) % 480)}
           delay={i * 150}
+          reduceMotion={reduceMotion}
         />
       ))}
 
@@ -217,10 +271,10 @@ function CelestialSpireBackdrop() {
       />
     </View>
   );
-}
+});
 
 /** Game 2: Đấu Trường La Mã Tri Thức (Colosseum of Wisdom) */
-function ColosseumBackdrop() {
+const ColosseumBackdrop = memo(function ColosseumBackdrop() {
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       {/* Roman Archways Silhouette */}
@@ -258,10 +312,10 @@ function ColosseumBackdrop() {
       />
     </View>
   );
-}
+});
 
 /** Game 3: Mê Cung Thư Viện Cổ (The Grand Papyrus Archives) */
-function ArchivesBackdrop() {
+const ArchivesBackdrop = memo(function ArchivesBackdrop({ reduceMotion }: { reduceMotion: boolean }) {
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       {/* Towering Bookshelves Top Arch */}
@@ -282,12 +336,12 @@ function ArchivesBackdrop() {
       </View>
 
       {/* Wall Candle Sconces */}
-      <CandleFlicker left={12} top={120} />
-      <CandleFlicker left={12} top={280} />
-      <CandleFlicker left={12} top={440} />
-      <CandleFlicker left={340} top={120} />
-      <CandleFlicker left={340} top={280} />
-      <CandleFlicker left={340} top={440} />
+      <CandleFlicker left={12} top={120} reduceMotion={reduceMotion} />
+      <CandleFlicker left={12} top={280} reduceMotion={reduceMotion} />
+      <CandleFlicker left={12} top={440} reduceMotion={reduceMotion} />
+      <CandleFlicker left={340} top={120} reduceMotion={reduceMotion} />
+      <CandleFlicker left={340} top={280} reduceMotion={reduceMotion} />
+      <CandleFlicker left={340} top={440} reduceMotion={reduceMotion} />
 
       {/* Warm Golden Glow Backdrop */}
       <View
@@ -303,10 +357,10 @@ function ArchivesBackdrop() {
       />
     </View>
   );
-}
+});
 
 /** Game 4: Vườn Thiền Tri Thức (Sanctuary of Scholars) */
-function SanctuaryBackdrop() {
+const SanctuaryBackdrop = memo(function SanctuaryBackdrop({ reduceMotion }: { reduceMotion: boolean }) {
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       {/* Light Waterfall Beams */}
@@ -334,6 +388,7 @@ function SanctuaryBackdrop() {
           startX={25 + ((i * 55) % 310)}
           startY={90 + ((i * 70) % 380)}
           duration={2200 + i * 350}
+          reduceMotion={reduceMotion}
         />
       ))}
 
@@ -354,7 +409,7 @@ function SanctuaryBackdrop() {
       />
     </View>
   );
-}
+});
 
 // ─── Main Component ────────────────────────────────────────────────────────
 
@@ -365,31 +420,28 @@ export function GameEnvironment({
   enable3DToggle = true,
 }: GameEnvironmentProps) {
   const [show3D, setShow3D] = useState(show3DByDefault);
+  const reduceMotion = usePapyrusStore((s) => s.reduceMotion);
   const config = CONFIGS[gameMode];
 
-  const renderBackdropArt = () => {
-    switch (gameMode) {
-      case 'survival':
-        return <CelestialSpireBackdrop />;
-      case 'battle':
-        return <ColosseumBackdrop />;
-      case 'match':
-        return <ArchivesBackdrop />;
-      case 'study':
-        return <SanctuaryBackdrop />;
-      default:
-        return null;
-    }
-  };
+  const backdrop =
+    gameMode === 'survival' ? (
+      <CelestialSpireBackdrop reduceMotion={reduceMotion} />
+    ) : gameMode === 'battle' ? (
+      <ColosseumBackdrop />
+    ) : gameMode === 'match' ? (
+      <ArchivesBackdrop reduceMotion={reduceMotion} />
+    ) : gameMode === 'study' ? (
+      <SanctuaryBackdrop reduceMotion={reduceMotion} />
+    ) : null;
 
   return (
     <View style={[styles.container, { backgroundColor: config.bgColor }]}>
       {/* Gradient Top & Bottom Ambience */}
-      <View style={[styles.gradientTop, { backgroundColor: config.gradientTop }]} />
-      <View style={[styles.gradientBottom, { backgroundColor: config.gradientBottom }]} />
+      <View style={[styles.gradientTop, { backgroundColor: config.gradientTop }]} pointerEvents="none" />
+      <View style={[styles.gradientBottom, { backgroundColor: config.gradientBottom }]} pointerEvents="none" />
 
       {/* Rich Architectural Landscape Backdrop */}
-      {renderBackdropArt()}
+      {backdrop}
 
       {/* 3D Realm Interactive Toggle Bar */}
       {enable3DToggle && (
