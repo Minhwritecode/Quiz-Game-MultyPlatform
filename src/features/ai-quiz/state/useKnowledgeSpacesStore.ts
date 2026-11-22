@@ -1,28 +1,10 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase } from '@/core/network/supabase';
-import type { GeneratedQuiz, QuizDifficulty } from '../domain/models';
+import { preferenceStorage } from '@/composition/preferences';
+import { knowledgeSpacesRepository } from '@/composition/platform';
+import type { GeneratedQuiz, KnowledgeDoc, KnowledgeSpace, QuizDifficulty } from '../domain/models';
 
-export interface KnowledgeDoc {
-  id: string;
-  name: string;
-  kind: 'pdf' | 'docx' | 'md' | 'txt' | 'note';
-  excerpt: string;
-  fileBase64?: string;
-  chunkCount?: number;
-  synced?: boolean;
-  addedAt: string;
-}
-
-export interface KnowledgeSpace {
-  id: string;
-  cloudId?: string;
-  name: string;
-  subject: string;
-  documents: KnowledgeDoc[];
-  createdAt: string;
-}
+export type { KnowledgeDoc, KnowledgeSpace };
 
 interface KnowledgeSpacesState {
   spaces: KnowledgeSpace[];
@@ -107,27 +89,6 @@ export function buildCitedQuizFromSpace(
   };
 }
 
-async function ensureCloudSpace(space: KnowledgeSpace): Promise<string | null> {
-  if (!supabase) return null;
-  if (space.cloudId) return space.cloudId;
-  try {
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) return null;
-    const { data: created } = await supabase
-      .from('knowledge_spaces')
-      .insert({
-        owner_id: userData.user.id,
-        name: space.name,
-        subject: space.subject,
-      })
-      .select('id')
-      .single();
-    return created?.id ? String(created.id) : null;
-  } catch {
-    return null;
-  }
-}
-
 export const useKnowledgeSpacesStore = create<KnowledgeSpacesState>()(
   persist(
     (set, get) => ({
@@ -145,7 +106,7 @@ export const useKnowledgeSpacesStore = create<KnowledgeSpacesState>()(
         set((state) => ({ spaces: [space, ...state.spaces] }));
 
         // Best-effort sync new space to Supabase
-        void ensureCloudSpace(space).then((cloudId) => {
+        void knowledgeSpacesRepository.ensureCloudSpace(space).then((cloudId) => {
           if (!cloudId) return;
           set((state) => ({
             spaces: state.spaces.map((s) => (s.id === space.id ? { ...s, cloudId } : s)),
@@ -158,10 +119,8 @@ export const useKnowledgeSpacesStore = create<KnowledgeSpacesState>()(
       removeSpace: (spaceId) => {
         const target = get().spaces.find((s) => s.id === spaceId);
         set((state) => ({ spaces: state.spaces.filter((s) => s.id !== spaceId) }));
-        if (supabase && target?.cloudId) {
-          void Promise.resolve(supabase.from('knowledge_spaces').delete().eq('id', target.cloudId)).catch(
-            () => undefined
-          );
+        if (target?.cloudId) {
+          void knowledgeSpacesRepository.deleteCloudSpace(target.cloudId);
         }
       },
 
@@ -183,52 +142,30 @@ export const useKnowledgeSpacesStore = create<KnowledgeSpacesState>()(
 
         // Best-effort RAG ingestion via Supabase Edge Function `rag-ingest` (chunks + pgvector embeddings)
         const targetSpace = get().spaces.find((s) => s.id === spaceId);
-        if (supabase && targetSpace) {
-          void (async () => {
-            try {
-              const { data: sessionData } = await supabase.auth.getSession();
-              if (!sessionData.session) return;
-              const cloudSpaceId = await ensureCloudSpace(targetSpace);
-              if (!cloudSpaceId) return;
-
-              const { data: ingested, error } = await supabase.functions.invoke('rag-ingest', {
-                body: {
-                  space_id: cloudSpaceId,
-                  space_name: targetSpace.name,
-                  space_subject: targetSpace.subject,
-                  name: doc.name,
-                  kind: doc.kind,
-                  raw_text: doc.excerpt,
-                  file_base64: doc.fileBase64 || undefined,
-                },
-              });
-
-              if (!error && ingested?.document?.id) {
-                set((state) => ({
-                  spaces: state.spaces.map((s) =>
-                    s.id === spaceId
-                      ? {
-                          ...s,
-                          cloudId: cloudSpaceId,
-                          documents: s.documents.map((d) =>
-                            d.id === localDocId
-                              ? {
-                                  ...d,
-                                  id: String(ingested.document.id),
-                                  chunkCount: Number(ingested.chunk_count ?? ingested.document.chunk_count ?? 1),
-                                  synced: true,
-                                }
-                              : d
-                          ),
-                        }
-                      : s
-                  ),
-                }));
-              }
-            } catch {
-              // Keep local document available offline
-            }
-          })();
+        if (targetSpace) {
+          void knowledgeSpacesRepository.ingestDocument(targetSpace, doc).then((ingested) => {
+            if (!ingested) return;
+            set((state) => ({
+              spaces: state.spaces.map((s) =>
+                s.id === spaceId
+                  ? {
+                      ...s,
+                      cloudId: ingested.cloudSpaceId,
+                      documents: s.documents.map((d) =>
+                        d.id === localDocId
+                          ? {
+                              ...d,
+                              id: ingested.documentId,
+                              chunkCount: ingested.chunkCount,
+                              synced: true,
+                            }
+                          : d
+                      ),
+                    }
+                  : s
+              ),
+            }));
+          });
         }
       },
 
@@ -240,62 +177,16 @@ export const useKnowledgeSpacesStore = create<KnowledgeSpacesState>()(
             s.id === spaceId ? { ...s, documents: s.documents.filter((d) => d.id !== docId) } : s
           ),
         }));
-        if (supabase && targetDoc?.synced) {
-          void Promise.resolve(supabase.from('knowledge_documents').delete().eq('id', docId)).catch(
-            () => undefined
-          );
+        if (targetDoc?.synced) {
+          void knowledgeSpacesRepository.deleteCloudDocument(docId);
         }
       },
 
       syncFromCloud: async () => {
-        if (!supabase) return;
         set({ syncing: true });
         try {
-          const { data: userData } = await supabase.auth.getUser();
-          if (!userData.user) return;
-
-          const [{ data: spaceRows }, { data: docRows }] = await Promise.all([
-            supabase
-              .from('knowledge_spaces')
-              .select('id, name, subject, created_at')
-              .order('updated_at', { ascending: false })
-              .limit(30),
-            supabase
-              .from('knowledge_documents')
-              .select('id, space_id, name, kind, excerpt, chunk_count, created_at')
-              .order('created_at', { ascending: false })
-              .limit(120),
-          ]);
-
-          if (!Array.isArray(spaceRows) || spaceRows.length === 0) return;
-
-          const docsBySpace = new Map<string, KnowledgeDoc[]>();
-          for (const row of Array.isArray(docRows) ? docRows : []) {
-            const sid = String(row.space_id ?? '');
-            const list = docsBySpace.get(sid) ?? [];
-            list.push({
-              id: String(row.id),
-              name: String(row.name ?? 'Document'),
-              kind: (row.kind as KnowledgeDoc['kind']) ?? 'note',
-              excerpt: String(row.excerpt ?? ''),
-              chunkCount: Number(row.chunk_count ?? 0),
-              synced: true,
-              addedAt: String(row.created_at ?? new Date().toISOString()),
-            });
-            docsBySpace.set(sid, list);
-          }
-
-          const cloudSpaces: KnowledgeSpace[] = spaceRows.map((row) => {
-            const cid = String(row.id);
-            return {
-              id: cid,
-              cloudId: cid,
-              name: String(row.name ?? 'Kho tri thức'),
-              subject: String(row.subject ?? 'Tổng hợp'),
-              documents: docsBySpace.get(cid) ?? [],
-              createdAt: String(row.created_at ?? new Date().toISOString()),
-            };
-          });
+          const cloudSpaces = await knowledgeSpacesRepository.listCloudSpaces();
+          if (!cloudSpaces || cloudSpaces.length === 0) return;
 
           set((state) => {
             const cloudIds = new Set(cloudSpaces.map((s) => s.cloudId));
@@ -311,7 +202,7 @@ export const useKnowledgeSpacesStore = create<KnowledgeSpacesState>()(
     }),
     {
       name: 'papyrus.knowledge-spaces',
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: createJSONStorage(() => preferenceStorage),
       partialize: (state) => ({ spaces: state.spaces }),
     }
   )

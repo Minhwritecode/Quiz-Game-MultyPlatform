@@ -10,13 +10,12 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { Badge, Button, Card, Screen, TopBar, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { useAiQuizStore } from '@/features/ai-quiz/state/useAiQuizStore';
 import type { QuizDifficulty } from '@/features/ai-quiz/domain/models';
-import { readDocumentPayload } from '@/features/ai-quiz/services/documentTextExtractor';
+import { pickRichSourceDocument } from '@/composition/platform';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { useQuizStore } from '@/features/quiz-library/state/useQuizStore';
 import { useKnowledgeSpacesStore } from '@/features/ai-quiz/state/useKnowledgeSpacesStore';
@@ -71,25 +70,13 @@ export default function AiQuizScreen() {
 
   const handlePickDocument = async () => {
     try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: [
-          'application/pdf',
-          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-          'text/plain',
-          'text/markdown',
-        ],
-        copyToCacheDirectory: true,
-      });
-
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const asset = result.assets[0];
-        if (asset) {
-          setPdfFile({
-            uri: asset.uri,
-            name: asset.name,
-            size: asset.size,
-          });
-        }
+      const picked = await pickRichSourceDocument();
+      if (picked) {
+        setPdfFile({
+          uri: picked.uri,
+          name: picked.name,
+          size: picked.size,
+        });
       }
     } catch {
       Alert.alert('Thông báo', 'Không thể đọc file tài liệu đã chọn.');
@@ -429,26 +416,20 @@ export default function AiQuizScreen() {
                             variant="ghost"
                             icon="cloud-upload-outline"
                             onPress={async () => {
-                              const pickedDoc = await DocumentPicker.getDocumentAsync({
-                                type: [
-                                  'application/pdf',
-                                  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                                  'text/plain',
-                                  'text/markdown',
-                                ],
-                                copyToCacheDirectory: true,
-                              });
-                              if (!pickedDoc.canceled && pickedDoc.assets?.[0]) {
-                                const file = pickedDoc.assets[0];
-                                const payload = await readDocumentPayload(file.uri, file.name);
-                                addDocument(activeSpace.id, {
-                                  name: file.name,
-                                  kind: payload.kind,
-                                  fileBase64: payload.fileBase64 || undefined,
-                                  excerpt:
-                                    payload.extractedText.slice(0, 400) ||
-                                    `Tài liệu ${payload.kind.toUpperCase()} (${((file.size ?? 0) / 1024).toFixed(1)} KB) đã nạp binary vào RAG.`,
-                                });
+                              try {
+                                const picked = await pickRichSourceDocument();
+                                if (picked) {
+                                  addDocument(activeSpace.id, {
+                                    name: picked.name,
+                                    kind: picked.kind,
+                                    fileBase64: picked.fileBase64 || undefined,
+                                    excerpt:
+                                      picked.extractedText.slice(0, 400) ||
+                                      `Tài liệu ${picked.kind.toUpperCase()} (${((picked.size ?? 0) / 1024).toFixed(1)} KB) đã nạp binary vào RAG.`,
+                                  });
+                                }
+                              } catch {
+                                Alert.alert('Thông báo', 'Không thể đọc file tài liệu đã chọn.');
                               }
                             }}
                           >

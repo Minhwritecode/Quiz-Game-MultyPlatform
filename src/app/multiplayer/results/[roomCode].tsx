@@ -6,7 +6,7 @@ import { useMultiplayerStore } from '@/features/multiplayer/state/useMultiplayer
 import type { LeaderboardPlayer } from '@/features/multiplayer/domain/models';
 import { LiveReactionsBar } from '@/features/room-battle/components/LiveReactionsBar';
 import { buildLeaderboardCsv } from '@/features/study/domain/sessionReport';
-import { exportBattlePdfReport } from '@/features/study/data/sessionPdf';
+import { exportBattlePdfReport } from '@/composition/platform';
 
 export default function MultiplayerResultsScreen() {
   const router = useRouter();

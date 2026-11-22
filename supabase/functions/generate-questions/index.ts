@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { corsHeaders } from "../_shared/cors.ts";
+import { streamGeminiQuestions } from "../_shared/gemini-stream.ts";
 import { normaliseQuestions, parseModelJson } from "../_shared/question-schema.ts";
 import {
   generateEmbedding768,
@@ -18,6 +19,7 @@ import {
 import { extractDocumentTextFromBase64 } from "../_shared/doc-parser.ts";
 
 type RequestBody = {
+  request_id?: string;
   mode?: "text" | "topic" | "rag";
   source_text?: string;
   topic?: string;
@@ -29,114 +31,240 @@ type RequestBody = {
   include_code_snippet?: boolean;
   question_count: number;
   difficulty: "easy" | "medium" | "hard";
-  language: string;
+  language: "vi" | "en";
+  exclude_questions?: string[];
 };
+
+const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, ...headers, "Content-Type": "application/json" },
+  });
+
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
   if (request.method !== "POST") {
-    return new Response("Method not allowed", { status: 405, headers: corsHeaders });
+    return json({ error: "Method not allowed." }, 405);
   }
 
   const auth = request.headers.get("Authorization");
-  if (!auth?.startsWith("Bearer ")) {
-    return new Response(JSON.stringify({ error: "Missing bearer token" }), {
-      status: 401,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+  const token = auth?.startsWith("Bearer ") ? auth.slice(7) : null;
+  if (!token) {
+    return json({ error: "Sign in to generate questions." }, 401);
   }
 
-  const token = auth.slice(7);
-  const authClient = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_ANON_KEY")!,
-    {
-      global: { headers: { Authorization: `Bearer ${token}` } },
-      auth: { persistSession: false, autoRefreshToken: false },
-    },
-  );
-
-  const { data: user, error: authError } = await authClient.auth.getUser(token);
-  if (authError || !user.user) {
-    return new Response(JSON.stringify({ error: "Sign in required" }), {
-      status: 401,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+  const url = Deno.env.get("SUPABASE_URL");
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+  if (!url || !anonKey) {
+    return json({ error: "Generation service is unavailable." }, 503);
   }
-  const userId = user.user.id;
+
+  const authClient = createClient(url, anonKey, {
+    global: { headers: { Authorization: `Bearer ${token}` } },
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
+  const { data: userData, error: authError } = await authClient.auth.getUser(token);
+  if (authError || !userData.user || userData.user.is_anonymous) {
+    return json({ error: "Sign in to generate questions." }, 401);
+  }
+  const userId = userData.user.id;
 
   let body: RequestBody;
   try {
-    const text = await request.text();
-    if (text.length > 250_000) throw new Error();
-    body = JSON.parse(text);
+    const raw = await request.text();
+    if (raw.length > 250_000) throw new Error();
+    body = JSON.parse(raw);
     if (
       !body ||
       !Number.isInteger(body.question_count) ||
       body.question_count < 1 ||
       body.question_count > 30 ||
+      !["easy", "medium", "hard"].includes(body.difficulty) ||
       !["vi", "en"].includes(body.language)
     ) {
       throw new Error();
     }
   } catch {
-    return new Response(JSON.stringify({ error: "Invalid JSON or generation settings" }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return json({ error: "Invalid source or generation settings." }, 400);
   }
 
   const mode = body.mode ?? "text";
   if (!["text", "topic", "rag"].includes(mode)) {
-    return new Response(JSON.stringify({ error: "Invalid generation mode" }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    return json({ error: "Invalid generation mode." }, 400);
+  }
+
+  // =========================================================================
+  // PATH A: SSE Streaming + Independent Daily Quota (Group C Client Contract)
+  // Triggered whenever mode is 'text' (default) and a UUID request_id is sent.
+  // =========================================================================
+  if (mode === "text" && typeof body.request_id === "string") {
+    if (
+      !uuidPattern.test(body.request_id) ||
+      typeof body.source_text !== "string" ||
+      !body.source_text.trim() ||
+      body.source_text.length > 30_000 ||
+      (body.exclude_questions !== undefined &&
+        (!Array.isArray(body.exclude_questions) ||
+          body.exclude_questions.length > 30 ||
+          body.exclude_questions.some(
+            (item) => typeof item !== "string" || !item.trim() || item.length > 500,
+          )))
+    ) {
+      return json({ error: "Invalid source or generation settings." }, 400);
+    }
+
+    const apiKey = Deno.env.get("GEMINI_API_KEY");
+    const model = Deno.env.get("GEMINI_MODEL");
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!apiKey || !model || !serviceKey) {
+      return json({ error: "AI generation is not configured." }, 503);
+    }
+
+    const admin = createClient(url, serviceKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const quota = await admin.rpc("consume_quiz_generation_quota", {
+      p_user: userId,
+      p_request_id: body.request_id,
+    });
+    if (quota.error) {
+      console.error("generate-questions: quota service unavailable");
+      return json({ error: "Could not check the generation limit. Try again later." }, 503);
+    }
+    if (!quota.data) {
+      const seconds = 86400 - Math.floor((Date.now() / 1000) % 86400);
+      return json(
+        {
+          error: "Daily question-generation limit reached. Try again after 00:00 UTC.",
+          code: "generation_quota_exceeded",
+        },
+        429,
+        {
+          "Retry-After": String(seconds),
+          "X-Generation-Limit": "20",
+        },
+      );
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 65_000);
+    const abort = () => controller.abort();
+    request.signal.addEventListener("abort", abort, { once: true });
+    if (request.signal.aborted) controller.abort();
+
+    const encoder = new TextEncoder();
+    let streamController: ReadableStreamDefaultController<Uint8Array> | null = null;
+    let closed = false;
+    const send = (event: string, value: unknown) => {
+      if (!closed && streamController) {
+        streamController.enqueue(
+          encoder.encode(`event: ${event}\ndata: ${JSON.stringify(value)}\n\n`),
+        );
+      }
+    };
+    const closeStream = () => {
+      if (closed) return;
+      closed = true;
+      try {
+        streamController?.close();
+      } catch {
+        /* client cancelled the stream */
+      }
+    };
+    const cleanup = () => {
+      clearTimeout(timeout);
+      request.signal.removeEventListener("abort", abort);
+    };
+
+    const stream = new ReadableStream<Uint8Array>({
+      start(output) {
+        streamController = output;
+        void (async () => {
+          try {
+            const count = await streamGeminiQuestions({
+              sourceText: body.source_text!.trim(),
+              questionCount: body.question_count,
+              difficulty: body.difficulty,
+              language: body.language,
+              excludeQuestions: body.exclude_questions ?? [],
+              apiKey,
+              model,
+              signal: controller.signal,
+              emit: (question) =>
+                send("question", { question: { ...question, id: crypto.randomUUID() } }),
+            });
+            send("done", { count, complete: count === body.question_count });
+            closeStream();
+          } catch {
+            if (!controller.signal.aborted) {
+              console.error("generate-questions: provider stream failed");
+              send("error", {
+                code: "generation_failed",
+                message:
+                  "AI generation stopped. Keep valid questions and retry the missing ones.",
+              });
+            }
+            closeStream();
+          } finally {
+            cleanup();
+          }
+        })();
+      },
+      async cancel() {
+        controller.abort();
+        closed = true;
+        cleanup();
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        ...corsHeaders,
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
+        "X-Generation-Limit": "20",
+      },
     });
   }
 
-  // Strict backward-compatible validation for default text mode (verified by test-release-local.mjs)
+  // =========================================================================
+  // PATH B: Topic / RAG Knowledge Spaces / Binary PDF+DOCX / Citations / Dual LLM
+  // =========================================================================
   if (mode === "text") {
-    if (typeof body.source_text !== "string" || !body.source_text.trim() || body.source_text.length > 30_000) {
-      return new Response(JSON.stringify({ error: "source_text must be 1–30000 characters" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    if (
+      typeof body.source_text !== "string" ||
+      !body.source_text.trim() ||
+      body.source_text.length > 30_000
+    ) {
+      return json({ error: "source_text must be 1–30000 characters" }, 400);
     }
   } else if (mode === "topic") {
     if (typeof body.topic !== "string" || !body.topic.trim() || body.topic.length > 500) {
-      return new Response(JSON.stringify({ error: "topic must be 1–500 characters" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return json({ error: "topic must be 1–500 characters" }, 400);
     }
   } else if (mode === "rag") {
     const hasSpace = typeof body.space_id === "string" && body.space_id.trim().length > 0;
     const hasDocs = Array.isArray(body.documents) && body.documents.length > 0;
     const hasFile = typeof body.file_base64 === "string" && body.file_base64.trim().length > 0;
     if (!hasSpace && !hasDocs && !hasFile) {
-      return new Response(JSON.stringify({ error: "Provide space_id, documents, or file_base64 for RAG generation" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return json(
+        { error: "Provide space_id, documents, or file_base64 for RAG generation" },
+        400,
+      );
     }
   }
 
   const questionCount = Math.max(1, Math.min(30, Math.floor(body.question_count)));
-  if (!Number.isFinite(questionCount) || !["easy", "medium", "hard"].includes(body.difficulty)) {
-    return new Response(JSON.stringify({ error: "Invalid generation settings" }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-
   const providerConfig = resolveProviderConfig();
   if (!providerConfig) {
-    return new Response(JSON.stringify({ error: "AI provider is not configured" }), {
-      status: 503,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return json({ error: "AI provider is not configured" }, 503);
   }
 
   // Reserve 1 AI token atomically (best-effort if wallet RPC is deployed; refund on failure)
@@ -151,10 +279,7 @@ Deno.serve(async (request) => {
       tokenReserved = true;
       tokenBalance = bal;
     } else if (reserveErr?.message?.includes("insufficient_ai_tokens")) {
-      return new Response(JSON.stringify({ error: "Insufficient AI tokens" }), {
-        status: 402,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return json({ error: "Insufficient AI tokens" }, 402);
     }
   } catch {
     // Allow graceful operation if wallet migration hasn't run yet
@@ -183,11 +308,12 @@ Deno.serve(async (request) => {
         `Difficulty: ${body.difficulty}. Language: ${body.language || "vi"}.`,
         "Each question must have exactly four distinct options, one correct_index from 0 to 3, and a concise explanation.",
         ...(body.include_code_snippet
-          ? ["Include a short, accurate `code_snippet` field (3-8 lines of clean code) relevant to each question."]
+          ? [
+              "Include a short, accurate `code_snippet` field (3-8 lines of clean code) relevant to each question.",
+            ]
           : []),
       ];
     } else {
-      // RAG mode: retrieve chunks from Supabase pgvector/FTS or chunk inline documents -> MMR diversify -> label [S1]..[Sn]
       const plan = planRagQueryHeuristic(body.prompt || body.topic || "");
       let candidates: RetrievedChunk[] = [];
 
@@ -258,7 +384,7 @@ Deno.serve(async (request) => {
         `Return exactly ${questionCount} distinct multiple-choice questions.`,
         `Difficulty: ${body.difficulty}. Language: ${body.language || "vi"}.`,
         ...(body.prompt?.trim() ? [`User focus request: ${body.prompt.trim()}`] : []),
-        "Each question MUST include `source_labels` listing the exact excerpt labels (e.g. [\"S1\"] or [\"S2\", \"S4\"]) that prove the correct answer.",
+        'Each question MUST include `source_labels` listing the exact excerpt labels (e.g. ["S1"] or ["S2", "S4"]) that prove the correct answer.',
         ...(body.include_code_snippet
           ? ["Where appropriate, include a concise `code_snippet` grounded in the excerpts."]
           : []),
@@ -267,7 +393,6 @@ Deno.serve(async (request) => {
       ];
     }
 
-    // Create generation run record (best-effort)
     try {
       const { data: runRow } = await authClient
         .from("generation_runs")
@@ -354,18 +479,12 @@ Deno.serve(async (request) => {
       }
     }
 
-    return new Response(
-      JSON.stringify({
-        questions,
-        run_id: runId,
-        provider: providerConfig.provider,
-        ...(tokenBalance !== null ? { token_balance: tokenBalance } : {}),
-      }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      },
-    );
+    return json({
+      questions,
+      run_id: runId,
+      provider: providerConfig.provider,
+      ...(tokenBalance !== null ? { token_balance: tokenBalance } : {}),
+    });
   } catch {
     if (runId) {
       try {
@@ -389,12 +508,6 @@ Deno.serve(async (request) => {
       }
     }
     console.error("generate-questions: validation or provider failure");
-    return new Response(
-      JSON.stringify({ error: "AI generation failed validation or timed out" }),
-      {
-        status: 502,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      },
-    );
+    return json({ error: "AI generation failed validation or timed out" }, 502);
   }
 });

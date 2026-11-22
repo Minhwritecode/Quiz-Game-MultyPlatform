@@ -15,20 +15,25 @@ function supportsWebGL2() {
 }
 
 export default function PapyrusScene({ reduceMotion = false }: { reduceMotion?: boolean }) {
-  const [ready, setReady] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    const browserPrefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
-    return !reduceMotion && !browserPrefersReducedMotion && supportsWebGL2();
-  });
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    let active = true;
     const mql = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+    const browserPrefersReducedMotion = mql?.matches ?? false;
+    // Defer capability probing until after hydration.
+    void Promise.resolve().then(() => {
+      if (active) setReady(!reduceMotion && !browserPrefersReducedMotion && supportsWebGL2());
+    });
     const handler = (e: MediaQueryListEvent) => {
-      setReady(!reduceMotion && !e.matches && supportsWebGL2());
+      if (active) setReady(!reduceMotion && !e.matches && supportsWebGL2());
     };
     mql?.addEventListener?.('change', handler);
-    return () => mql?.removeEventListener?.('change', handler);
+    return () => {
+      active = false;
+      mql?.removeEventListener?.('change', handler);
+    };
   }, [reduceMotion]);
 
   return (

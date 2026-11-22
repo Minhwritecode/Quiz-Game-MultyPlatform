@@ -1,3 +1,4 @@
+import { errorMessage } from '@/core/domain/failure';
 import { useEffect, useState } from 'react';
 import {
   ScrollView,
@@ -86,7 +87,7 @@ export default function ProfileScreen() {
       useAuthStore.getState().setUser(updated);
       setMessage('✅ Đã lưu hồ sơ.');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Không lưu được hồ sơ.');
+      setMessage(errorMessage(error, 'Không lưu được hồ sơ.'));
     } finally {
       setBusy(false);
     }

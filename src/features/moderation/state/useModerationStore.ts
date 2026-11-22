@@ -1,63 +1,26 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase } from '@/core/network/supabase';
+import { preferenceStorage } from '@/composition/preferences';
+import { moderationRepository } from '@/composition/platform';
+import type {
+  AiModerationVerdict,
+  DraftModerationGateResult,
+  ModerationStatus,
+  QuestionReportItem,
+  SuperadminOverview,
+  SuperadminSetRow,
+  SuperadminUserRow,
+} from '../domain/models';
 
-export type ModerationStatus = 'open' | 'reviewed' | 'dismissed';
-export type AiModerationVerdict = 'pending' | 'valid_report' | 'false_alarm' | 'needs_human';
-
-export interface QuestionReportItem {
-  id: string;
-  questionRef: string;
-  questionPreview: string;
-  reason: 'wrong_answer' | 'typo_format' | 'inappropriate' | 'duplicate';
-  status: ModerationStatus;
-  aiVerdict?: AiModerationVerdict;
-  aiConfidence?: number;
-  aiSummary?: string;
-  createdAt: string;
-  source: 'local' | 'cloud';
-}
-
-export interface SuperadminUserRow {
-  id: string;
-  displayName: string;
-  role: 'user' | 'moderator' | 'superadmin';
-  membershipTier: 'apprentice' | 'archmage';
-  eloRating: number;
-  gamesPlayed: number;
-  isSuspended: boolean;
-}
-
-export interface SuperadminSetRow {
-  id: string;
-  title: string;
-  subject: string;
-  visibility: 'private' | 'shared';
-  moderationStatus: 'pending_review' | 'approved' | 'flagged' | 'rejected';
-  moderationScore: number;
-}
-
-export interface SuperadminOverview {
-  metrics: {
-    totalUsers: number;
-    vipUsers: number;
-    totalSets: number;
-    sharedSets: number;
-    openReports: number;
-    totalMatches: number;
-    totalKnowledgeChunks: number;
-  };
-  users: SuperadminUserRow[];
-  questionSets: SuperadminSetRow[];
-}
-
-export interface DraftModerationGateResult {
-  passed: boolean;
-  score: number;
-  status: 'approved' | 'flagged';
-  issues: string[];
-}
+export type {
+  AiModerationVerdict,
+  DraftModerationGateResult,
+  ModerationStatus,
+  QuestionReportItem,
+  SuperadminOverview,
+  SuperadminSetRow,
+  SuperadminUserRow,
+};
 
 export function evaluateQuizDraftModeration(
   title: string,
@@ -279,36 +242,20 @@ export const useModerationStore = create<ModerationState>()(
           ],
         }));
 
-        if (!supabase) return;
-        try {
-          const { data: userData } = await supabase.auth.getUser();
-          if (!userData.user) return;
-          const { data: inserted } = await supabase
-            .from('question_reports')
-            .insert({
-              reporter_id: userData.user.id,
-              question_ref: item.questionRef,
-              question_preview: item.questionPreview.slice(0, 240),
-              reason: item.reason,
-            })
-            .select('id, created_at')
-            .single();
-          if (inserted?.id) {
-            set((state) => ({
-              reports: state.reports.map((r) =>
-                r.id === localId
-                  ? {
-                      ...r,
-                      id: String(inserted.id),
-                      createdAt: String(inserted.created_at ?? createdAt),
-                      source: 'cloud',
-                    }
-                  : r
-              ),
-            }));
-          }
-        } catch {
-          // Best-effort cloud submit
+        const inserted = await moderationRepository.insertReport(item);
+        if (inserted) {
+          set((state) => ({
+            reports: state.reports.map((r) =>
+              r.id === localId
+                ? {
+                    ...r,
+                    id: inserted.id,
+                    createdAt: inserted.createdAt,
+                    source: 'cloud',
+                  }
+                : r
+            ),
+          }));
         }
       },
 
@@ -317,19 +264,8 @@ export const useModerationStore = create<ModerationState>()(
         set((state) => ({
           reports: state.reports.map((r) => (r.id === id ? { ...r, status } : r)),
         }));
-        if (target?.source === 'cloud' && supabase) {
-          try {
-            const { error } = await supabase.rpc('review_question_report', {
-              p_report_id: id,
-              p_status: status,
-              p_note: '',
-            });
-            if (error) {
-              await supabase.from('question_reports').update({ status }).eq('id', id);
-            }
-          } catch {
-            // Keep optimistic local update
-          }
+        if (target?.source === 'cloud') {
+          await moderationRepository.updateReportStatus(id, status);
         }
       },
 
@@ -339,22 +275,11 @@ export const useModerationStore = create<ModerationState>()(
           const current = get().reports;
           const updated: QuestionReportItem[] = [];
           for (const rep of current) {
-            if (rep.source === 'cloud' && supabase) {
-              try {
-                const { data } = await supabase.rpc('auto_moderate_question_report', {
-                  p_report_id: rep.id,
-                });
-                if (data) {
-                  updated.push({
-                    ...rep,
-                    aiVerdict: (data.ai_verdict as AiModerationVerdict) ?? 'needs_human',
-                    aiConfidence: Number(data.ai_confidence ?? 85),
-                    aiSummary: String(data.ai_summary ?? ''),
-                  });
-                  continue;
-                }
-              } catch {
-                // Fallback to local rule engine
+            if (rep.source === 'cloud') {
+              const cloudVerdict = await moderationRepository.autoModerateReport(rep.id);
+              if (cloudVerdict) {
+                updated.push({ ...rep, ...cloudVerdict });
+                continue;
               }
             }
             const localVerdict = computeLocalAiVerdict(rep);
@@ -367,28 +292,10 @@ export const useModerationStore = create<ModerationState>()(
       },
 
       syncFromCloud: async () => {
-        if (!supabase) return;
         set({ loading: true });
         try {
-          const { data, error } = await supabase
-            .from('question_reports')
-            .select('id, question_ref, question_preview, reason, status, ai_verdict, ai_confidence, ai_summary, created_at')
-            .order('created_at', { ascending: false })
-            .limit(50);
-
-          if (!error && Array.isArray(data)) {
-            const cloudItems: QuestionReportItem[] = data.map((row) => ({
-              id: String(row.id),
-              questionRef: String(row.question_ref ?? ''),
-              questionPreview: String(row.question_preview ?? ''),
-              reason: (row.reason as QuestionReportItem['reason']) ?? 'wrong_answer',
-              status: (row.status as ModerationStatus) ?? 'open',
-              aiVerdict: (row.ai_verdict as AiModerationVerdict) ?? undefined,
-              aiConfidence: typeof row.ai_confidence === 'number' ? row.ai_confidence : undefined,
-              aiSummary: row.ai_summary ? String(row.ai_summary) : undefined,
-              createdAt: String(row.created_at ?? new Date().toISOString()),
-              source: 'cloud',
-            }));
+          const cloudItems = await moderationRepository.listCloudReports();
+          if (cloudItems) {
             set((state) => {
               const cloudIds = new Set(cloudItems.map((c) => c.id));
               const localOnly = state.reports.filter((r) => r.source === 'local' && !cloudIds.has(r.id));
@@ -403,29 +310,21 @@ export const useModerationStore = create<ModerationState>()(
       },
 
       loadSuperadminOverview: async () => {
-        if (!supabase) return;
-        try {
-          const { data: sessionData } = await supabase.auth.getSession();
-          if (!sessionData.session) return;
-          const { data, error } = await supabase.rpc('get_superadmin_overview');
-          if (!error && data && typeof data === 'object') {
-            const raw = data as Partial<SuperadminOverview>;
-            set((state) => ({
-              superadminOverview: {
-                metrics: {
-                  ...state.superadminOverview.metrics,
-                  ...(raw.metrics ?? {}),
-                },
-                users: Array.isArray(raw.users) && raw.users.length > 0 ? raw.users : state.superadminOverview.users,
-                questionSets:
-                  Array.isArray(raw.questionSets) && raw.questionSets.length > 0
-                    ? raw.questionSets
-                    : state.superadminOverview.questionSets,
+        const raw = await moderationRepository.fetchSuperadminOverview();
+        if (raw) {
+          set((state) => ({
+            superadminOverview: {
+              metrics: {
+                ...state.superadminOverview.metrics,
+                ...(raw.metrics ?? {}),
               },
-            }));
-          }
-        } catch {
-          // Keep offline benchmark overview
+              users: Array.isArray(raw.users) && raw.users.length > 0 ? raw.users : state.superadminOverview.users,
+              questionSets:
+                Array.isArray(raw.questionSets) && raw.questionSets.length > 0
+                  ? raw.questionSets
+                  : state.superadminOverview.questionSets,
+            },
+          }));
         }
       },
 
@@ -438,17 +337,7 @@ export const useModerationStore = create<ModerationState>()(
             ),
           },
         }));
-        if (!supabase) return;
-        try {
-          await supabase.rpc('superadmin_update_user', {
-            p_target_user_id: userId,
-            p_role: patch.role ?? null,
-            p_membership_tier: patch.membershipTier ?? null,
-            p_is_suspended: patch.isSuspended ?? null,
-          });
-        } catch {
-          // Optimistic update stays
-        }
+        await moderationRepository.updateSuperadminUser(userId, patch);
       },
 
       moderateCommunitySet: async (setId, patch) => {
@@ -460,22 +349,12 @@ export const useModerationStore = create<ModerationState>()(
             ),
           },
         }));
-        if (!supabase) return;
-        try {
-          await supabase.rpc('superadmin_moderate_question_set', {
-            p_set_id: setId,
-            p_moderation_status: patch.moderationStatus,
-            p_visibility: patch.visibility ?? null,
-            p_notes: '',
-          });
-        } catch {
-          // Optimistic update stays
-        }
+        await moderationRepository.moderateCommunitySet(setId, patch);
       },
     }),
     {
       name: 'papyrus.moderation',
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: createJSONStorage(() => preferenceStorage),
       partialize: (state) => ({ reports: state.reports }),
     }
   )

@@ -11,7 +11,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Badge, Card, Screen, TopBar, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
-import { gameApi } from '@/features/multiplayer/services/game.api';
+import { gameApi } from '@/composition/platform';
 import { socket, SOCKET_EVENTS } from '@/features/multiplayer/services/socket';
 import { useMultiplayerStore } from '@/features/multiplayer/state/useMultiplayerStore';
 import { OPTION_SHAPES, calculateSpeedPoints } from '@/features/multiplayer/domain/shapes';

@@ -1,19 +1,23 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { seedQuestionSets } from '@/core/data/seed';
-import type { QuestionSet, SourceDocument } from '@/core/domain/models';
-import { computeNextElo, ELO_INITIAL, type EloMatchOutcome } from '@/features/room-battle/domain/elo';
 import {
   fetchCloudProfileSnapshot,
+  preferenceStorage,
+  seedQuestionSets,
   syncUserProgressToCloud,
-} from '@/features/profile/data/profileCloudSync';
+} from '@/composition/preferences';
+import type { QuestionSet, SourceDocument } from '@/core/domain/models';
+import { computeNextElo, ELO_INITIAL, type EloMatchOutcome } from '@/features/room-battle/domain/elo';
 
 type PapyrusState = {
   questionSets: QuestionSet[];
   deletedSetIds: string[];
   sourceDocument: SourceDocument | null;
   hydrated: boolean;
+  syncMessage: string;
+  setSyncMessage: (message:string) => void;
+  replaceQuestionSets: (sets:QuestionSet[]) => void;
+  resetAccountView: () => void;
   haptics: boolean;
   reduceMotion: boolean;
   language: 'vi' | 'en';
@@ -54,6 +58,10 @@ export const usePapyrusStore = create<PapyrusState>()(
       deletedSetIds: [],
       sourceDocument: null,
       hydrated: false,
+      syncMessage: '',
+      setSyncMessage: (syncMessage) => set({ syncMessage }),
+      replaceQuestionSets: (questionSets) => set({ questionSets, hydrated: true }),
+      resetAccountView: () => set({ questionSets: [], sourceDocument: null, hydrated: false, syncMessage: '' }),
       haptics: true,
       reduceMotion: false,
       language: 'vi',
@@ -164,7 +172,7 @@ export const usePapyrusStore = create<PapyrusState>()(
     }),
     {
       name: 'papyrus.preferences',
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: createJSONStorage(() => preferenceStorage),
       partialize: (state) => ({
         deletedSetIds: state.deletedSetIds,
         theme: state.theme,

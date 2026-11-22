@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import {
   ActivityIndicator,
+  AppState,
   FlatList,
   Pressable,
   RefreshControl,
@@ -19,15 +20,13 @@ import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { useStreakStore } from '@/features/streak/state/useStreakStore';
 import { getEloTier } from '@/features/room-battle/domain/elo';
 import { useI18n } from '@/core/i18n';
-import {
-  fetchFriendsLeaderboard,
-  fetchGlobalLeaderboard,
-  fetchMyBattleHistory,
-  type BattleHistoryItem,
-  type LeaderboardEntry,
-  type LeaderboardTimeframe,
-  type LeaderboardTopic,
-} from '@/features/leaderboard/data/leaderboardRepository';
+import { dependencies } from '@/composition/dependencies';
+import type {
+  BattleHistoryItem,
+  LeaderboardEntry,
+  LeaderboardTimeframe,
+  LeaderboardTopic,
+} from '@/features/leaderboard/domain/repository';
 
 const TIME_TABS: { key: LeaderboardTimeframe; label: string }[] = [
   { key: 'week', label: 'Tuần này' },
@@ -117,7 +116,7 @@ export default function LeaderboardScreen() {
 
   const fetchEntries = useCallback(async () => {
     if (scope === 'friends') {
-      return fetchFriendsLeaderboard({
+      return dependencies.leaderboard.fetchFriends({
         timeframe: timeFilter,
         currentUserId: user?.id,
         currentUserName: user?.displayName ?? undefined,
@@ -126,7 +125,7 @@ export default function LeaderboardScreen() {
         localStreak,
       });
     }
-    return fetchGlobalLeaderboard({
+    return dependencies.leaderboard.fetchGlobal({
       timeframe: timeFilter,
       topic: topicFilter,
       currentUserId: user?.id,
@@ -141,7 +140,10 @@ export default function LeaderboardScreen() {
     setRefreshing(true);
     setLoadError('');
     try {
-      const [res, hist] = await Promise.all([fetchEntries(), fetchMyBattleHistory(8)]);
+      const [res, hist] = await Promise.all([
+        fetchEntries(),
+        dependencies.leaderboard.fetchBattleHistory(8),
+      ]);
       setEntries(res.entries);
       setSource(res.source);
       setBattleHistory(hist);
@@ -154,7 +156,7 @@ export default function LeaderboardScreen() {
 
   useEffect(() => {
     let active = true;
-    void Promise.all([fetchEntries(), fetchMyBattleHistory(8)])
+    void Promise.all([fetchEntries(), dependencies.leaderboard.fetchBattleHistory(8)])
       .then(([res, hist]) => {
         if (!active) return;
         setEntries(res.entries);
@@ -172,6 +174,24 @@ export default function LeaderboardScreen() {
       active = false;
     };
   }, [fetchEntries]);
+
+  // Foreground periodic refresh while screen is focused (cleans up on blur/unmount)
+  useFocusEffect(
+    useCallback(() => {
+      const timer = setInterval(() => {
+        if (AppState.currentState !== 'background') {
+          void handleRefresh();
+        }
+      }, 30_000);
+      const listener = AppState.addEventListener('change', (state) => {
+        if (state === 'active') void handleRefresh();
+      });
+      return () => {
+        clearInterval(timer);
+        listener.remove();
+      };
+    }, [handleRefresh])
+  );
 
   const totalPages = Math.max(1, Math.ceil(entries.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages - 1);

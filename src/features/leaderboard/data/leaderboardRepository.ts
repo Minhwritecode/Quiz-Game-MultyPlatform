@@ -1,34 +1,19 @@
 import { supabase } from '@/core/network/supabase';
+import type {
+  BattleHistoryItem,
+  LeaderboardEntry,
+  LeaderboardFetchResult,
+  LeaderboardTimeframe,
+  LeaderboardTopic,
+} from '../domain/repository';
 
-export type LeaderboardTimeframe = 'week' | 'month' | 'all';
-export type LeaderboardTopic =
-  | 'all'
-  | 'math'
-  | 'physics'
-  | 'chemistry'
-  | 'biology'
-  | 'history'
-  | 'english'
-  | 'science';
-
-export interface LeaderboardEntry {
-  id: string;
-  rank: number;
-  name: string;
-  score: number;
-  scoreLabel: string;
-  gamesPlayed: number;
-  streak: number;
-  avatar: string;
-  isMe: boolean;
-  topic: LeaderboardTopic;
-}
-
-export interface LeaderboardFetchResult {
-  entries: LeaderboardEntry[];
-  source: 'live' | 'offline';
-  totalCount: number;
-}
+export type {
+  BattleHistoryItem,
+  LeaderboardEntry,
+  LeaderboardFetchResult,
+  LeaderboardTimeframe,
+  LeaderboardTopic,
+};
 
 const TOPIC_KEYWORDS: Record<LeaderboardTopic, string> = {
   all: 'all',
@@ -218,17 +203,6 @@ export async function fetchGlobalLeaderboard(params: {
     }));
 
   return { entries: merged, source: 'offline', totalCount: merged.length };
-}
-
-export interface BattleHistoryItem {
-  matchId: string;
-  kind: string;
-  label: string;
-  myScore: number;
-  opponentOrPlayers: string;
-  outcome: 'win' | 'loss' | 'draw' | 'forfeit';
-  eloDelta: number;
-  playedAt: string;
 }
 
 export async function fetchFriendsLeaderboard(params: {

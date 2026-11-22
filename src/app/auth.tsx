@@ -1,3 +1,4 @@
+import { errorMessage } from '@/core/domain/failure';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -162,7 +163,7 @@ export default function AuthScreen() {
         }
       }
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'OAuth request failed');
+      setErrorMsg(errorMessage(err, 'OAuth request failed'));
     } finally {
       setBusy(false);
     }

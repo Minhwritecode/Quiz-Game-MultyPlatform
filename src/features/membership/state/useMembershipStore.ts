@@ -1,9 +1,8 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { preferenceStorage, syncUserProgressToCloud } from '@/composition/preferences';
 import { UserTier, TIER_CONFIGS, TierPrivileges } from '../domain/models';
 import { getLocalDateString } from '@/features/streak/domain/models';
-import { syncUserProgressToCloud } from '@/features/profile/data/profileCloudSync';
 
 interface MembershipState {
   tier: UserTier;
@@ -109,7 +108,7 @@ export const useMembershipStore = create<MembershipState>()(
     }),
     {
       name: 'papyrus.membership',
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: createJSONStorage(() => preferenceStorage),
     }
   )
 );

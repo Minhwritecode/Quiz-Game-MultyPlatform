@@ -1,3 +1,4 @@
+import { AppError, errorMessage, serviceFailure } from '@/core/domain/failure';
 import { supabase } from '@/core/network/supabase';
 import type { AppUser } from '@/core/domain/models';
 import type { AuthProvider, AuthRepository } from '../domain/repository';
@@ -30,7 +31,7 @@ export async function signOut(): Promise<void> {
 export async function signInWithPassword(email: string, password: string): Promise<string | null> {
   if (!supabase) return 'Supabase is not configured. You can still use guest study.';
   const { error } = await supabase.auth.signInWithPassword({ email, password });
-  return error?.message ?? null;
+  return error ? errorMessage(serviceFailure(error.status)) : null;
 }
 
 export async function signUpWithPassword(email: string, password: string): Promise<string | null> {
@@ -40,7 +41,7 @@ export async function signUpWithPassword(email: string, password: string): Promi
     if (error.message.includes('rate limit')) {
       return 'Email delivery is temporarily limited. Please wait before trying again.';
     }
-    return error.message;
+    return errorMessage(serviceFailure(error.status));
   }
   if (data.user && !data.session) {
     return 'CONFIRM_EMAIL_REQUIRED';
@@ -58,7 +59,7 @@ export async function resetPasswordForEmail(email: string): Promise<string | nul
     if (error.message.includes('rate limit')) {
       return 'Email rate limit exceeded. Please wait a few minutes before trying again.';
     }
-    return error.message;
+    return errorMessage(serviceFailure(error.status));
   }
   return null;
 }
@@ -67,7 +68,7 @@ export async function updatePassword(newPassword: string): Promise<string | null
   if (!supabase) return 'Supabase is not configured.';
   const { error } = await supabase.auth.updateUser({ password: newPassword });
   if (error) {
-    return error.message;
+    return errorMessage(serviceFailure(error.status));
   }
   return null;
 }
@@ -87,7 +88,7 @@ export async function startOAuth(provider: AuthProvider): Promise<{ url?: string
         error: `PROVIDER_NOT_ENABLED:${provider}`,
       };
     }
-    return { error: error.message };
+    return { error: errorMessage(serviceFailure(error.status)) };
   }
   return { url: data.url ?? undefined };
 }
@@ -111,11 +112,11 @@ export const authRepository: AuthRepository = {
 
 export async function updateDisplayName(name:string):Promise<AppUser> {
   const trimmed=name.trim();
-  if(trimmed.length<2 || trimmed.length>60)throw new Error('Tên cần từ 2 đến 60 ký tự.');
-  if(!supabase)throw new Error('Bạn cần đăng nhập trước.');
+  if(trimmed.length<2 || trimmed.length>60)throw new AppError('unavailable', 'Tên cần từ 2 đến 60 ký tự.');
+  if(!supabase)throw new AppError('unavailable', 'Bạn cần đăng nhập trước.');
   const {data,error}=await supabase.auth.updateUser({data:{full_name:trimmed}});
-  if(error)throw new Error('Không lưu được hồ sơ. Kiểm tra kết nối rồi thử lại.');
+  if(error)throw new AppError('unavailable', 'Không lưu được hồ sơ. Kiểm tra kết nối rồi thử lại.');
   const user=mapUser(data.user);
-  if(!user)throw new Error('Vui lòng đăng nhập lại.');
+  if(!user)throw new AppError('unavailable', 'Vui lòng đăng nhập lại.');
   return user;
 }

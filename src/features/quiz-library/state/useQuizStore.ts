@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { CreateQuizInput, QuizItem } from '../domain/models';
-import { quizApi } from '../services/quiz.api';
+import { quizApi } from '@/composition/platform';
 
 interface QuizStoreState {
   quizzes: QuizItem[];

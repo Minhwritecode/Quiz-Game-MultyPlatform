@@ -1,3 +1,4 @@
+import { AppError } from '@/core/domain/failure';
 import * as ImagePicker from 'expo-image-picker';
 
 export async function pickSourceImages(): Promise<string[]> {
@@ -7,7 +8,7 @@ export async function pickSourceImages(): Promise<string[]> {
 
 export async function captureSourceImage(): Promise<string[]> {
   const permission = await ImagePicker.requestCameraPermissionsAsync();
-  if (!permission.granted) throw new Error('Allow camera access in Settings, or choose photos/paste notes instead.');
+  if (!permission.granted) throw new AppError('unavailable', 'Allow camera access in Settings, or choose photos/paste notes instead.');
   const result = await ImagePicker.launchCameraAsync({mediaTypes: ['images'], quality: 0.9});
   return result.canceled ? [] : result.assets.map(asset => asset.uri);
 }

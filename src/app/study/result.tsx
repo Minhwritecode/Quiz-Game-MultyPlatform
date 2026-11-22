@@ -12,7 +12,6 @@ import {
   formatMsSeconds,
   formatStudyReportSummary,
 } from '@/features/study/domain/sessionReport';
-import { exportStudyPdfReport } from '@/features/study/data/sessionPdf';
 
 export default function StudyResultScreen() {
   const { setId, attemptId } = useLocalSearchParams<{ setId: string; attemptId?: string }>();
@@ -25,9 +24,9 @@ export default function StudyResultScreen() {
   useEffect(() => {
     let active = true;
     const request = attemptId ? dependencies.study.getAttempt(attemptId) : dependencies.study.getLatestAttempt(setId ?? '');
-    setLoadError('');
     void request.then((value: Attempt | null) => {
       if (active) {
+        setLoadError('');
         setAttempt(value);
         if(value)void dependencies.release.recordStudyCompletion(value.id).catch(()=>undefined);
       }
@@ -150,7 +149,7 @@ export default function StudyResultScreen() {
           </View>
         </View>
         <View style={{ marginTop: spacing.sm, gap: spacing.xs }}>
-          <Button icon="document-text-outline" variant="primary" onPress={() => void exportStudyPdfReport(sessionReport)} fullWidth>
+          <Button icon="document-text-outline" variant="primary" onPress={() => void dependencies.studyReport.exportPdf(sessionReport)} fullWidth>
             {language === 'vi' ? '🖨️ Xuất báo cáo PDF in đẹp' : '🖨️ Export Print-Ready PDF'}
           </Button>
           <Button icon="share-outline" variant="secondary" onPress={() => void handleShareReport()} fullWidth>

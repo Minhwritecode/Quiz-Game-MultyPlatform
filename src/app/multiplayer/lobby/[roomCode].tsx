@@ -11,7 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Badge, Button, Card, Screen, TopBar, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { socket, SOCKET_EVENTS } from '@/features/multiplayer/services/socket';
-import { roomApi } from '@/features/multiplayer/services/room.api';
+import { roomApi } from '@/composition/platform';
 import type { RoomData } from '@/features/multiplayer/domain/models';
 
 export default function LobbyRoomScreen() {

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { preferenceStorage, syncUserProgressToCloud } from '@/composition/preferences';
 import {
   StreakData,
   StreakActivityType,
@@ -8,7 +8,6 @@ import {
   getDaysDifference,
 } from '../domain/models';
 import { useMembershipStore } from '@/features/membership/state/useMembershipStore';
-import { syncUserProgressToCloud } from '@/features/profile/data/profileCloudSync';
 
 interface StreakState extends StreakData {
   refreshStreakStatus: () => void;
@@ -160,7 +159,7 @@ export const useStreakStore = create<StreakState>()(
     }),
     {
       name: 'papyrus.streak',
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: createJSONStorage(() => preferenceStorage),
     }
   )
 );

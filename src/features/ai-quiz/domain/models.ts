@@ -48,3 +48,23 @@ export interface GenerateRagPayload {
   includeCodeSnippet?: boolean;
   language?: 'vi' | 'en';
 }
+
+export interface KnowledgeDoc {
+  id: string;
+  name: string;
+  kind: 'pdf' | 'docx' | 'md' | 'txt' | 'note';
+  excerpt: string;
+  fileBase64?: string;
+  chunkCount?: number;
+  synced?: boolean;
+  addedAt: string;
+}
+
+export interface KnowledgeSpace {
+  id: string;
+  cloudId?: string;
+  name: string;
+  subject: string;
+  documents: KnowledgeDoc[];
+  createdAt: string;
+}

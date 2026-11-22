@@ -12,7 +12,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Button, Card, Screen, TopBar, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
-import { roomApi } from '@/features/multiplayer/services/room.api';
+import { roomApi } from '@/composition/platform';
 import { useMultiplayerStore } from '@/features/multiplayer/state/useMultiplayerStore';
 
 export default function JoinRoomScreen() {

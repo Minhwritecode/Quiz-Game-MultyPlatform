@@ -1,0 +1,169 @@
+diff --git a/frontend/app/layout.tsx b/frontend/app/layout.tsx
+index 89e256a..e88cea5 100644
+--- a/frontend/app/layout.tsx
++++ b/frontend/app/layout.tsx
+@@ -6,8 +6,8 @@ import { Toaster } from "@/components/ui/toaster"
+ import "./globals.css"
+ 
+ export const metadata: Metadata = {
+-  title: "Learning LangChain Book Chatbot Demo",
+-  description: "A chatbot demo based on Learning LangChain (O'Reilly)",
++  title: "Papyrus · Chat với PDF",
++  description: "Trợ lý học tập cùng tài liệu PDF",
+ }
+ 
+ export default function RootLayout({
+@@ -16,7 +16,7 @@ export default function RootLayout({
+   children: React.ReactNode
+ }) {
+   return (
+-    <html lang="en">
++    <html lang="vi">
+       <body className={GeistSans.className}>
+         {children}
+         <Toaster />
+diff --git a/frontend/app/page.tsx b/frontend/app/page.tsx
+index 40cf372..b32fdb0 100644
+--- a/frontend/app/page.tsx
++++ b/frontend/app/page.tsx
+@@ -18,6 +18,8 @@ import {
+   RetrieveDocumentsNodeUpdates,
+ } from '@/types/graphTypes';
+ import { Card, CardContent } from '@/components/ui/card';
++const previewOnly = process.env.NEXT_PUBLIC_PREVIEW_ONLY === 'true';
++
+ export default function Home() {
+   const { toast } = useToast(); // Add this hook
+   const [messages, setMessages] = useState<
+@@ -41,7 +43,7 @@ export default function Home() {
+     // Create a thread when the component mounts
+     const initThread = async () => {
+       // Skip if we already have a thread
+-      if (threadId) return;
++      if (previewOnly || threadId) return;
+ 
+       try {
+         const thread = await client.createThread();
+@@ -67,6 +69,10 @@ export default function Home() {
+ 
+   const handleSubmit = async (e: React.FormEvent) => {
+     e.preventDefault();
++    if (previewOnly) {
++      toast({ title: 'AI chưa kết nối', description: 'Đây là bản xem giao diện. Cần cấu hình OpenAI và kho tài liệu trước khi hỏi đáp.' });
++      return;
++    }
+     if (!input.trim() || !threadId || isLoading) return;
+ 
+     if (abortControllerRef.current) {
+@@ -217,6 +223,15 @@ export default function Home() {
+       return;
+     }
+ 
++    if (previewOnly) {
++      if (selectedFiles.some(file => file.size > 10 * 1024 * 1024) || files.length + selectedFiles.length > 5) {
++        toast({ title: 'Giới hạn tài liệu', description: 'Tối đa 5 PDF, mỗi tệp không quá 10 MB.', variant: 'destructive' });
++        return;
++      }
++      setFiles(previous => [...previous, ...selectedFiles]);
++      e.target.value = '';
++      return;
++    }
+     setIsUploading(true);
+     try {
+       const formData = new FormData();
+@@ -272,16 +287,9 @@ export default function Home() {
+         <>
+           <div className="flex-1 flex items-center justify-center">
+             <div className="text-center">
+-              <p className="font-medium text-muted-foreground max-w-md mx-auto">
+-                This ai chatbot is an example template to accompany the book:{' '}
+-                <a
+-                  href="https://www.oreilly.com/library/view/learning-langchain/9781098167271/"
+-                  className="underline hover:text-foreground"
+-                >
+-                  Learning LangChain (O'Reilly): Building AI and LLM
+-                  applications with LangChain and LangGraph
+-                </a>
+-              </p>
++              <h1 className="text-3xl font-bold text-indigo-600 mb-4">Papyrus · Chat với PDF</h1>
++              <p className="text-muted-foreground max-w-md mx-auto">Hỏi đáp, tóm tắt và tìm ý chính trong tài liệu học tập.</p>
++              {previewOnly && <p role="status" className="mt-4 rounded-xl bg-indigo-50 p-4 text-indigo-900">Bản xem giao diện · AI chưa kết nối. PDF được chọn chỉ nằm trong trình duyệt, chưa tải lên máy chủ.</p>}
+             </div>
+           </div>
+           <ExamplePrompts onPromptSelect={setInput} />
+@@ -298,7 +306,7 @@ export default function Home() {
+       <div className="fixed bottom-0 left-0 right-0 p-4 bg-background">
+         <div className="max-w-5xl mx-auto space-y-4">
+           {files.length > 0 && (
+-            <div className="grid grid-cols-3 gap-2">
++            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+               {files.map((file, index) => (
+                 <FilePreview
+                   key={`${file.name}-${index}`}
+@@ -323,6 +331,7 @@ export default function Home() {
+                 type="button"
+                 variant="ghost"
+                 size="icon"
++                aria-label="Chọn tài liệu PDF"
+                 className="rounded-none h-12"
+                 onClick={() => fileInputRef.current?.click()}
+                 disabled={isUploading}
+@@ -342,14 +351,15 @@ export default function Home() {
+                   isUploading ? 'Uploading PDF...' : 'Send a message...'
+                 }
+                 className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 h-12 bg-transparent"
+-                disabled={isUploading || isLoading || !threadId}
++                disabled={isUploading || isLoading || (!previewOnly && !threadId)}
+               />
+               <Button
+                 type="submit"
++                aria-label="Gửi câu hỏi"
+                 size="icon"
+                 className="rounded-none h-12"
+                 disabled={
+-                  !input.trim() || isUploading || isLoading || !threadId
++                  !input.trim() || isUploading || isLoading || (!previewOnly && !threadId)
+                 }
+               >
+                 {isLoading ? (
+diff --git a/frontend/components/example-prompts.tsx b/frontend/components/example-prompts.tsx
+index 2147f5f..aa0e729 100644
+--- a/frontend/components/example-prompts.tsx
++++ b/frontend/components/example-prompts.tsx
+@@ -1,31 +1,7 @@
+-import { Card } from "@/components/ui/card"
+-
+-interface ExamplePromptsProps {
+-  onPromptSelect: (prompt: string) => void
+-}
+-
+-const EXAMPLE_PROMPTS = [
+-  {
+-    title: "What is this document about?",
+-  },
+-  {
+-    title: "What is music?",
+-  },
+-]
+-
++interface ExamplePromptsProps { onPromptSelect: (prompt: string) => void }
++const prompts = ['Tóm tắt những ý chính trong tài liệu', 'Giải thích khái niệm khó bằng ví dụ dễ hiểu'];
+ export function ExamplePrompts({ onPromptSelect }: ExamplePromptsProps) {
+-  return (
+-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl">
+-      {EXAMPLE_PROMPTS.map((prompt, i) => (
+-        <Card 
+-          key={i} 
+-          className="p-4 cursor-pointer hover:bg-muted/50 transition-colors"
+-          onClick={() => onPromptSelect(prompt.title)}
+-        >
+-          <p className="text-sm text-center font-medium">{prompt.title}</p>
+-        </Card>
+-      ))}
+-    </div>
+-  )
++  return <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl mb-40">
++    {prompts.map(prompt => <button key={prompt} type="button" className="rounded-xl border p-4 text-sm text-left hover:bg-indigo-50 focus-visible:outline-indigo-600" onClick={() => onPromptSelect(prompt)}>{prompt}</button>)}
++  </div>;
+ }
+-

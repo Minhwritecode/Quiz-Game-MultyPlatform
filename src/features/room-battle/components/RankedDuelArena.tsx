@@ -17,7 +17,7 @@ import {
   enqueueLiveDuelQueue,
   pollLiveDuelQueue,
   syncDuelResultToCloud,
-} from '@/features/profile/data/profileCloudSync';
+} from '@/composition/platform';
 import { sfx } from '@/core/audio/sfx';
 import { ReportQuestionButton } from '@/shared/ReportQuestionButton';
 import { LiveReactionsBar } from './LiveReactionsBar';

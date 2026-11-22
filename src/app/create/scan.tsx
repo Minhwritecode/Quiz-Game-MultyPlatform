@@ -1,7 +1,9 @@
+import { useAuthStore } from '@/core/state/useAuthStore';
+import { randomUUID } from 'expo-crypto';
+import { AppError, errorMessage } from '@/core/domain/failure';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { Badge, Button, Card, IconTile, PageHeader, ProgressBar, Screen, TopBar, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
@@ -19,7 +21,6 @@ import {
   updatePageText,
   type ScanPage,
 } from '@/features/scan-ocr/domain/scanSession';
-import { readDocumentPayload } from '@/features/ai-quiz/services/documentTextExtractor';
 import { dependencies } from '@/composition/dependencies';
 import { useMembershipStore } from '@/features/membership/state/useMembershipStore';
 import { useStreakStore } from '@/features/streak/state/useStreakStore';
@@ -57,7 +58,7 @@ export default function ScanScreen() {
       if (images.length === 0) return;
       const remainingSlots = replacePageId ? 1 : Math.max(0, MAX_SCAN_PAGES - pages.length);
       if (!replacePageId && images.length > remainingSlots) {
-        throw new Error(`Tối đa ${MAX_SCAN_PAGES} trang mỗi phiên quét (còn ${remainingSlots} chỗ trống).`);
+        throw new AppError('validation', `Tối đa ${MAX_SCAN_PAGES} trang mỗi phiên quét (còn ${remainingSlots} chỗ trống).`);
       }
 
       const newlyScanned: ScanPage[] = [];
@@ -86,7 +87,7 @@ export default function ScanScreen() {
       useStreakStore.getState().recordActivity('scan_ocr');
       sfx.playCorrect();
     } catch (error) {
-      Alert.alert('Không đọc được ảnh', error instanceof Error ? error.message : 'Vui lòng chọn hoặc chụp lại ảnh.');
+      Alert.alert('Không đọc được ảnh', errorMessage(error, 'Vui lòng chọn hoặc chụp lại ảnh.'));
     } finally {
       setScanProgress(null);
       setBusy(false);
@@ -97,34 +98,23 @@ export default function ScanScreen() {
     if (busy) return;
     setBusy(true);
     try {
-      const picked = await DocumentPicker.getDocumentAsync({
-        type: [
-          'application/pdf',
-          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-          'text/plain',
-          'text/markdown',
-        ],
-        copyToCacheDirectory: true,
-      });
-
-      if (!picked.canceled && picked.assets?.[0]) {
-        const asset = picked.assets[0];
-        const payload = await readDocumentPayload(asset.uri, asset.name);
-        let extracted = payload.extractedText.trim();
-        if (!extracted) {
-          const fallbackDoc = await dependencies.intake.pickSourceDocument().catch(() => null);
-          extracted = fallbackDoc?.trim() ?? '';
-        }
+      const picked = await dependencies.intake.pickRichSourceDocument();
+      if (picked) {
+        let extracted = picked.extractedText.trim();
         if (!extracted) {
           Alert.alert(
             'Đã nạp file tài liệu',
-            `File "${asset.name}" là file scan ảnh hoặc nén phức tạp. Hãy dán nội dung bổ sung hoặc dùng AI Quiz -> Kho tri thức để bóc tách phía server.`
+            `File "${picked.name}" là file scan ảnh hoặc nén phức tạp. Hãy dán nội dung bổ sung hoặc dùng AI Quiz -> Kho tri thức để bóc tách phía server.`
           );
           return;
         }
+        const combinedLen = text.trim().length + extracted.length;
+        if (combinedLen > MAX_SOURCE_CHARS) {
+          extracted = extracted.slice(0, Math.max(0, MAX_SOURCE_CHARS - text.trim().length));
+        }
         const newPage = createScanPage({
           id: `doc-${Date.now()}`,
-          title: `${asset.name} (${payload.kind.toUpperCase()})`,
+          title: `${picked.name} (${picked.kind.toUpperCase()})`,
           text: extracted.slice(0, MAX_SOURCE_CHARS),
           needsReview: false,
         });
@@ -132,33 +122,36 @@ export default function ScanScreen() {
         sfx.playCorrect();
         return;
       }
-
-      const legacyText = await dependencies.intake.pickSourceDocument();
-      if (legacyText) {
-        const newPage = createScanPage({
-          id: `doc-${Date.now()}`,
-          title: `Tài liệu nhập #${pages.length + 1}`,
-          text: legacyText.trim(),
-        });
-        syncManualFromPages([...pages, newPage]);
-      }
     } catch (error) {
-      Alert.alert('Không nhập được tài liệu', error instanceof Error ? error.message : 'Vui lòng chọn lại file PDF/DOCX/MD/TXT.');
+      Alert.alert('Không nhập được tài liệu', errorMessage(error, 'Vui lòng chọn lại file PDF/DOCX/MD/TXT.'));
     } finally {
       setBusy(false);
     }
   };
 
-  const continueToShape = () => {
+  const continueToShape = async () => {
     const built = pages.length > 0 ? buildCombinedSourceText(pages) : null;
     const sourceText = (built && built.selectedCount > 0 ? built.combinedText : text).trim();
     if (!sourceText || sourceText.length > MAX_SOURCE_CHARS) {
       Alert.alert('Thiếu nội dung tài liệu', `Hãy quét, nhập file hoặc dán tài liệu từ 1–${MAX_SOURCE_CHARS.toLocaleString()} ký tự.`);
       return;
     }
-    const sourceTitle = pages.length > 0 ? pages[0]!.title : `source-${Date.now()}`;
-    saveSourceDocument(createSourceDocument(sourceTitle, sourceText));
-    router.push('/create/generate');
+    setBusy(true);
+    try {
+      const account = useAuthStore.getState().user?.id;
+      const document = createSourceDocument(randomUUID(), sourceText);
+      if (pages.length > 0 && pages[0]?.title) {
+        document.title = pages[0].title;
+      }
+      await dependencies.sources.save(document);
+      if (useAuthStore.getState().user?.id !== account) return;
+      saveSourceDocument(document);
+      router.push('/create/generate');
+    } catch (error) {
+      Alert.alert('Không lưu được tài liệu', errorMessage(error, 'Vui lòng thử lại.'));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const reviewCount = pages.filter((p) => p.selected && p.needsReview).length;
@@ -316,11 +309,11 @@ export default function ScanScreen() {
       <Card color={palette.mintTint} style={styles.privacy}>
         <IconTile icon="lock-closed-outline" tint="success" />
         <Text style={[typography.caption, { color: palette.mint, flex: 1 }]}>
-          Kiểm soát quyền riêng tư · Ảnh được OCR cục bộ trên thiết bị, bạn xem & chọn lọc đoạn văn bản trước khi gửi AI.
+          Kiểm soát quyền riêng tư · Ảnh được OCR cục bộ trên thiết bị. Khi đăng nhập, văn bản đã duyệt được lưu kèm nguồn để đồng bộ; AI nhận văn bản riêng khi bạn tạo đề.
         </Text>
       </Card>
 
-      <Button disabled={busy} icon="arrow-forward" onPress={continueToShape}>
+      <Button disabled={busy} icon="arrow-forward" onPress={() => void continueToShape()}>
         {busy ? 'Đang xử lý tài liệu…' : 'Tiếp tục thiết lập câu hỏi'}
       </Button>
     </Screen>

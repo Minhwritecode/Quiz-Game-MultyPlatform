@@ -125,7 +125,7 @@ export default function HomeScreen() {
             <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 3 }]}>{set.subject || 'General'} · {set.questions.length} {t.library.questionsCount}</Text>
           </View>
           <View style={styles.trailingSet}>
-            <Badge tone={set.syncStatus === 'pending' || set.syncStatus === 'failed' ? 'reward' : 'success'}>{set.syncStatus === 'pending' || set.syncStatus === 'failed' ? t.home.pendingSync : t.home.synced}</Badge>
+            <Badge tone={set.syncStatus === 'conflict' ? 'danger' : set.syncStatus === 'pending' || set.syncStatus === 'failed' ? 'reward' : 'success'}>{set.syncStatus === 'conflict' ? 'Xung đột' : set.syncStatus === 'failed' ? 'Chờ thử lại' : set.syncStatus === 'pending' ? t.home.pendingSync : t.home.synced}</Badge>
             <Ionicons name="play-circle" size={28} color={palette.indigo} />
           </View>
         </Card>

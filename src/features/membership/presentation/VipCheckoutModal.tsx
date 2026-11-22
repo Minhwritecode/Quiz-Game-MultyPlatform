@@ -5,13 +5,16 @@ import { Badge, Button, Card, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import {
   BILLING_PLANS,
-  fetchBillingHistory,
-  processBillingCheckout,
   type BillingPlanId,
   type BillingProvider,
   type BillingSubscriptionRecord,
-} from '../data/billingService';
+} from '../domain/billing';
+import {
+  fetchBillingHistory,
+  processBillingCheckout,
+} from '@/composition/platform';
 import { useMembershipStore } from '../state/useMembershipStore';
+import { useAiQuizStore } from '@/features/ai-quiz/state/useAiQuizStore';
 
 const PROVIDERS: Array<{ id: BillingProvider; label: string; icon: keyof typeof Ionicons.glyphMap }> = [
   { id: 'stripe', label: 'Stripe Card', icon: 'card-outline' },
@@ -44,8 +47,15 @@ export function VipCheckoutModal({
     if (processing) return;
     setProcessing(true);
     try {
-      const result = await processBillingCheckout(selectedPlan, provider);
+      const result = await processBillingCheckout(selectedPlan, provider, {
+        tier: useMembershipStore.getState().tier,
+        tokenBalance: useAiQuizStore.getState().tokenBalance,
+      });
       if (result.ok) {
+        if (result.membershipTier === 'archmage') {
+          useMembershipStore.getState().upgradeToVip();
+        }
+        useAiQuizStore.setState({ tokenBalance: result.tokenBalance });
         if (result.checkoutUrl) {
           void Linking.openURL(result.checkoutUrl).catch(() => undefined);
         }

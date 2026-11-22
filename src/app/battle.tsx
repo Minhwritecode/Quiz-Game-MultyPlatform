@@ -1,7 +1,11 @@
+import { errorMessage } from '@/core/domain/failure';
+import Constants from 'expo-constants';
+import { roomInvite } from '@/features/room-battle/domain/invite';
+import { InviteQr, ScanRoomQr } from '@/features/room-battle/presentation/RoomQr';
 import { useEffect, useRef, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Alert, Animated, AppState, Easing, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { preferenceStorage } from '@/composition/preferences';
 import { Ionicons } from '@expo/vector-icons';
 import { Badge, Button, Card, IconTile, Screen, usePalette } from '@/shared/ui';
 import { dependencies } from '@/composition/dependencies';
@@ -91,6 +95,9 @@ export default function BattleScreen() {
   const params = useLocalSearchParams<{ code?: string; invite?: string }>();
   const [code, setCode] = useState(params.code ?? '');
   const [connectionBanner, setConnectionBanner] = useState<'connected' | 'reconnecting' | 'forfeited'>('connected');
+  useEffect(() => {
+    if (params.code && /^[a-z0-9]{6}$/i.test(params.code)) setCode(params.code.toUpperCase());
+  }, [params.code]);
   const [roomId, setRoomId] = useState<string | null>(null);
   const [battle, setBattle] = useState<Battle | null>(null);
   const [sets, setSets] = useState<{ id: string; title: string }[]>([]);
@@ -116,13 +123,12 @@ export default function BattleScreen() {
     const timer = setInterval(tick, 250);
     return () => clearInterval(timer);
   }, [battle]);
-
   // Record game result + show confetti when finished
   useEffect(() => {
     if (battle?.phase !== 'finished' || recordedRef.current) return;
     recordedRef.current = true;
-    const me = battle.players.find((p) => p.userId === user?.id);
-    const myScore = me?.score ?? 0;
+    const mePlayer = battle.players.find((p) => p.userId === user?.id);
+    const myScore = mePlayer?.score ?? 0;
     const isWin = battle.players.length > 0 && battle.players[0]?.userId === user?.id;
     recordGameResult(myScore, isWin);
     setShowConfetti(true);
@@ -130,7 +136,7 @@ export default function BattleScreen() {
     return () => clearTimeout(tid);
   }, [battle?.phase]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const roomKey = `papyrus.battle.${user?.id ?? 'guest'}`;
+  const roomOwner = user?.id ?? 'guest';
 
   useEffect(() => {
     let active = true;
@@ -138,29 +144,29 @@ export default function BattleScreen() {
     setBattle(null);
     setSets([]);
     if (user) {
-      void AsyncStorage.getItem(roomKey).then((id) => {
+      void dependencies.battleSession.load(roomOwner).then((id) => {
         if (active) setRoomId(id);
-      });
+      }).catch(error=>{if(active)setError(errorMessage(error,'Không khôi phục được phòng gần nhất.'));});
       void dependencies.battle
         .sets()
         .then((value: { id: string; title: string }[]) => {
           if (active) setSets(value);
         })
         .catch((e: { message?: string }) => {
-          if (active) setError(String(e.message ?? 'Unknown error'));
+          if (active) setError(errorMessage(e, 'Không tải được danh sách bộ đề.'));
         });
     }
     return () => {
       active = false;
     };
-  }, [user?.id, roomKey]);
+  }, [user?.id, roomOwner]);
 
   // Handle deep-link room/duel invites reliably when app is opened, resumed, or unauthenticated
   useEffect(() => {
     const parsed = parseBattleInviteParams({ code: params.code, invite: params.invite });
     if (parsed) {
       if (!user) {
-        void AsyncStorage.setItem(PENDING_INVITE_STORAGE_KEY, JSON.stringify(parsed));
+        void preferenceStorage.setItem(PENDING_INVITE_STORAGE_KEY, JSON.stringify(parsed));
       } else if (parsed.kind === 'duel') {
         setArenaTab('duel_1v1');
       } else {
@@ -170,7 +176,7 @@ export default function BattleScreen() {
       return;
     }
     if (user) {
-      void AsyncStorage.getItem(PENDING_INVITE_STORAGE_KEY).then((raw) => {
+      void preferenceStorage.getItem(PENDING_INVITE_STORAGE_KEY).then((raw) => {
         if (!raw) return;
         try {
           const saved = JSON.parse(raw) as { kind?: string; code?: string };
@@ -182,7 +188,7 @@ export default function BattleScreen() {
         } catch {
           // Ignore malformed invite cache
         }
-        void AsyncStorage.removeItem(PENDING_INVITE_STORAGE_KEY);
+        void preferenceStorage.removeItem(PENDING_INVITE_STORAGE_KEY);
       });
     }
   }, [params.code, params.invite, user]);
@@ -212,7 +218,7 @@ export default function BattleScreen() {
       } catch (e) {
         if (active) {
           setConnectionBanner('reconnecting');
-          setError(e instanceof Error ? e.message : t.battle.reconnecting);
+          setError(errorMessage(e, t.battle.reconnecting));
         }
       } finally {
         fetching = false;
@@ -266,20 +272,20 @@ export default function BattleScreen() {
     try {
       await action();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Please try again.');
+      setError(errorMessage(e, 'Please try again.'));
     } finally {
       setBusy(false);
     }
   };
 
   const enter = async (id: string) => {
-    await AsyncStorage.setItem(roomKey, id);
+    await dependencies.battleSession.save(roomOwner, id);
     setRoomId(id);
   };
 
   const leave = async () => {
     if (roomId) await dependencies.battle.leave(roomId);
-    await AsyncStorage.removeItem(roomKey);
+    await dependencies.battleSession.clear(roomOwner);
     setRoomId(null);
     setBattle(null);
   };
@@ -440,14 +446,15 @@ export default function BattleScreen() {
               </View>
             </Card>
 
-            {/* Join Room */}
+            {/* Join Room + Camera QR Scanner */}
             <Card style={styles.cardSection}>
               <Text style={[typography.title, { color: palette.ink }]}>{t.battle.enterPin}</Text>
               <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
                 {language === 'vi'
-                  ? 'Nhập mã PIN 6 ký tự do bạn bè chia sẻ để tham gia ngay:'
-                  : 'Enter the 6-character room PIN code shared by your host:'}
+                  ? 'Quét mã QR hoặc nhập mã PIN 6 ký tự do bạn bè chia sẻ để tham gia ngay:'
+                  : 'Scan QR or enter the 6-character room PIN code shared by your host:'}
               </Text>
+              <ScanRoomQr onCode={setCode} />
               <TextInput
                 accessibilityLabel="Room code"
                 value={code}
@@ -741,13 +748,14 @@ export default function BattleScreen() {
                 })}
               </View>
 
+              {battle.phase === 'waiting' && <InviteQr code={battle.code} />}
               <View style={styles.battleHeroButtons}>
                 <Button
                   variant="reward"
                   icon="share-social"
                   onPress={() =>
                     void Share.share({
-                      message: `Tham gia phòng thi đấu Papyrus với mã: ${battle.code}\nLink: papyrus://battle?code=${battle.code}`,
+                      message: `Tham gia phòng thi đấu Papyrus với mã: ${battle.code}\nLink: ${roomInvite(battle.code, Constants.expoConfig?.scheme)}`,
                     })
                   }
                 >

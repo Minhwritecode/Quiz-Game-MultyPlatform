@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { GeneratedQuestion, GeneratedQuiz, GenerateRagPayload, QuizDifficulty } from '../domain/models';
-import { aiQuizApi } from '../services/aiQuiz.api';
+import { aiQuizApi } from '@/composition/platform';
 
 interface AiQuizState {
   generatedQuiz: GeneratedQuiz | null;

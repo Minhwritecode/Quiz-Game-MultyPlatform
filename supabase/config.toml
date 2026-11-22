@@ -23,3 +23,6 @@ verify_jwt = true
 [functions.delete-account]
 verify_jwt = true
 
+[functions.papybot]
+verify_jwt = true
+

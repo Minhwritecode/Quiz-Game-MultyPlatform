@@ -1,3 +1,4 @@
+import { errorMessage } from '@/core/domain/failure';
 import { useState } from 'react';
 import { Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -47,7 +48,7 @@ export default function PrivacyScreen() {
           : 'Đã xóa tài khoản, dữ liệu cloud và dữ liệu học trên thiết bị này.'
       );
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Không thể xóa tài khoản.');
+      setMessage(errorMessage(error, 'Không thể xóa tài khoản.'));
     } finally {
       setBusy(false);
     }

@@ -1,4 +1,4 @@
-export type SyncStatus = 'synced' | 'pending' | 'failed';
+export type SyncStatus = 'synced' | 'pending' | 'failed' | 'conflict';
 
 export type QuestionType =
   | 'multiple_choice'
@@ -33,6 +33,8 @@ export type QuestionSet = {
   id: string;
   title: string;
   subject: string;
+  tags?: string[];
+  sourceDocumentId?: string | null;
   questions: Question[];
   updatedAt: string;
   syncStatus: SyncStatus;
@@ -64,6 +66,7 @@ export type AttemptAnswer = {
 };
 
 export type StudyProgress = {
+  attemptId?: string;
   questionSetId: string;
   currentIndex: number;
   selectedIndex: number | null;
@@ -99,6 +102,7 @@ export type GenerationRequest = {
   questionCount: number;
   difficulty: QuestionDifficulty;
   languageCode: string;
+  excludeQuestions?: string[];
 };
 
 export type Room = {

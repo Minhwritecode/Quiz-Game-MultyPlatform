@@ -7,9 +7,9 @@
 **Document type:** Project execution plan and completion checklist  
 **Plan status:** Active implementation; acceptance gates incomplete
 
-**Version:** 1.1
+**Version:** 1.2
 
-**Updated:** 11 November 2026
+**Updated:** 17 November 2026
 
 **Primary client:** React Native + TypeScript + Expo
 
@@ -29,9 +29,26 @@ verified: the complete app journeys on real devices or authenticated cloud UI.
 
 Checkboxes below describe their full stated scope. Partial implementations do
 not close a combined requirement. In particular, manual account import/conflict
-resolution differs from the original automatic sync/server-timestamp LWW design.
-Strict Clean Architecture remains open because Presentation still imports some
-Data adapters; the current import checker does not detect every such dependency.
+resolution originally differed from the timestamp LWW design. Group B below now
+implements automatic sync and records the explicit revision-based conflict policy.
+The Group A architecture remediation is recorded below. Other unchecked feature,
+design-system and release gates retain their original scope.
+
+---
+
+## Group A — Clean Architecture (16 November 2026)
+
+- [x] Move Supabase, storage and document access out of screens/widgets: Papybot uses `dependencies.assistant`, leaderboard receives domain `Ranking` values, battle session persistence uses an owner-scoped repository, and preferences use a storage port.
+- [x] Add domain repository contracts and injected use cases for assistant, leaderboard and battle sessions; wire concrete adapters in `src/composition/`. Domain tests inject in-memory/fake repositories.
+- [x] Replace the regex checker with a TypeScript AST dependency graph: aliases, relative/barrel re-exports, `require`, dynamic imports and type imports; reject Domain → framework/infrastructure, Presentation → Data and Data → Presentation/composition. Reject direct fetch/browser storage in Presentation. CI runs the checker and its five regression tests.
+- [x] Remove the unused legacy `src/core/sync/syncEngine.ts` direct-upsert path. Existing account sync/RPC flow remains the supported path; this does not mark background sync complete.
+- [x] Introduce shared `AppError` codes and safe UI message mapping. Assistant/intake/auth adapters use curated messages; screen catch handlers hide unknown provider errors. Existing auth string-result contracts remain compatible through safe adapter mapping.
+
+Evidence: `scripts/check_architecture.sh`, `npm run typecheck`, `npm test -- --watch=false`, and the domain tests for assistant validation/cancellation, leaderboard pagination, owner-scoped battle sessions, and safe error messages. The checker treats composition as the explicit injection boundary; it is a static dependency check, not proof of runtime behavior or a replacement for code review.
+
+Verification: full Jest run passed 52 tests; the follow-up run passed all 7 targeted tests, including 2 new domain tests (54 distinct tests covered overall). TypeScript and all 5 architecture regression tests passed. Full-project lint is still failing with 17 React Hooks errors and 74 warnings; the same 17 errors were reproduced against baseline commit `b04f6e9`. Lint is not a completed release gate.
+
+This checkpoint closes these five architecture tasks only. Phase 2 design/Figma/accessibility items and all native/cloud acceptance gates remain separate.
 
 ---
 
@@ -160,9 +177,9 @@ Presentation  --->  Domain  <---  Data
 
 ### 3.2 Non-negotiable rules
 
-- [ ] Domain files do not import `react`, `react-native`, Expo, Supabase,
+- [x] Domain files do not import `react`, `react-native`, Expo, Supabase,
   SQLite, camera, ML Kit or network libraries.
-- [ ] A screen never calls Supabase, SQLite, OCR or an Edge Function directly.
+- [x] A screen never calls Supabase, SQLite, OCR or an Edge Function directly.
 - [ ] A repository interface is declared at the Domain boundary; its concrete
   implementation lives in Data.
 - [ ] DTOs are not exposed to Presentation. Data maps DTOs to domain entities.
@@ -312,7 +329,7 @@ base technology choices are visible in the repository.
 - [ ] Install the pinned Node/npm toolchain and document it.
 - [x] Create the Expo React Native TypeScript app shell.
 - [x] Configure Expo Router and a small route map.
-- [x] Configure strict TypeScript, Jest and initial import-boundary checks (strict coverage still needs improvement).
+- [x] Configure strict TypeScript, Jest and initial import-boundary checks (AST dependency coverage added on 16 November).
 - [x] Add environment example files without real credentials.
 - [x] Add Docker web preview and Nginx configuration (runtime/reproducibility gate remains open).
 - [x] Add GitHub Actions for install, typecheck, tests, architecture checks and
@@ -330,10 +347,10 @@ and open the Docker preview without provider secrets.
 
 - [ ] Create the `Presentation → Domain ← Data` folders for every planned
   feature.
-- [ ] Add one representative pure domain entity and use case.
-- [ ] Add one repository port and one in-memory test implementation.
-- [ ] Add the composition root and inject the representative feature.
-- [ ] Add import rules that fail when Domain imports UI or infrastructure.
+- [x] Add one representative pure domain entity and use case.
+- [x] Add one repository port and one in-memory test implementation.
+- [x] Add the composition root and inject the representative feature.
+- [x] Add import rules that fail when Domain imports UI or infrastructure.
 - [ ] Record the architecture in `docs/architecture/` and keep it current.
 - [ ] Audit the Papyrus Figma file against the required 10 screens.
 - [ ] Define light, dark and system theme behavior.
@@ -370,7 +387,7 @@ restart, and expose sync state without calling the cloud from Presentation.
 - [ ] Add optional Google sign-in only after the P0 email flow is stable.
 - [ ] Implement profile read/update through a repository.
 - [ ] Add loading, invalid credentials, expired session and offline states.
-- [ ] Add RLS tests for profile ownership.
+- [x] Add RLS tests for profile ownership (`supabase/tests/user_profiles.sql`, 16 November 2026).
 - [ ] Add component tests for login and session transitions.
 
 **Exit gate:** a user can authenticate, close/reopen the app, retain a valid
@@ -394,22 +411,25 @@ editable text, and recover gracefully from permission or recognition failure.
 
 ### Phase 6 - Streaming AI question generation
 
-- [ ] Define the generation request and validated question entity in Domain.
-- [ ] Implement the Edge Function authentication and input-length checks.
-- [ ] Store provider keys only in Supabase secrets.
-- [ ] Add timeout, cancellation and rate-limit handling.
-- [ ] Stream JSON objects through a stable SSE-compatible contract.
-- [ ] Parse partial chunks incrementally and emit complete question objects.
-- [ ] Validate exactly four options, index range, non-empty text and duplicates.
-- [ ] Reject or quarantine malformed questions instead of crashing the screen.
-- [ ] Show questions as they arrive, with cancel and retry controls.
-- [ ] Require user confirmation before text is sent to the LLM endpoint.
-- [ ] Let the user edit, delete and regenerate individual questions.
-- [ ] Add generation-job persistence for offline retry as P1.
+- [x] Define the generation request and validated question entity in Domain.
+- [x] Implement the Edge Function authentication and input-length checks.
+- [x] Read provider credentials only from Edge Function environment secrets.
+- [x] Add timeout, client cancellation and a generation-specific daily quota (20 requests/account/day).
+- [x] Stream JSON objects through a stable SSE-compatible contract.
+- [x] Parse partial chunks incrementally and emit complete question objects.
+- [x] Validate four distinct options, answer index, non-empty fields and duplicate questions.
+- [x] Ignore malformed provider objects without crashing the screen.
+- [x] Show valid questions as they arrive; retain partial results and support cancel/retry.
+- [x] Send source text only after the user presses the explicit Generate action.
+- [x] Let the user edit, delete and regenerate individual questions, and fill missing questions.
+- [x] Persist owner-scoped generation jobs, partial questions and retry state for resume after reopening.
+- [x] Preserve subject, tags and source-document ID through local storage and cloud set sync.
 
-**Exit gate:** the document-to-reviewed-question flow works with a configured
-provider in a development environment and has deterministic parser/use-case
-tests independent of the provider.
+**Code gate:** implemented and covered by deterministic client/parser/job tests.
+**Runtime gate remains open:** deploy the quota/metadata migration and Edge Function,
+then verify a real authenticated Gemini stream, cancellation and quota against the
+development Supabase project. This workspace has no Deno, Supabase CLI or working
+Docker daemon, so code-level checks do not claim hosted deployment.
 
 ### Phase 7 - Question-set library and offline study
 
@@ -448,14 +468,14 @@ consistent deadlines, score results and reconnect behavior.
 
 ### Phase 9 - Sync, resilience and privacy
 
-- [ ] Implement ordered push from the outbox.
-- [ ] Retry transient errors with exponential backoff.
-- [ ] Pull by cursor and upsert only newer server records.
-- [ ] Make retries idempotent with client UUIDs.
-- [ ] Resolve question-set conflicts by server timestamp.
+- [x] Implement ordered push from the outbox.
+- [x] Retry transient errors with exponential backoff.
+- [x] Pull by cursor and upsert only newer server records.
+- [x] Make retries idempotent with client UUIDs.
+- [x] Resolve conflicts by server revision / compare-and-swap, with explicit local/server choice. **Policy amendment, 17 November:** supersedes timestamp LWW; server timestamps remain display metadata.
 - [ ] Keep attempts append-only and apply newer soft deletes.
-- [ ] Add a visible sync indicator at set level and app level.
-- [ ] Add manual retry and “sync now” controls.
+- [x] Add a visible sync indicator at set level and app level.
+- [x] Add manual retry and “sync now” controls.
 - [ ] Test crashes or network loss during local write, push and pull.
 - [ ] Document data flows and privacy boundaries in the final report.
 
@@ -582,7 +602,7 @@ The Week 09 slide deck sets the target distribution:
 
 - [x] `npm run typecheck` passes (11 November audit).
 - [x] `npm test -- --watch=false` passes: 8 suites / 16 tests (11 November audit).
-- [x] `bash scripts/check_architecture.sh` passes; this limited regex check is not a full dependency audit.
+- [x] `bash scripts/check_architecture.sh` passes with the AST graph checker and five regression tests (16 November).
 - [x] `npx expo export --platform web` passes (previous sync delivery evidence).
 - [ ] Docker image builds and serves the web preview.
 - [ ] No secrets are required for the base demo.
@@ -719,3 +739,44 @@ four-reference feature backlog or original production Definition of Done.
 See [the detailed Week 12 matrix](release/WEEK-12-CHECKLIST.md) and
 [operations runbook](release/RUNBOOK.md). Checkboxes here record code preparation
 only where explicitly stated; they do not claim a production rollout.
+
+## Supabase schema checkpoint — 16 November 2026
+
+- [x] Audit hosted project `rqfolapnysclnmolrsva`: previously 11 public tables, five migrations and one Auth account with no profile.
+- [x] Deploy pending account cleanup, Papybot quota/history and battle leaderboard migrations.
+- [x] Provision `profiles` on Auth signup; synchronize name/avatar metadata changes; backfill existing accounts; cascade deletion.
+- [x] Add owner-only `user_preferences` (theme/language/haptics/reduced motion), constrained values and server-managed timestamps.
+- [x] Restrict profile visibility to its owner; battle/leaderboard expose display names only through authenticated RPCs.
+- [x] Run local profile/RLS, battle security, battle lifecycle and account cleanup SQL tests with rollback.
+- [x] Verify hosted backfill: one account, one profile, one preferences row, zero missing profiles; 14 public tables all have RLS.
+- [ ] Connect automatic cross-device preference synchronization in the app. The database table is ready; existing local preference behavior is unchanged.
+
+Auth identity/email/passwords stay in `auth.users` / Authentication → Users. Do not duplicate credentials in public tables. Current source, question, attempt and room tables already exist; no separate database is needed per feature.
+
+Security Advisor was reviewed: authenticated SECURITY DEFINER battle/sync RPCs remain intentional with authorization checks; leaked-password protection is still disabled in the project's Auth configuration. This checkpoint does not claim every Advisor warning is cleared or every future feature is implemented.
+
+## Group B — Learning data synchronization (17 November 2026)
+
+- [x] Trigger foreground sync on authentication changes, app activation and network recovery, with a 30-second retry wake-up. Stop listeners/timers on disposal; captured owners prevent account-switch request rebinding.
+- [x] Sync source documents and completed attempts with their ordered answers through atomic RPCs, in addition to existing question sets. Source text is saved on confirmed intake; images remain local.
+- [x] Read downloaded sets directly into the same account's study library using the original set/question UUIDs. Completed attempts and documents are read from that account's durable cache. Removed the independent-download-copy action. Guest legacy data remains separate and requires explicit import; guest IDs are mapped once during import.
+- [x] Persist outbox, cached documents and cursor together; retry with bounded exponential backoff; preserve mutation UUID on ambiguous failures; persist acknowledgements before advancing; reject regressing/stuck cursors; pull tombstones. Edits coalesce while offline; unresolved conflicts never silently overwrite local work.
+- [x] Show pending, failed/retry, conflict and synced status per set, with a sync screen, conflict choices and app-level error message. Sources and attempts show their pending/conflict status in the sync screen.
+- [x] Adopt revision-based optimistic concurrency for sets, sources and attempts. Server-generated timestamps are informational; device clock cannot choose the winner. Keep-server accepts the remote revision; keep-local enqueues a new mutation against it. Removed the unused timestamp winner helper.
+
+Verification: TypeScript passed; 28 Jest suites / 82 tests passed, including engine crash/retry/owner isolation and nine auto-sync lifecycle tests; five architecture regression tests passed; Expo web export passed. `supabase/tests/learning_sync.sql` passed locally with rollback (including two-session locking), and `scripts/test-learning-sync-local.mjs` passed through real local Auth/PostgREST using two sessions of one account plus an outsider. Tests cover normalized answers, stale/concurrent writes, exact receipt replay, pagination, soft deletes, historical attempts after question deletion and cross-account denial.
+
+Limits kept separate: this is foreground/reconnect sync, not an OS background task while the app is terminated. Native airplane-mode/relaunch acceptance still needs a device run; no APK was built. In-progress study resume remains local and account-scoped; completed attempts synchronize. Automatic preferences sync remains a separate open item. Existing guest history is not silently assigned to whichever account signs in.
+
+Deployment verification — 17 November 2026: migration `20261116182313_learning_sync.sql` was applied to hosted Papyrus project `rqfolapnysclnmolrsva`. `origin/main` was fetched and merged into the release branch without conflicts; TypeScript, all 82 Jest tests and all five architecture regression tests passed again after the merge. The earlier quota-related deployment interruption did not apply the migration; this retry completed successfully.
+
+## Group C — AI question generation (17 November 2026)
+
+- [x] Replace one-shot JSON response with Gemini SSE → authenticated Edge Function SSE → incremental app parser; emit only schema-valid, distinct questions.
+- [x] Add one-question regeneration and missing-question fill, excluding existing question text from the generation request.
+- [x] Persist account-scoped offline jobs, retry/backoff, cancellation, partial results and running-job recovery after screen/app restart.
+- [x] Add a generation-specific 20-request UTC daily quota and idempotency keys, independent of Papybot quota.
+- [x] Persist subject, tags and source-document UUID in SQLite/cloud question-set metadata; sync source documents before dependent sets.
+- [x] Verify SSE parsing, malformed/duplicate rejection, Gemini chunk extraction, generation jobs, metadata roundtrip and source-before-set ordering with local tests.
+
+Verification on this worktree: TypeScript passed; 32 Jest suites / 93 tests passed; architecture graph plus five regression tests passed; `git diff --check` passed. Hosted migration execution, Edge Function deployment and a real Gemini request remain unverified because Deno/Supabase CLI are unavailable and Docker daemon access is denied. Do not treat Group C as cloud-runtime accepted until that separate check passes.
