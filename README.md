@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>From Ancient Scroll to AI Power.</strong><br/>
-  Nền tảng học tập &amp; đấu trí trắc nghiệm đa nền tảng (iOS · Android · Web) kết hợp AI tạo đề streaming, gia sư RAG <code>pgvector</code>, đồ họa 3D tương tác và kiến trúc Offline-first.
+  A cross-platform (iOS · Android · Web) AI learning &amp; realtime quiz battle platform featuring streaming AI question generation, a <code>pgvector</code> RAG tutor, interactive 3D graphics, and an offline-first architecture.
 </p>
 
 <p align="center">
@@ -19,85 +19,85 @@
 
 ---
 
-## Tính năng nổi bật
+## Key Features
 
-### 1. Trải nghiệm Mở màn Không gian 3D & Video Ảo ảnh Thị giác
-- **Splash Screen 3D PowerPoint Morph**: Mô hình 3D dựng bằng **Blender 4.2 Shape Keys** (xuất nén Draco level 7, `96 KB`, `3,516 tris`) biến hình trực tiếp trên GPU (`morphTargetInfluences`) từ cuộn giấy Papyrus cổ thành khối Logo chữ **P** 3D ánh tím-vàng kèm 2 vòng quỹ đạo AI Neural và tia Starburst 8 cánh. Tối ưu 60fps với **0 React re-render**, chỉ **6–7 draw calls**, tự động fallback sang 2D khi bật **Reduce Motion** hoặc thiếu WebGL2.
-- **Video Onboarding Ảo ảnh Thị giác (Remotion)**: Tự động phát 1 lần duy nhất cho người dùng mới sau khi đăng nhập lần đầu (lưu trạng thái theo `userId`), dẫn dắt 9.5 giây từ *Pain Point* (Đường hầm Droste vô tận & đường cong quên bài) → *Cú bẻ lái Origami & Portal Match-Cut xuyên qua Logo P* → *3 giá trị cốt lõi*. Nén kép siêu nhẹ (`WebM 662 KB`, `MP4 faststart 1.1 MB`, ảnh poster `WebP 21 KB` chống chớp màn đen), hỗ trợ xem lại bất kỳ lúc nào trong **Cài đặt**.
+### 1. Spatial 3D Splash Screen & Optical-Illusion Onboarding Video
+- **3D PowerPoint-Morph Splash Screen**: Procedurally crafted in **Blender 4.2** with real Shape Keys (Draco level 7, `96 KB`, `3,516 tris`) and rendered live on GPU (`morphTargetInfluences`) in Three.js, seamlessly morphing an ancient Papyrus scroll into the sculpted 3D **P** emblem with dual AI Neural orbital rings and an 8-ray starburst flare. Tuned for locked 60fps with **0 React re-renders**, **6–7 draw calls**, automatic 2D fallback, and full **Reduce Motion** support.
+- **9.5s Optical-Illusion Onboarding Video (Remotion)**: Plays automatically once per newly signed-in user (persisted per `userId`), taking learners through 3 punchy acts — *Pain Point* (Droste infinite document vortex & forgetting curve) → *Origami 2.5D Fold & Portal Match-Cut through the Papyrus "P"* → *3 Core Value Pillars & Converging Payoff*. Dual-encoded for instant zero-lag playback (`WebM 662 KB`, `MP4 faststart 1.1 MB`, `WebP poster 21 KB` for 0ms black screen) with an in-app replay option in **Settings**.
 
-### 2. Quét Tài liệu Đa nguồn & Sinh Câu hỏi AI Streaming
-- **Nhập tài liệu linh hoạt & giữ riêng tư ảnh gốc**: Hỗ trợ chụp/chọn nhiều trang liên tiếp (xoay, nén, sắp xếp, xóa, chụp lại), nhận diện văn bản **on-device ML Kit OCR** (ảnh không rời thiết bị), nhập trực tiếp **PDF**, **Markdown**, **TXT**, chọn đoạn nguồn và đánh dấu chỉnh sửa trước khi tạo đề.
-- **AI Quiz Generator Streaming & Hàng đợi Ngoại tuyến**: Kết nối Edge Function `generate-questions` trả về từng câu hỏi hợp lệ theo thời gian thực; hỗ trợ **sinh lại riêng từng câu**, **tạo bù câu còn thiếu**, quản lý **hàng đợi tạo đề ngoại tuyến** (lưu job, hủy, tự khôi phục & retry khi có mạng) cùng hạn mức quota độc lập.
-- **Trình soạn thảo 6 loại câu hỏi chuyên sâu**: Trắc nghiệm 4 lựa chọn (1 đáp án hoặc nhiều đáp án đúng *Multi-select*), Đúng/Sai, Bình chọn (*Poll*), *Word Cloud*, Thang đánh giá (*Rating 5 sao / 1–10*), Tự luận mở, hỗ trợ chèn khung **Code Snippet** minh họa, gắn thẻ/môn học, liên kết nguồn gốc và Import/Export CSV.
+### 2. Multi-Source Document Intake & Streaming AI Quiz Generation
+- **Privacy-First Document Intake**: Multi-page scan sessions (capture, rotate, compress, reorder, delete, retake) powered by **on-device ML Kit OCR** (source images stay on-device), plus direct **PDF**, **Markdown**, and **TXT** extraction with source-to-question linking.
+- **Streaming AI Quiz Generator & Offline Queue**: Connects to the `generate-questions` Edge Function to stream validated questions in real time; supports **single-question regeneration**, **fill-missing-questions**, an **offline generation queue** (persisted jobs, cancellation, automatic recovery & retry on reconnect), and independent rate/quota controls.
+- **Rich 6-Format Question Editor**: Multiple Choice (single & *Multi-select*), True/False, Poll, Word Cloud, Rating (5-star / 1–10 scale), and Open Text — complete with optional **Code Snippet** blocks, subject/tag metadata, and CSV import/export.
 
-### 3. Gia sư AI Papybot & Kho Tri thức RAG (`pgvector`)
-- **Hỏi đáp bám sát tài liệu gốc**: Edge Function `rag-ingest` và `papybot` lập chỉ mục vector `pgvector` trực tiếp từ tài liệu học của người dùng để trả lời kèm trích dẫn nguồn chuẩn xác, tránh trả lời lan man.
-- **Đồng bộ hội thoại thông minh**: Tự động đồng bộ lịch sử trò chuyện giữa các thiết bị, hỗ trợ retry ngoại tuyến và giao diện xử lý xung đột (chọn bản Cloud, bản Local hoặc giữ cả hai bản).
+### 3. Papybot AI Tutor & `pgvector` RAG Knowledge Base
+- **Source-Grounded Tutoring**: Powered by the `rag-ingest` and `papybot` Edge Functions using PostgreSQL `pgvector` semantic retrieval to answer questions directly from your uploaded PDFs and study notes with accurate source citations.
+- **Smart Conversation Sync**: Automatic cross-device chat history synchronization, offline retry queue, and interactive conflict resolution (keep Cloud, keep Local, or preserve both).
 
-### 4. 4 Chế độ Học tập & Đấu trường 3D Game hóa
-- **Study Sanctuary (Ôn tập chuyên sâu)**: Học theo thứ tự, đảo ngẫu nhiên, bấm giờ giới hạn, chế độ ôn riêng câu hay làm sai, khôi phục phiên học dở an toàn khi bộ đề thay đổi, thống kê độ tiến bộ theo từng bộ đề và xuất báo cáo học tập PDF.
-- **Survival Arena (Đấu trường Sinh tồn)**: Trả lời liên hoàn vượt ải cùng nhân vật Học giả Papyrus (3D rigged & sprite WebP siêu nhẹ cho các trạng thái `idle`, `attack`, `hurt`, `victory`), cơ chế tim năng lượng, chuỗi combo và hiệu ứng âm thanh/haptic.
-- **Memory Match Library (Ghép thẻ Trí nhớ)**: Lật thẻ ghép khái niệm – đáp án tối ưu cho phương pháp ghi nhớ chủ động (*Active Recall*).
-- **Battle Colosseum 1v1 & Phòng đấu 2–4 người Realtime**:
-  - Tạo phòng bằng mã PIN 6 ký tự, **chia sẻ lời mời QR Code & Deep Link** (xử lý liền mạch khi app đang đóng, đang mở hoặc chưa đăng nhập) và ghép cặp theo điểm **ELO**.
-  - **Chấm điểm server-authoritative** (`submit_answer` RPC — client không bao giờ nhận đáp án trước khi hết giờ câu hỏi).
-  - Giữ chỗ 30 giây khi rớt mạng trước khi xử lý bỏ cuộc, tự động chuyển host, tự chuyển câu sớm khi tất cả đã trả lời và hết hạn phòng sau 30 phút không hoạt động.
-  - **Bảng xếp hạng Toàn cầu & Bạn bè** liên kết trực tiếp với lịch sử đấu cá nhân.
+### 4. Four Gamified 3D Learning & Arena Modes
+- **Study Sanctuary**: Sequential, randomized, timed, and wrong-answers-only review modes; safe resume handling when sets are edited/deleted; per-set mastery analytics; and PDF study report export.
+- **Survival Arena**: High-stakes streak mode starring the Papyrus Scholar (rigged 3D model + ultra-lightweight WebP sprites for `idle`, `attack`, `hurt`, `victory`), crystal health hearts, combo multipliers, and audio/haptic feedback.
+- **Memory Match Library**: Fast-paced concept-to-answer card matching built around Active Recall.
+- **Realtime 1v1 & 2–4 Player Battle Colosseum**:
+  - 6-character PIN rooms, **QR Code & Deep Link invites** (handling cold start, foreground, and unauthenticated flows), and **ELO-based matchmaking**.
+  - **Server-authoritative scoring** via the `submit_answer` RPC (clients never receive the answer key before a round closes).
+  - 30-second disconnect grace period before forfeit, automatic host migration, early round advance once all players answer, and 30-minute idle room expiration.
+  - **Global & Friends Leaderboards** linked directly to personal match history.
 
-### 5. Kiến trúc Offline-first, Auto-Sync & Vận hành Production
-- **Offline-first + Tự động đồng bộ 2 chiều**: Lưu dữ liệu tại chỗ bằng **SQLite** (iOS/Android) và **AsyncStorage** (Web); tự kích hoạt đồng bộ (`question_sets`, `attempts`, `answers`, `source_documents`, `papybot_threads`) khi đăng nhập, mở lại app hoặc có mạng, hỗ trợ retry/backoff, soft-delete và hiển thị trạng thái đồng bộ trực tiếp trên từng bộ đề.
-- **Tài khoản, Kiểm duyệt & Thanh toán**: Hỗ trợ Email/Password, Google/Facebook OAuth, chế độ Khách (Guest), khôi phục mật khẩu, xóa toàn bộ dữ liệu tài khoản (`delete-account`), bảng điều khiển **Kiểm duyệt AI Auto-Gate & Superadmin**, cổng thanh toán VIP/Token (`billing-checkout`), song ngữ **Tiếng Việt / English**, Dark/Light/Auto theme và nhắc học 19:00 trên di động.
+### 5. Offline-First Architecture, Auto-Sync & Production Operations
+- **Offline-First + Bi-Directional Auto-Sync**: Local persistence via **SQLite** (iOS/Android) and **AsyncStorage** (Web); automatically syncs `question_sets`, `attempts`, `answers`, `source_documents`, and `papybot_threads` on sign-in, app resume, and network reconnect with exponential backoff, soft deletes, and per-set sync status badges.
+- **Auth, Moderation & Billing**: Email/Password, Google/Facebook OAuth, Guest mode, password recovery, full account & data deletion (`delete-account`), **AI Auto-Gate Moderation & Superadmin Console**, VIP/AI Token checkout (`billing-checkout`), bilingual **English / Vietnamese** UI, Dark/Light/Auto themes, and 19:00 mobile study reminders.
 
 ---
 
-## Kiến trúc hệ thống
+## System Architecture
 
-Papyrus tuân thủ nghiêm ngặt **Clean Architecture theo từng tính năng (`Presentation → Domain ← Data`)** với quy tắc kiểm tra đồ thị import tự động bằng TypeScript AST (`scripts/check-architecture.cjs`):
+Papyrus enforces strict feature-scoped **Clean Architecture (`Presentation → Domain ← Data`)** verified automatically via a TypeScript AST dependency graph (`scripts/check-architecture.cjs`):
 
-- **Domain (`src/features/*/domain/`, `src/core/domain/`)**: Thuần TypeScript + `zod`, không phụ thuộc React Native, Expo hay Supabase.
-- **Data (`src/features/*/data/`, `src/core/database/`, `src/core/network/`)**: Chứa toàn bộ adapter SQLite, AsyncStorage, Supabase, OCR, PDF và Edge Function clients.
-- **Composition Root (`src/composition/`)**: Tiêm phụ thuộc (*Dependency Injection*) thống nhất cho toàn bộ ứng dụng.
-- **Presentation (`src/app/`, `src/features/*/presentation/`, `src/shared/`)**: Giao diện Expo Router đa nền tảng, Zustand UI state, TanStack Query và đồ họa Three.js/WebGL tối ưu bộ nhớ.
+- **Domain (`src/features/*/domain/`, `src/core/domain/`)**: Pure TypeScript + `zod` schemas with zero React Native, Expo, or Supabase dependencies.
+- **Data (`src/features/*/data/`, `src/core/database/`, `src/core/network/`)**: SQLite, AsyncStorage, Supabase, OCR, PDF, and Edge Function adapters.
+- **Composition Root (`src/composition/`)**: Centralized Dependency Injection wiring all repositories and use cases.
+- **Presentation (`src/app/`, `src/features/*/presentation/`, `src/shared/`)**: Cross-platform Expo Router screens, Zustand UI state, TanStack Query, and memory-safe Three.js/WebGL scenes.
 
 ```text
 Quiz-Game-MultyPlatform/
 ├── src/
-│   ├── app/                  # Các tuyến màn hình Expo Router (_layout, auth, battle, create, games, sets, settings...)
+│   ├── app/                  # Expo Router routes (_layout, auth, battle, create, games, sets, settings...)
 │   ├── composition/          # Dependency Injection & Composition Root
-│   ├── core/                 # Theme tokens, i18n (VI/EN), SQLite, Supabase client, Zustand stores, SFX, Sentry
+│   ├── core/                 # Theme tokens, i18n (EN/VI), SQLite, Supabase client, Zustand stores, SFX, Sentry
 │   ├── features/             # Clean Architecture modules (assistant, auth, leaderboard, membership, moderation,
 │   │                         # onboarding, preferences, profile, question-sets, quiz-generation, release,
 │   │                         # reminders, room-battle, scan-ocr, streak, study, sync)
 │   └── shared/               # UI primitives, Model3DView, CharacterHero, PapyrusSplash3D & Three.js scenes
 ├── supabase/
-│   ├── migrations/           # 20 PostgreSQL migrations (RLS, RPC chấm điểm, pgvector RAG, sync, battle lifecycle)
+│   ├── migrations/           # 20 PostgreSQL migrations (RLS, scoring RPCs, pgvector RAG, sync, battle lifecycle)
 │   ├── functions/            # 5 Deno Edge Functions: generate-questions, papybot, rag-ingest, billing-checkout, delete-account
-│   └── tests/                # Bộ kiểm thử SQL phân quyền RLS, đồng bộ, vòng đời phòng đấu & dọn tài khoản
+│   └── tests/                # SQL test suites for RLS permissions, sync, battle lifecycle & account cleanup
 ├── assets/
-│   ├── models/               # Các mô hình 3D .glb nén Draco từ Blender 4.2
-│   ├── video/                # Video onboarding ảo ảnh thị giác (.webm, .mp4 faststart, poster .webp)
-│   └── characters/           # Bộ sprite nhân vật WebP siêu nhẹ
+│   ├── models/               # Draco-compressed .glb 3D assets exported from Blender 4.2
+│   ├── video/                # Optical-illusion onboarding video (.webm, .mp4 faststart, .webp poster)
+│   └── characters/           # Lightweight WebP character sprites
 ├── scripts/
-│   ├── blender/              # Script Python Blender 4.2 xuất mô hình 3D & Shape Keys tự động
-│   └── check-architecture.cjs # Kiểm tra xuyên lớp Clean Architecture bằng AST
-├── video-onboarding/         # Studio Remotion độc lập để chỉnh sửa & render lại video onboarding
-├── docker/                   # Cấu hình Nginx production (gzip, Accept-Ranges streaming video, MIME .glb)
+│   ├── blender/              # Headless Blender 4.2 Python scripts for 3D modeling & Shape Keys
+│   └── check-architecture.cjs # AST-based Clean Architecture import boundary enforcer
+├── video-onboarding/         # Standalone Remotion studio for editing & re-rendering the onboarding video
+├── docker/                   # Production Nginx config (gzip, Accept-Ranges video streaming, .glb MIME)
 ├── Dockerfile                # Multi-stage Docker build (Expo Web -> Nginx Alpine)
-└── docker-compose.yml        # Khởi chạy nhanh Papyrus Web + tùy chọn Ollama local AI
+└── docker-compose.yml        # One-command Papyrus Web + optional local Ollama AI stack
 ```
 
 ---
 
-## Hướng dẫn cài đặt & chạy dự án
+## Installation & Setup Guide
 
-### 1. Yêu cầu môi trường
-- **Node.js** `>= 20` (khuyến nghị `22 LTS`) và **npm** `>= 10`
+### 1. Prerequisites
+- **Node.js** `>= 20` (`22 LTS` recommended) and **npm** `>= 10`
 - **Git**
-- *(Tùy chọn cho Mobile Native)*: Xcode + CocoaPods (iOS) hoặc Android Studio + JDK 17 (Android)
-- *(Tùy chọn cho Cloud Backend / Local Supabase)*: Docker Desktop & Supabase CLI (`npx supabase`)
-- *(Tùy chọn để tái xuất 3D / Video)*: Blender 4.2 LTS, FFmpeg, `cwebp`
+- *(Optional for Native Mobile)*: Xcode + CocoaPods (iOS) or Android Studio + JDK 17 (Android)
+- *(Optional for Cloud / Local Supabase)*: Docker Desktop & Supabase CLI (`npx supabase`)
+- *(Optional for regenerating 3D / Video assets)*: Blender 4.2 LTS, FFmpeg, `cwebp`
 
-### 2. Clone mã nguồn & cài đặt thư viện
+### 2. Clone & Install Dependencies
 
 ```bash
 git clone https://github.com/Minhwritecode/Quiz-Game-MultyPlatform.git
@@ -105,47 +105,47 @@ cd Quiz-Game-MultyPlatform
 npm ci
 ```
 
-### 3. Cấu hình biến môi trường
+### 3. Configure Environment Variables
 
-Sao chép tệp mẫu sang `.env.local`:
+Copy the example environment file to `.env.local`:
 
 ```bash
 cp .env.example .env.local
 ```
 
-Ứng dụng hỗ trợ **2 chế độ vận hành tự động**:
+Papyrus automatically adapts between **two runtime modes**:
 
-- **Chế độ Offline-first (không cần cấu hình thêm)**: Để trống `EXPO_PUBLIC_SUPABASE_URL` và `EXPO_PUBLIC_SUPABASE_ANON_KEY`. Bạn vẫn có thể học bộ đề mẫu, tạo đề thủ công, chơi Survival/Match và lưu tiến độ cục bộ hoàn chỉnh.
-- **Chế độ Live Cloud (đầy đủ tính năng AI, đồng bộ đa thiết bị, Battle 1v1, RAG & Bảng xếp hạng)**: Điền thông tin dự án Supabase vào `.env.local`:
+- **Offline-First Mode (zero configuration)**: Leave `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` empty. You can immediately explore seed sets, author questions manually, play Survival/Match, and persist local progress.
+- **Live Cloud Mode (full AI, multi-device sync, 1v1 Battle, RAG & Leaderboards)**: Populate your Supabase credentials in `.env.local`:
 
 ```env
 EXPO_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
 EXPO_PUBLIC_SUPABASE_ANON_KEY=<supabase-anon-or-publishable-key>
 
-# Tùy chọn khi triển khai Production / Thanh toán / Giám sát lỗi:
+# Optional for production observability & billing:
 APP_VARIANT=development
 EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY=
 EXPO_PUBLIC_SENTRY_DSN=
 ```
 
-> **Lưu ý bảo mật**: Các khóa bí mật phía máy chủ (`GEMINI_API_KEY`, `OPENAI_COMPAT_API_KEY`, `STRIPE_SECRET_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, ...) **tuyệt đối không** đặt tiền tố `EXPO_PUBLIC_`. Hãy khai báo chúng trong `supabase/.env.local` (tham khảo `supabase/.env.example`).
+> **Security Note**: Server-side secrets (`GEMINI_API_KEY`, `OPENAI_COMPAT_API_KEY`, `STRIPE_SECRET_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, etc.) must **never** be prefixed with `EXPO_PUBLIC_`. Place them in `supabase/.env.local` (see `supabase/.env.example`).
 
-### 4. Thiết lập Backend Supabase (Cloud hoặc Local)
+### 4. Set Up the Supabase Backend (Cloud or Local)
 
-#### Cách A — Đẩy lên Supabase Cloud
+#### Option A — Deploy to Supabase Cloud
 
 ```bash
-# 1. Đăng nhập và liên kết dự án Supabase
+# 1. Authenticate and link your Supabase project
 npx supabase login
 npx supabase link --project-ref <project-ref>
 
-# 2. Đẩy toàn bộ 20 Database Migrations (schema, RLS, RPC, pgvector)
+# 2. Push all 20 Database Migrations (schema, RLS, RPCs, pgvector)
 npx supabase db push
 
-# 3. Nạp biến bí mật server cho Edge Functions
+# 3. Upload server-side secrets for Edge Functions
 npx supabase secrets set --env-file supabase/.env.local
 
-# 4. Triển khai cả 5 Edge Functions
+# 4. Deploy all 5 Edge Functions
 npx supabase functions deploy generate-questions
 npx supabase functions deploy papybot
 npx supabase functions deploy rag-ingest
@@ -153,7 +153,7 @@ npx supabase functions deploy billing-checkout
 npx supabase functions deploy delete-account
 ```
 
-#### Cách B — Chạy Supabase nội bộ bằng Docker
+#### Option B — Run Supabase Locally with Docker
 
 ```bash
 npx supabase start
@@ -161,98 +161,98 @@ npx supabase db reset
 npx supabase functions serve --env-file supabase/.env.local
 ```
 
-### 5. Khởi chạy ứng dụng (Web · iOS · Android)
+### 5. Run the App (Web · iOS · Android)
 
 ```bash
-# Mở Expo Dev Server (nhấn 'w' mở Web, 'i' mở iOS Simulator, 'a' mở Android Emulator)
+# Start Expo Dev Server (press 'w' for Web, 'i' for iOS Simulator, 'a' for Android Emulator)
 npm start
 
-# Hoặc chạy trực tiếp từng nền tảng:
+# Or launch a specific platform directly:
 npm run web
 npm run ios
 npm run android
 ```
 
-> Nếu thay đổi biến trong `.env.local`, hãy khởi động lại tiến trình Expo (`npm start -- --clear`).
+> Restart Expo (`npm start -- --clear`) whenever you modify `.env.local`.
 
-### 6. Chạy bản Production bằng Docker (Web + tùy chọn Ollama Local AI)
+### 6. Run Production Web with Docker (+ Optional Local Ollama AI)
 
-Dự án đã đóng gói sẵn multi-stage `Dockerfile` (export Expo Web tĩnh và phục vụ qua Nginx với nén `gzip`, cache immutable và `Accept-Ranges` cho video/3D):
+A multi-stage `Dockerfile` exports the Expo Web bundle and serves it via Nginx with `gzip`, immutable asset caching, and `Accept-Ranges` byte streaming:
 
 ```bash
-# Build và chạy Papyrus Web tại http://localhost:8080
+# Build and start Papyrus Web at http://localhost:8080
 docker compose up -d --build
 
-# Chạy kèm dịch vụ Ollama LLM cục bộ (cổng 11434)
+# Start with optional local Ollama LLM service (port 11434)
 docker compose --profile local-ai up -d --build
 
-# Dừng container
+# Stop containers
 docker compose down
 ```
 
-Có thể đổi cổng mặc định bằng biến `PAPYRUS_PORT=3000 docker compose up -d --build`.
+Override the default port with `PAPYRUS_PORT=3000 docker compose up -d --build`.
 
-### 7. Build cài đặt cho thiết bị di động (EAS)
+### 7. Mobile Builds (EAS)
 
 ```bash
-# Build bản Preview APK cho Android
+# Build an Android Preview APK
 npx --no-install eas build --platform android --profile preview
 
-# Build bản Production (AAB Android / IPA iOS)
+# Build Production binaries (Android AAB / iOS IPA)
 npx --no-install eas build --platform all --profile production
 ```
 
 ---
 
-## Kiểm định chất lượng & công cụ phát triển
+## Quality Gates & Asset Tooling
 
-Chạy đầy đủ bộ kiểm tra trước khi commit hoặc phát hành:
+Run the full verification suite before committing or releasing:
 
 ```bash
-# 1. Kiểm tra kiểu TypeScript nghiêm ngặt (0 lỗi)
+# 1. Strict TypeScript check (0 errors)
 npm run typecheck
 
-# 2. Kiểm tra ESLint (0 lỗi, 0 cảnh báo)
+# 2. ESLint check (0 errors, 0 warnings)
 npx eslint src --quiet
 
-# 3. Kiểm tra quy tắc Clean Architecture bằng đồ thị AST
+# 3. AST Clean Architecture boundary verification
 ./scripts/check_architecture.sh
 
-# 4. Chạy toàn bộ 43 bộ test Jest (129 tests) và test release guard
+# 4. Run all 43 Jest test suites (129 tests) and release guard tests
 npm test
 npm run test:release
 
-# 5. Xuất thử bản Web Production
+# 5. Verify production Web export
 npx --no-install expo export --platform web
 ```
 
-### Tái tạo Asset 3D (Blender) & Video Onboarding (Remotion)
+### Regenerating 3D Assets (Blender) & Onboarding Video (Remotion)
 
-- **Xuất lại mô hình 3D Splash Morph từ Blender 4.2**:
+- **Re-export the 3D Splash Morph model from Blender 4.2**:
   ```bash
   /Applications/Blender.app/Contents/MacOS/Blender -b -P scripts/blender/build_splash_morph.py
   ```
-- **Chỉnh sửa hoặc render lại Video Onboarding Ảo ảnh Thị giác**:
+- **Preview or re-render the Optical-Illusion Onboarding Video**:
   ```bash
   npm install --prefix video-onboarding
-  npm run --prefix video-onboarding studio   # Mở Remotion Studio xem trước trực quan
-  npm run --prefix video-onboarding render   # Render & nén ra assets/video/ (.mp4, .webm, .webp)
+  npm run --prefix video-onboarding studio   # Launch interactive Remotion Studio
+  npm run --prefix video-onboarding render   # Render & compress to assets/video/ (.mp4, .webm, .webp)
   ```
 
 ---
 
-## Tài liệu dự án
+## Project Documentation
 
-- [Thiết kế Giao diện UI/UX trên Figma](https://www.figma.com/design/qdGvcsHXoTJcuq2NqsK9XS/Papyrus-UI-UX-Prototype?t=wiS4ZAcDfeWtDAkV-1)
-- [Tổng quan Kiến trúc hệ thống](docs/architecture/overview.md)
-- [Báo cáo 1 — Đề xuất dự án](docs/reports/Capstone-Report-1-Proposal.md)
-- [Báo cáo 2 — Thiết kế Kiến trúc chi tiết](docs/reports/Capstone-Report-2-Architecture.md)
-- [Báo cáo 3 — Tích hợp AI, Đồng bộ Offline & Kiểm thử](docs/reports/Capstone-Report-3-AI-Testing.md)
-- [Hướng dẫn chạy & phát hành vận hành (Runbook)](docs/release/RUNBOOK.md)
-- [Hướng dẫn cài đặt trên điện thoại (iOS & Android)](docs/release/RUN-ON-PHONE.md)
+- [Papyrus UI/UX Prototype — Figma](https://www.figma.com/design/qdGvcsHXoTJcuq2NqsK9XS/Papyrus-UI-UX-Prototype?t=wiS4ZAcDfeWtDAkV-1)
+- [System Architecture Overview](docs/architecture/overview.md)
+- [Report 1 — Project Proposal](docs/reports/Capstone-Report-1-Proposal.md)
+- [Report 2 — Detailed Architecture](docs/reports/Capstone-Report-2-Architecture.md)
+- [Report 3 — AI Integration, Offline Sync & Testing](docs/reports/Capstone-Report-3-AI-Testing.md)
+- [Operations & Release Runbook](docs/release/RUNBOOK.md)
+- [Running on Physical Devices (iOS & Android)](docs/release/RUN-ON-PHONE.md)
 
 ---
 
-## Giấy phép
+## License
 
-Dự án Capstone **Papyrus** — phát triển phục vụ mục đích học thuật và trình diễn sản phẩm công nghệ giáo dục đa nền tảng.
+Academic capstone project developed for educational and EdTech product demonstration purposes.
