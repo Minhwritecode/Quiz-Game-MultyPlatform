@@ -79,3 +79,7 @@ expo-env.d.ts
 # Unity local editor cache & tutorial project
 /Setup Guide In-Editor Tutorial/
 /client/
+
+# Standalone Remotion video production studio dependencies & temp renders
+video-onboarding/node_modules/
+video-onboarding/out/

@@ -1,0 +1,20 @@
+{
+  "name": "papyrus-video-onboarding",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Standalone Remotion + Shotcraft studio for Papyrus Optical Illusion Onboarding Video",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "render": "node scripts/render_all.mjs"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.290",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "remotion": "^4.0.290"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "typescript": "^5.7.3"
+  }
+}

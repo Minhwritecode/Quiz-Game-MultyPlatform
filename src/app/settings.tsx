@@ -13,6 +13,7 @@ import { ModerationQueueModal } from '@/features/moderation/components/Moderatio
 import { useModerationStore } from '@/features/moderation/state/useModerationStore';
 import { VipCheckoutModal } from '@/features/membership/presentation/VipCheckoutModal';
 import { useMembershipStore } from '@/features/membership/state/useMembershipStore';
+import { useOnboardingStore } from '@/core/state/useOnboardingStore';
 
 function PreferenceRow({
   icon,
@@ -150,6 +151,23 @@ export default function SettingsScreen() {
             trackColor={{ false: palette.paperMuted, true: palette.indigo }}
           />
         </PreferenceRow>
+        <View style={[styles.separator, { backgroundColor: palette.paperMuted }]} />
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => useOnboardingStore.getState().openReplay()}
+        >
+          <PreferenceRow
+            icon="film-outline"
+            title={language === 'vi' ? 'Xem lại Video Giới thiệu Papyrus' : 'Replay Papyrus Intro Video'}
+            subtitle={
+              language === 'vi'
+                ? 'Hiệu ứng ảo ảnh thị giác 9.5 giây (Pain Point → AI Quiz → Battle)'
+                : '9.5s optical-illusion story (Pain Point → AI Quiz → Battle)'
+            }
+          >
+            <Badge tone="primary">{language === 'vi' ? 'Xem' : 'Play'}</Badge>
+          </PreferenceRow>
+        </Pressable>
       </Card>
 
       {/* Cloud & Data Section */}

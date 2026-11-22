@@ -1,8 +1,10 @@
 const { getSentryExpoConfig } = require('@sentry/react-native/metro');
 
 const config = getSentryExpoConfig(__dirname);
-if (!config.resolver.assetExts.includes('glb')) {
-  config.resolver.assetExts.push('glb', 'gltf');
+for (const ext of ['glb', 'gltf', 'mp4', 'webm', 'webp']) {
+  if (!config.resolver.assetExts.includes(ext)) {
+    config.resolver.assetExts.push(ext);
+  }
 }
 
 module.exports = config;

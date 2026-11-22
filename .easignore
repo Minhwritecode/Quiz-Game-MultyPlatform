@@ -27,3 +27,5 @@ play-service-account.json
 .local-signing/
 .worktrees/
 artifacts/
+
+video-onboarding/

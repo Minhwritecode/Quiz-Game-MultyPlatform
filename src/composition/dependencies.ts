@@ -23,6 +23,7 @@ import { isGenerationConfigured, requestGeneratedQuestions } from '@/features/qu
 import { generationJobs } from '@/features/quiz-generation/data/generationJobStorage';
 import { generationNetworkAvailable, observeGenerationWake } from '@/features/quiz-generation/data/connectivity';
 import { exportStudyPdfReport } from '@/features/study/data/sessionPdf';
+import { onboardingRepository } from '@/features/onboarding/data/onboardingRepository';
 
 export const dependencies = {
   assistant,
@@ -49,4 +50,5 @@ export const dependencies = {
   auth: authRepository,
   updateDisplayName,
   cloudSets,
+  onboarding: onboardingRepository,
 };

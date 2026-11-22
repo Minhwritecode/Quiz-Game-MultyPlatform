@@ -8,10 +8,12 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { dependencies } from '@/composition/dependencies';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { useAuthStore } from '@/core/state/useAuthStore';
+import { useOnboardingStore } from '@/core/state/useOnboardingStore';
 import { wrapRoot, reportFailure } from '@/core/observability/monitoring';
 import { ReleaseGate } from '@/shared/ReleaseGate';
 import { Button, Card, Screen } from '@/shared/ui';
 import { PapyrusSplash3D } from '@/shared/visuals/PapyrusSplash3D';
+import { OnboardingIllusionModal } from '@/features/onboarding/presentation/OnboardingIllusionModal';
 import { sfx } from '@/core/audio/sfx';
 
 export function ErrorBoundary({error,retry}:ErrorBoundaryProps) {
@@ -24,7 +26,12 @@ export function ErrorBoundary({error,retry}:ErrorBoundaryProps) {
 
 function RootLayout() {
   const router=useRouter();
-  const authScope=useAuthStore(s=>s.user?.id ?? 'guest');
+  const authUser = useAuthStore((s) => s.user);
+  const authStatus = useAuthStore((s) => s.status);
+  const authScope = authUser?.id ?? 'guest';
+  const onboardingVisible = useOnboardingStore((s) => s.visible);
+  const checkOnboardingForUser = useOnboardingStore((s) => s.checkAndTriggerForUser);
+  const dismissOnboarding = useOnboardingStore((s) => s.dismiss);
   useEffect(()=>dependencies.reminders.listen(()=>router.push('/sets')),[router]);
   const systemScheme = useColorScheme();
   const theme=usePapyrusStore(s=>s.theme);
@@ -52,6 +59,12 @@ function RootLayout() {
     void bootstrapAuth(dependencies.auth).catch(error=>reportFailure(error,'startup'));
   }, [bootstrapAuth]);
 
+  // Show the First-Time Optical Illusion Onboarding Video once after a new user signs in (and after Splash finishes)
+  useEffect(() => {
+    if (!splashDone || authStatus !== 'authenticated' || !authUser?.id) return;
+    void checkOnboardingForUser(authUser.id);
+  }, [authStatus, authUser?.id, checkOnboardingForUser, splashDone]);
+
   return (
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
@@ -64,6 +77,11 @@ function RootLayout() {
               onFinish={() => setSplashDone(true)}
             />
           ) : null}
+          <OnboardingIllusionModal
+            visible={splashDone && onboardingVisible}
+            reduceMotion={reduceMotion || systemMotion}
+            onClose={dismissOnboarding}
+          />
         </View>
       </QueryClientProvider>
     </SafeAreaProvider>
