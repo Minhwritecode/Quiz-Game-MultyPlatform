@@ -74,9 +74,10 @@ select pg_temp.assert_true(
 
 -- Disconnected & forfeited user 1 cannot heartbeat back in
 select set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111201', true);
+select set_config('app.test_room_id', :'room_id', true);
 do $$ begin
   begin
-    perform public.battle_heartbeat(:'room_id', true);
+    perform public.battle_heartbeat(current_setting('app.test_room_id')::uuid, true);
     raise exception 'forfeited player was allowed to heartbeat';
   exception when object_not_in_prerequisite_state then null;
   end;
