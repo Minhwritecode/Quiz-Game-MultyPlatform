@@ -3,7 +3,7 @@ import { dependencies } from '@/composition/dependencies';
 import type { ChatMessage, Conversation, PdfAttachment } from '../domain/repository';
 import * as Crypto from 'expo-crypto';
 import { useAuthStore } from '@/core/state/useAuthStore';
-import { useEffect, useRef, useState, type ElementRef } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type ElementRef } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,7 +21,7 @@ const guides = [
 
 const getNow = () => Date.now();
 
-function ActionIcon({
+const ActionIcon = memo(function ActionIcon({
   name,
   label,
   onPress,
@@ -47,7 +47,7 @@ function ActionIcon({
       <Ionicons name={name} size={23} color={color} />
     </Pressable>
   );
-}
+});
 
 export function AssistantWidget() {
   const palette = usePalette();
@@ -151,7 +151,7 @@ export function AssistantWidget() {
     }
   };
 
-  const context = guides.find(guide => path.startsWith(guide.match));
+  const context = useMemo(() => guides.find(guide => path.startsWith(guide.match)), [path]);
   const close = () => setOpen(false);
 
   const pick = async () => {
@@ -232,43 +232,45 @@ export function AssistantWidget() {
 
   const hideFab = path.startsWith('/games/') || path.startsWith('/multiplayer/play/');
   return <>
-    {!open && !hideFab && <Pressable accessibilityRole="button" accessibilityLabel="Mở Papybot" onPress={() => setOpen(true)} style={{ position: 'absolute', right: 20, bottom: insets.bottom + 88, width: 56, height: 56, borderRadius: 28, backgroundColor: palette.indigo, alignItems: 'center', justifyContent: 'center', elevation: 6 }}><Ionicons name="chatbubbles" size={27} color="#fff" /></Pressable>}
-    <Modal visible={open} transparent animationType="none" onRequestClose={close} onDismiss={close}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, justifyContent: 'flex-end', alignItems: desktop ? 'flex-end' : 'stretch' }}>
-        <Pressable accessibilityLabel="Đóng Papybot" accessibilityRole="button" onPress={close} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#00000033' }} />
-        <View accessibilityViewIsModal style={{ width: desktop ? 420 : '100%', height: Math.min(height - insets.top - 20, 680), marginRight: desktop ? 24 : 0, marginBottom: desktop ? 24 : 0, paddingBottom: desktop ? 0 : insets.bottom, backgroundColor: palette.paper, borderRadius: 24, overflow: 'hidden' }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', paddingLeft: 20, borderBottomWidth: 1, borderColor: palette.paperMuted }}>
-            <View style={{ flex: 1 }}><Text accessibilityRole="header" style={{ color: palette.ink, fontSize: 19, fontWeight: '700' }}>Papybot</Text><Text style={{ color: palette.inkMuted, fontSize: 12 }}>Học tập · Hướng dẫn · Tài liệu</Text></View>
-            <ActionIcon name="close" label="Đóng Papybot" onPress={close} syncing={syncing} color={palette.indigo} />
-          </View>
-          <ScrollView ref={scroll} onContentSizeChange={() => { if (!historyVisible) scroll.current?.scrollToEnd({ animated: false }); }} keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20, gap: 12 }}>
-            <Text style={{ color: palette.inkMuted }}>Bạn đang ở: {context?.title ?? (path === '/' ? 'Trang chủ' : 'Papyrus')}. Tên màn hình được dùng làm ngữ cảnh khi bạn gửi câu hỏi.</Text>
-            <View style={{ padding: 14, borderRadius: 16, backgroundColor: palette.indigoTint }}><Text style={{ color: palette.indigoDeep }}>Câu hỏi, lịch sử trong phiên và nội dung đính kèm sẽ được gửi tới AI. Hướng dẫn có sẵn dùng được khi chưa đăng nhập.</Text></View>
-            {!messages.length && !historyVisible && [...(context ? [context] : []), ...guides.filter(item => item !== context)].map(item => <Pressable key={item.match} accessibilityRole="button" onPress={() => setHelp(item)} style={{ padding: 14, borderWidth: 1, borderColor: palette.paperMuted, borderRadius: 14 }}><Text style={{ color: palette.ink }}>{item.title}</Text></Pressable>)}
-            {help && <View style={{ padding: 16, backgroundColor: palette.paperRaised, borderRadius: 16 }}><Text style={{ color: palette.ink, fontWeight: '700' }}>Hướng dẫn có sẵn · {help.title}</Text><Text selectable style={{ color: palette.ink, lineHeight: 23, marginTop: 8 }}>{help.text}</Text></View>}
-            {historyVisible && <View style={{ gap: 8 }}><Text style={{ color: palette.ink }}>Lịch sử trên thiết bị · tối đa 20 hội thoại</Text>{conversations.length === 0 && <Text style={{ color: palette.inkMuted }}>Chưa có hội thoại đã lưu.</Text>}{conversations.map(c => <View key={c.id} style={{ flexDirection: 'row', alignItems: 'center' }}><Pressable accessibilityRole="button" disabled={busy || picking || syncing} onPress={() => { setConversationId(c.id); setMessages(c.messages); setDraft(''); setDocumentText(undefined); setPdf(null); setPartial(''); setNotice(''); setHistoryVisible(false); }} style={{ flex: 1, padding: 12 }}><Text numberOfLines={2} style={{ color: palette.ink }}>{c.messages[0]?.content || 'Hội thoại'}</Text></Pressable><ActionIcon name="trash-outline" label="Xóa hội thoại" onPress={() => deleteConversation(c.id)} disabled={busy || picking} syncing={syncing} color={palette.indigo} /></View>)}</View>}
-            {messages.map((m, i) => <View key={i} style={{ padding: 12, borderRadius: 12, backgroundColor: palette.paperRaised }}><Text style={{ color: palette.indigo, fontWeight: '700' }}>{m.role === 'user' ? 'Bạn' : 'Papybot'}</Text><Text selectable style={{ color: palette.ink, lineHeight: 23 }}>{m.content}</Text></View>)}
-            {busy && !!partial && <Text selectable style={{ color: palette.ink, lineHeight: 23 }}>{partial}</Text>}
-            {busy && <Text accessibilityLiveRegion="polite" style={{ color: palette.ink }}>Papybot đang trả lời…</Text>}
-            {!!notice && <Text accessibilityLiveRegion="polite" style={{ color: palette.inkMuted }}>{notice}</Text>}
-          </ScrollView>
-          {pdf && <View style={{ flexDirection: 'row', alignItems: 'center', paddingLeft: 16 }}><Text numberOfLines={1} style={{ flex: 1, color: palette.ink }}>{pdf.name}</Text><ActionIcon name="close" label="Bỏ PDF" onPress={() => setPdf(null)} disabled={busy || picking} syncing={syncing} color={palette.indigo} /></View>}
-          <View style={{ flexDirection: 'row' }}>
-            <ActionIcon name="cloud-outline" label={syncing ? 'Đang đồng bộ' : 'Đồng bộ lịch sử'} onPress={() => void sync()} disabled={busy || picking || !hydrated || !userId} syncing={syncing} color={palette.indigo} />
-            <ActionIcon name="time-outline" label="Lịch sử hội thoại" onPress={() => setHistoryVisible(v => !v)} disabled={busy || picking || !hydrated} syncing={syncing} color={palette.indigo} />
-            {busy && <ActionIcon name="stop-circle" label="Hủy trả lời" onPress={cancelReply} syncing={syncing} color={palette.indigo} />}
-            {!busy && <ActionIcon name="refresh" label="Cuộc trò chuyện mới" onPress={resetConversation} disabled={picking || !hydrated} syncing={syncing} color={palette.indigo} />}
-            {documentText && <ActionIcon name="document-text" label="Bỏ tài liệu đã đọc" onPress={() => setDocumentText(undefined)} disabled={busy} syncing={syncing} color={palette.indigo} />}
-          </View>
+    {!open && !hideFab && <Pressable hitSlop={6} accessibilityRole="button" accessibilityLabel="Mở Papybot" onPress={() => setOpen(true)} style={{ position: 'absolute', right: 20, bottom: insets.bottom + 88, width: 56, height: 56, borderRadius: 28, backgroundColor: palette.indigo, alignItems: 'center', justifyContent: 'center', elevation: 6 }}><Ionicons name="chatbubbles" size={27} color="#fff" /></Pressable>}
+    {open ? (
+      <Modal visible transparent animationType="none" onRequestClose={close} onDismiss={close}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, justifyContent: 'flex-end', alignItems: desktop ? 'flex-end' : 'stretch' }}>
+          <Pressable accessibilityLabel="Đóng Papybot" accessibilityRole="button" onPress={close} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#00000033' }} />
+          <View accessibilityViewIsModal style={{ width: desktop ? 420 : '100%', height: Math.min(height - insets.top - 20, 680), marginRight: desktop ? 24 : 0, marginBottom: desktop ? 24 : 0, paddingBottom: desktop ? 0 : insets.bottom, backgroundColor: palette.paper, borderRadius: 24, overflow: 'hidden' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingLeft: 20, borderBottomWidth: 1, borderColor: palette.paperMuted }}>
+              <View style={{ flex: 1 }}><Text accessibilityRole="header" style={{ color: palette.ink, fontSize: 19, fontWeight: '700' }}>Papybot</Text><Text style={{ color: palette.inkMuted, fontSize: 12 }}>Học tập · Hướng dẫn · Tài liệu</Text></View>
+              <ActionIcon name="close" label="Đóng Papybot" onPress={close} syncing={syncing} color={palette.indigo} />
+            </View>
+            <ScrollView ref={scroll} onContentSizeChange={() => { if (!historyVisible) scroll.current?.scrollToEnd({ animated: false }); }} keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20, gap: 12 }}>
+              <Text style={{ color: palette.inkMuted }}>Bạn đang ở: {context?.title ?? (path === '/' ? 'Trang chủ' : 'Papyrus')}. Tên màn hình được dùng làm ngữ cảnh khi bạn gửi câu hỏi.</Text>
+              <View style={{ padding: 14, borderRadius: 16, backgroundColor: palette.indigoTint }}><Text style={{ color: palette.indigoDeep }}>Câu hỏi, lịch sử trong phiên và nội dung đính kèm sẽ được gửi tới AI. Hướng dẫn có sẵn dùng được khi chưa đăng nhập.</Text></View>
+              {!messages.length && !historyVisible && [...(context ? [context] : []), ...guides.filter(item => item !== context)].map(item => <Pressable key={item.match} accessibilityRole="button" onPress={() => setHelp(item)} style={{ padding: 14, borderWidth: 1, borderColor: palette.paperMuted, borderRadius: 14 }}><Text style={{ color: palette.ink }}>{item.title}</Text></Pressable>)}
+              {help && <View style={{ padding: 16, backgroundColor: palette.paperRaised, borderRadius: 16 }}><Text style={{ color: palette.ink, fontWeight: '700' }}>Hướng dẫn có sẵn · {help.title}</Text><Text selectable style={{ color: palette.ink, lineHeight: 23, marginTop: 8 }}>{help.text}</Text></View>}
+              {historyVisible && <View style={{ gap: 8 }}><Text style={{ color: palette.ink }}>Lịch sử trên thiết bị · tối đa 20 hội thoại</Text>{conversations.length === 0 && <Text style={{ color: palette.inkMuted }}>Chưa có hội thoại đã lưu.</Text>}{conversations.map(c => <View key={c.id} style={{ flexDirection: 'row', alignItems: 'center' }}><Pressable accessibilityRole="button" disabled={busy || picking || syncing} onPress={() => { setConversationId(c.id); setMessages(c.messages); setDraft(''); setDocumentText(undefined); setPdf(null); setPartial(''); setNotice(''); setHistoryVisible(false); }} style={{ flex: 1, padding: 12 }}><Text numberOfLines={2} style={{ color: palette.ink }}>{c.messages[0]?.content || 'Hội thoại'}</Text></Pressable><ActionIcon name="trash-outline" label="Xóa hội thoại" onPress={() => deleteConversation(c.id)} disabled={busy || picking} syncing={syncing} color={palette.indigo} /></View>)}</View>}
+              {messages.map((m, i) => <View key={i} style={{ padding: 12, borderRadius: 12, backgroundColor: palette.paperRaised }}><Text style={{ color: palette.indigo, fontWeight: '700' }}>{m.role === 'user' ? 'Bạn' : 'Papybot'}</Text><Text selectable style={{ color: palette.ink, lineHeight: 23 }}>{m.content}</Text></View>)}
+              {busy && !!partial && <Text selectable style={{ color: palette.ink, lineHeight: 23 }}>{partial}</Text>}
+              {busy && <Text accessibilityLiveRegion="polite" style={{ color: palette.ink }}>Papybot đang trả lời…</Text>}
+              {!!notice && <Text accessibilityLiveRegion="polite" style={{ color: palette.inkMuted }}>{notice}</Text>}
+            </ScrollView>
+            {pdf && <View style={{ flexDirection: 'row', alignItems: 'center', paddingLeft: 16 }}><Text numberOfLines={1} style={{ flex: 1, color: palette.ink }}>{pdf.name}</Text><ActionIcon name="close" label="Bỏ PDF" onPress={() => setPdf(null)} disabled={busy || picking} syncing={syncing} color={palette.indigo} /></View>}
+            <View style={{ flexDirection: 'row' }}>
+              <ActionIcon name="cloud-outline" label={syncing ? 'Đang đồng bộ' : 'Đồng bộ lịch sử'} onPress={() => void sync()} disabled={busy || picking || !hydrated || !userId} syncing={syncing} color={palette.indigo} />
+              <ActionIcon name="time-outline" label="Lịch sử hội thoại" onPress={() => setHistoryVisible(v => !v)} disabled={busy || picking || !hydrated} syncing={syncing} color={palette.indigo} />
+              {busy && <ActionIcon name="stop-circle" label="Hủy trả lời" onPress={cancelReply} syncing={syncing} color={palette.indigo} />}
+              {!busy && <ActionIcon name="refresh" label="Cuộc trò chuyện mới" onPress={resetConversation} disabled={picking || !hydrated} syncing={syncing} color={palette.indigo} />}
+              {documentText && <ActionIcon name="document-text" label="Bỏ tài liệu đã đọc" onPress={() => setDocumentText(undefined)} disabled={busy} syncing={syncing} color={palette.indigo} />}
+            </View>
 
-          <View style={{ flexDirection: 'row', alignItems: 'flex-end', borderTopWidth: 1, borderColor: palette.paperMuted, padding: 8 }}>
-            <ActionIcon name="document-outline" label="Đính kèm PDF" onPress={() => void attachPdf()} disabled={picking || busy} syncing={syncing} color={palette.indigo} />
-            <ActionIcon name="attach" label="Đọc tài liệu TXT hoặc DOCX" onPress={() => void pick()} disabled={picking || busy} syncing={syncing} color={palette.indigo} />
-            <TextInput accessibilityLabel="Câu hỏi cho Papybot" placeholder="Hỏi về app hoặc bài học…" placeholderTextColor={palette.inkMuted} editable={!busy && !syncing && hydrated} value={draft} onChangeText={setDraft} multiline maxLength={4000} style={{ flex: 1, minHeight: 48, maxHeight: 120, padding: 12, color: palette.ink }} />
-            <ActionIcon name="send" label={notice ? 'Thử gửi lại câu hỏi' : 'Gửi câu hỏi'} onPress={() => void send()} disabled={!draft.trim() || busy || picking || !hydrated} syncing={syncing} color={palette.indigo} />
+            <View style={{ flexDirection: 'row', alignItems: 'flex-end', borderTopWidth: 1, borderColor: palette.paperMuted, padding: 8 }}>
+              <ActionIcon name="document-outline" label="Đính kèm PDF" onPress={() => void attachPdf()} disabled={picking || busy} syncing={syncing} color={palette.indigo} />
+              <ActionIcon name="attach" label="Đọc tài liệu TXT hoặc DOCX" onPress={() => void pick()} disabled={picking || busy} syncing={syncing} color={palette.indigo} />
+              <TextInput accessibilityLabel="Câu hỏi cho Papybot" placeholder="Hỏi về app hoặc bài học…" placeholderTextColor={palette.inkMuted} editable={!busy && !syncing && hydrated} value={draft} onChangeText={setDraft} multiline maxLength={4000} style={{ flex: 1, minHeight: 48, maxHeight: 120, padding: 12, color: palette.ink }} />
+              <ActionIcon name="send" label={notice ? 'Thử gửi lại câu hỏi' : 'Gửi câu hỏi'} onPress={() => void send()} disabled={!draft.trim() || busy || picking || !hydrated} syncing={syncing} color={palette.indigo} />
+            </View>
           </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
+        </KeyboardAvoidingView>
+      </Modal>
+    ) : null}
   </>;
 }

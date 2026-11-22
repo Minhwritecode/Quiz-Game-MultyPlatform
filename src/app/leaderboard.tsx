@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import {
   ActivityIndicator,
   AppState,
   FlatList,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -47,7 +48,7 @@ const TOPIC_CHIPS: { key: LeaderboardTopic; label: string }[] = [
 
 const PAGE_SIZE = 5;
 
-function PlayerRow({ player }: { player: LeaderboardEntry }) {
+const PlayerRow = memo(function PlayerRow({ player }: { player: LeaderboardEntry }) {
   const palette = usePalette();
   const { t } = useI18n();
   const isTop1 = player.rank === 1;
@@ -89,7 +90,7 @@ function PlayerRow({ player }: { player: LeaderboardEntry }) {
       </Text>
     </Card>
   );
-}
+});
 
 export default function LeaderboardScreen() {
   const router = useRouter();
@@ -193,17 +194,29 @@ export default function LeaderboardScreen() {
     }, [handleRefresh])
   );
 
-  const totalPages = Math.max(1, Math.ceil(entries.length / PAGE_SIZE));
+  const totalPages = useMemo(() => Math.max(1, Math.ceil(entries.length / PAGE_SIZE)), [entries.length]);
   const safePage = Math.min(page, totalPages - 1);
-  const paged = entries.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
-  const myEntry = entries.find((p) => p.isMe);
+  const paged = useMemo(
+    () => entries.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE),
+    [entries, safePage]
+  );
+  const myEntry = useMemo(() => entries.find((p) => p.isMe), [entries]);
+  const keyExtractor = useCallback((item: LeaderboardEntry) => `${item.id}-${item.rank}`, []);
+  const renderItem = useCallback(
+    ({ item }: { item: LeaderboardEntry }) => <PlayerRow player={item} />,
+    []
+  );
 
   return (
     <Screen scroll={false} bottomNav>
       <FlatList
         data={loading ? [] : paged}
-        keyExtractor={(item) => `${item.id}-${item.rank}`}
+        keyExtractor={keyExtractor}
         showsVerticalScrollIndicator={false}
+        initialNumToRender={6}
+        maxToRenderPerBatch={6}
+        windowSize={5}
+        removeClippedSubviews={Platform.OS === 'android'}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => void handleRefresh()} tintColor={palette.indigo} />
         }
@@ -211,7 +224,7 @@ export default function LeaderboardScreen() {
           styles.list,
           { paddingHorizontal: spacing.lg, maxWidth: Math.min(width, 680), alignSelf: 'center', width: '100%' },
         ]}
-        renderItem={({ item }) => <PlayerRow player={item} />}
+        renderItem={renderItem}
         ListHeaderComponent={
           <>
             {/* ── Header + Live/Offline Source Indicator ── */}
@@ -238,6 +251,8 @@ export default function LeaderboardScreen() {
               ] as const).map((sc) => (
                 <Pressable
                   key={sc.key}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: scope === sc.key }}
                   onPress={() => {
                     setScope(sc.key);
                     setPage(0);
@@ -278,6 +293,8 @@ export default function LeaderboardScreen() {
               {TIME_TABS.map((tab) => (
                 <Pressable
                   key={tab.key}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: timeFilter === tab.key }}
                   onPress={() => {
                     setTimeFilter(tab.key);
                     setPage(0);
@@ -379,6 +396,8 @@ export default function LeaderboardScreen() {
               {TOPIC_CHIPS.map((chip) => (
                 <Pressable
                   key={chip.key}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: topicFilter === chip.key }}
                   onPress={() => {
                     setTopicFilter(chip.key);
                     setPage(0);
@@ -426,6 +445,9 @@ export default function LeaderboardScreen() {
           !loading && totalPages > 1 ? (
             <View style={styles.pagination}>
               <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Trang trước"
+                accessibilityState={{ disabled: safePage === 0 }}
                 onPress={() => setPage((p) => Math.max(0, p - 1))}
                 disabled={safePage === 0}
                 style={[styles.pageBtn, { opacity: safePage === 0 ? 0.4 : 1, backgroundColor: palette.paperMuted }]}
@@ -435,6 +457,9 @@ export default function LeaderboardScreen() {
               {Array.from({ length: totalPages }, (_, i) => (
                 <Pressable
                   key={i}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Trang ${i + 1}`}
+                  accessibilityState={{ selected: safePage === i }}
                   onPress={() => setPage(i)}
                   style={[
                     styles.pageBtn,
@@ -452,6 +477,9 @@ export default function LeaderboardScreen() {
                 </Pressable>
               ))}
               <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Trang sau"
+                accessibilityState={{ disabled: safePage >= totalPages - 1 }}
                 onPress={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
                 disabled={safePage >= totalPages - 1}
                 style={[

@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Modal,
@@ -43,7 +43,7 @@ interface Competitor {
 }
 
 // ─── Boss character ────────────────────────────────────────────────────────
-function BossCharacter({ hp, maxHp }: { hp: number; maxHp: number }) {
+const BossCharacter = memo(function BossCharacter({ hp, maxHp }: { hp: number; maxHp: number }) {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const shakeAnim = useRef(new Animated.Value(0)).current;
 
@@ -96,26 +96,27 @@ function BossCharacter({ hp, maxHp }: { hp: number; maxHp: number }) {
       </View>
     </View>
   );
-}
+});
 
 // ─── Knowledge Beam ────────────────────────────────────────────────────────
-function KnowledgeBeam({ visible }: { visible: boolean }) {
-  const widthAnim = useRef(new Animated.Value(0)).current;
+const KnowledgeBeam = memo(function KnowledgeBeam({ visible }: { visible: boolean }) {
+  const scaleXAnim = useRef(new Animated.Value(0)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    if (visible) {
-      widthAnim.setValue(0);
-      opacityAnim.setValue(1);
-      Animated.parallel([
-        Animated.timing(widthAnim, { toValue: 1, duration: 500, useNativeDriver: false }),
-        Animated.sequence([
-          Animated.delay(400),
-          Animated.timing(opacityAnim, { toValue: 0, duration: 300, useNativeDriver: true }),
-        ]),
-      ]).start();
-    }
-  }, [visible]);
+    if (!visible) return;
+    scaleXAnim.setValue(0.01);
+    opacityAnim.setValue(1);
+    const anim = Animated.parallel([
+      Animated.timing(scaleXAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
+      Animated.sequence([
+        Animated.delay(400),
+        Animated.timing(opacityAnim, { toValue: 0, duration: 300, useNativeDriver: true }),
+      ]),
+    ]);
+    anim.start();
+    return () => anim.stop();
+  }, [visible, scaleXAnim, opacityAnim]);
 
   if (!visible) return null;
 
@@ -123,10 +124,12 @@ function KnowledgeBeam({ visible }: { visible: boolean }) {
     <Animated.View
       style={{
         height: 4,
+        width: '100%',
         backgroundColor: CYAN,
         borderRadius: 2,
         opacity: opacityAnim,
-        width: widthAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
+        transformOrigin: 'left',
+        transform: [{ scaleX: scaleXAnim }],
         shadowColor: CYAN,
         shadowRadius: 8,
         shadowOpacity: 1,
@@ -135,21 +138,22 @@ function KnowledgeBeam({ visible }: { visible: boolean }) {
       }}
     />
   );
-}
+});
 
 // ─── Crystal Heart ─────────────────────────────────────────────────────────
-function CrystalHeart({ alive, breaking }: { alive: boolean; breaking: boolean }) {
+const CrystalHeart = memo(function CrystalHeart({ alive, breaking }: { alive: boolean; breaking: boolean }) {
   const breakAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    if (breaking) {
-      Animated.sequence([
-        Animated.timing(breakAnim, { toValue: 1.3, duration: 100, useNativeDriver: true }),
-        Animated.timing(breakAnim, { toValue: 0.6, duration: 200, useNativeDriver: true }),
-        Animated.timing(breakAnim, { toValue: 1, duration: 100, useNativeDriver: true }),
-      ]).start();
-    }
-  }, [breaking]);
+    if (!breaking) return;
+    const anim = Animated.sequence([
+      Animated.timing(breakAnim, { toValue: 1.3, duration: 100, useNativeDriver: true }),
+      Animated.timing(breakAnim, { toValue: 0.6, duration: 200, useNativeDriver: true }),
+      Animated.timing(breakAnim, { toValue: 1, duration: 100, useNativeDriver: true }),
+    ]);
+    anim.start();
+    return () => anim.stop();
+  }, [breaking, breakAnim]);
 
   return (
     <Animated.Text
@@ -162,10 +166,10 @@ function CrystalHeart({ alive, breaking }: { alive: boolean; breaking: boolean }
       {alive ? '❤️‍🔥' : '🩶'}
     </Animated.Text>
   );
-}
+});
 
 // ─── Timer Orb ─────────────────────────────────────────────────────────────
-function TimerOrb({ seconds, maxSeconds = 12 }: { seconds: number; maxSeconds?: number }) {
+const TimerOrb = memo(function TimerOrb({ seconds, maxSeconds = 12 }: { seconds: number; maxSeconds?: number }) {
   const ratio = seconds / maxSeconds;
   const orbColor =
     ratio > 0.5 ? GOLD :
@@ -173,19 +177,25 @@ function TimerOrb({ seconds, maxSeconds = 12 }: { seconds: number; maxSeconds?: 
     '#EF4444';
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const isUrgent = seconds <= 3;
 
   useEffect(() => {
-    if (seconds <= 3) {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, { toValue: 1.2, duration: 300, useNativeDriver: true }),
-          Animated.timing(pulseAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
-        ])
-      ).start();
-    } else {
+    if (!isUrgent) {
       pulseAnim.setValue(1);
+      return;
     }
-  }, [seconds <= 3]);
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1.2, duration: 300, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => {
+      loop.stop();
+      pulseAnim.setValue(1);
+    };
+  }, [isUrgent, pulseAnim]);
 
   const orbSize = 20 + ratio * 20;
 
@@ -208,7 +218,7 @@ function TimerOrb({ seconds, maxSeconds = 12 }: { seconds: number; maxSeconds?: 
       <Text style={{ color: '#fff', fontWeight: '900', fontSize: 10 }}>{seconds}</Text>
     </Animated.View>
   );
-}
+});
 
 // ─── Main Screen ───────────────────────────────────────────────────────────
 export default function SurvivalGameScreen() {
@@ -264,12 +274,30 @@ export default function SurvivalGameScreen() {
 
   const timerAnim = useRef(new Animated.Value(1)).current;
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timeoutsRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+
+  const clearScheduledTimeouts = useCallback(() => {
+    timeoutsRef.current.forEach((id) => clearTimeout(id));
+    timeoutsRef.current = [];
+  }, []);
+
+  const scheduleTimeout = useCallback((fn: () => void, ms: number) => {
+    const id = setTimeout(() => {
+      timeoutsRef.current = timeoutsRef.current.filter((item) => item !== id);
+      fn();
+    }, ms);
+    timeoutsRef.current.push(id);
+    return id;
+  }, []);
+
+  useEffect(() => () => clearScheduledTimeouts(), [clearScheduledTimeouts]);
 
   const currentQuestion = questions[questionIndex];
   const userPlayer = competitors.find((c) => c.id === 'user');
 
   // Start / Restart Game
   const startNewGame = () => {
+    clearScheduledTimeouts();
     setQuestionIndex(0);
     setSelectedOption(null);
     setIsAnswerLocked(false);
@@ -301,11 +329,12 @@ export default function SurvivalGameScreen() {
     setSecondsLeft(12);
     timerAnim.setValue(1);
 
-    Animated.timing(timerAnim, {
+    const barAnim = Animated.timing(timerAnim, {
       toValue: 0,
       duration: 12000,
-      useNativeDriver: false,
-    }).start();
+      useNativeDriver: true,
+    });
+    barAnim.start();
 
     if (timerRef.current) clearInterval(timerRef.current);
 
@@ -321,6 +350,7 @@ export default function SurvivalGameScreen() {
     }, 1000);
 
     return () => {
+      barAnim.stop();
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [questionIndex, isGameOver, currentQuestion]);
@@ -353,8 +383,8 @@ export default function SurvivalGameScreen() {
       setCharacterAction('attack');
       // Trigger beam and particles
       setBeamVisible(false);
-      setTimeout(() => setBeamVisible(true), 50);
-      setTimeout(() => setBeamVisible(false), 700);
+      scheduleTimeout(() => setBeamVisible(true), 50);
+      scheduleTimeout(() => setBeamVisible(false), 700);
       setParticleTrigger((t) => t + 1);
       // Boss takes damage
       setBossHp((hp) => Math.max(0, hp - 1));
@@ -370,7 +400,7 @@ export default function SurvivalGameScreen() {
       // Break a heart
       const curLives = userPlayer?.lives ?? 3;
       setBreakingHeart(curLives - 1);
-      setTimeout(() => setBreakingHeart(null), 500);
+      scheduleTimeout(() => setBreakingHeart(null), 500);
     }
 
     // Resolve AI Bots responses
@@ -410,7 +440,7 @@ export default function SurvivalGameScreen() {
 
     setRoundsSurvived((r) => r + 1);
 
-    setTimeout(() => {
+    scheduleTimeout(() => {
       if (updatedUser.lives <= 0) {
         setIsUserKnockedOut(true);
         setIsGameOver(true);
@@ -502,17 +532,16 @@ export default function SurvivalGameScreen() {
               </View>
             </View>
 
-            {/* Animated Countdown Bar */}
+            {/* Animated Countdown Bar (GPU native-driver scaleX) */}
             <View style={styles.progressBarTrack}>
               <Animated.View
                 style={[
                   styles.progressBarFill,
                   {
                     backgroundColor: timerColor,
-                    width: timerAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: ['0%', '100%'],
-                    }),
+                    width: '100%',
+                    transformOrigin: 'left',
+                    transform: [{ scaleX: timerAnim }],
                     shadowColor: timerColor,
                     shadowRadius: 6,
                     shadowOpacity: 0.8,

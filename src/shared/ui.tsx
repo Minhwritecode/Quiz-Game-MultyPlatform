@@ -1,8 +1,8 @@
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, usePathname } from 'expo-router';
-import type { PropsWithChildren, ReactNode } from 'react';
-import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, View, useColorScheme, useWindowDimensions } from 'react-native';
+import { memo, useMemo, type PropsWithChildren, type ReactNode } from 'react';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View, useColorScheme, useWindowDimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, palettes, radii, shadows, spacing, typography } from '@/core/theme/tokens';
 import { useI18n } from '@/core/i18n';
@@ -56,21 +56,21 @@ export function Screen({ children, scroll = true, bottomNav = false, contentStyl
   );
 }
 
-export function TopBar({ title, onBack, action }: { title: string; onBack?: () => void; action?: ReactNode }) {
+export const TopBar = memo(function TopBar({ title, onBack, action }: { title: string; onBack?: () => void; action?: ReactNode }) {
   const palette = usePalette();
   const router = useRouter();
   return (
     <View style={styles.topBar}>
-      <Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={onBack ?? (() => router.back())} style={styles.iconButton}>
+      <Pressable hitSlop={8} accessibilityRole="button" accessibilityLabel="Go back" onPress={onBack ?? (() => router.back())} style={styles.iconButton}>
         <Ionicons name="arrow-back" size={22} color={palette.ink} />
       </Pressable>
       <Text style={[typography.title, { color: palette.ink, flex: 1 }]} numberOfLines={1}>{title}</Text>
       <View style={styles.topAction}>{action}</View>
     </View>
   );
-}
+});
 
-export function BrandMark({ size = 46 }: { size?: number }) {
+export const BrandMark = memo(function BrandMark({ size = 46 }: { size?: number }) {
   const iconSize = Math.round(size * 0.5);
   const badgeSize = Math.max(12, Math.round(size * 0.28));
   return (
@@ -110,7 +110,7 @@ export function BrandMark({ size = 46 }: { size?: number }) {
       </View>
     </View>
   );
-}
+});
 
 export function Eyebrow({ children }: { children: ReactNode }) {
   const palette = usePalette();
@@ -189,7 +189,7 @@ export function Button({
   );
 }
 
-export function ProgressBar({ progress, tone = 'primary' }: { progress: number; tone?: 'primary' | 'success' | 'fire' | 'reward' }) {
+export const ProgressBar = memo(function ProgressBar({ progress, tone = 'primary' }: { progress: number; tone?: 'primary' | 'success' | 'fire' | 'reward' }) {
   const palette = usePalette();
   const fillColors = {
     primary: palette.indigo,
@@ -199,13 +199,17 @@ export function ProgressBar({ progress, tone = 'primary' }: { progress: number; 
   };
   const pct = Math.min(100, Math.max(0, Math.round(progress * 100)));
   return (
-    <View style={[styles.progressTrack, { backgroundColor: palette.paperMuted }]}>
+    <View
+      accessibilityRole="progressbar"
+      accessibilityValue={{ min: 0, max: 100, now: pct }}
+      style={[styles.progressTrack, { backgroundColor: palette.paperMuted }]}
+    >
       <View style={[styles.progressFill, { width: `${pct}%`, backgroundColor: fillColors[tone] }]} />
     </View>
   );
-}
+});
 
-export function Badge({ children, tone = 'neutral' }: { children: ReactNode; tone?: 'neutral' | 'success' | 'reward' | 'danger' | 'primary' | 'fire' }) {
+export const Badge = memo(function Badge({ children, tone = 'neutral' }: { children: ReactNode; tone?: 'neutral' | 'success' | 'reward' | 'danger' | 'primary' | 'fire' }) {
   const palette = usePalette();
   const bg = {
     neutral: palette.paperMuted,
@@ -228,14 +232,14 @@ export function Badge({ children, tone = 'neutral' }: { children: ReactNode; ton
       <Text style={[typography.label, { color: fg, fontSize: 11 }]}>{children}</Text>
     </View>
   );
-}
+});
 
 export function SectionHeading({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) {
   const palette = usePalette();
-  return <View style={styles.sectionHeading}><Text style={[typography.title, { color: palette.ink }]}>{title}</Text>{action && <Pressable onPress={onAction}><Text style={[typography.caption, { color: palette.indigo, fontWeight: '800' }]}>{action}</Text></Pressable>}</View>;
+  return <View style={styles.sectionHeading}><Text style={[typography.title, { color: palette.ink }]}>{title}</Text>{action && <Pressable hitSlop={8} accessibilityRole="button" onPress={onAction}><Text style={[typography.caption, { color: palette.indigo, fontWeight: '800' }]}>{action}</Text></Pressable>}</View>;
 }
 
-export function StatCard({ value, label, icon, tone = 'primary' }: { value: string; label: string; icon: IconName; tone?: 'primary' | 'success' | 'reward' | 'fire' }) {
+export const StatCard = memo(function StatCard({ value, label, icon, tone = 'primary' }: { value: string; label: string; icon: IconName; tone?: 'primary' | 'success' | 'reward' | 'fire' }) {
   const palette = usePalette();
   const toneColor = { primary: palette.indigo, success: palette.mint, reward: palette.gold, fire: palette.fire }[tone];
   return (
@@ -245,31 +249,51 @@ export function StatCard({ value, label, icon, tone = 'primary' }: { value: stri
       <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>{label}</Text>
     </Card>
   );
-}
+});
 
-export function EmptyState({ icon, title, message }: { icon: IconName; title: string; message: string }) {
+export const EmptyState = memo(function EmptyState({ icon, title, message }: { icon: IconName; title: string; message: string }) {
   const palette = usePalette();
   return <Card style={styles.emptyState}><Ionicons name={icon} size={34} color={palette.indigo} /><Text style={[typography.title, { color: palette.ink, marginTop: spacing.md }]}>{title}</Text><Text style={[typography.body, { color: palette.inkMuted, textAlign: 'center', marginTop: spacing.sm }]}>{message}</Text></Card>;
-}
+});
 
-export function BottomNav() {
+export const BottomNav = memo(function BottomNav() {
   const router = useRouter();
   const pathname = usePathname();
   const palette = usePalette();
+  const insets = useSafeAreaInsets();
   const { t } = useI18n();
-  const items: Array<{ route: '/' | '/sets' | '/battle' | '/leaderboard' | '/settings'; label: string; icon: IconName }> = [
-    { route: '/', label: t.nav.home, icon: 'home-outline' },
-    { route: '/sets', label: t.nav.library, icon: 'library-outline' },
-    { route: '/battle', label: t.nav.battle, icon: 'game-controller-outline' },
-    { route: '/leaderboard', label: t.nav.rank, icon: 'trophy-outline' },
-    { route: '/settings', label: t.nav.settings, icon: 'settings-outline' },
-  ];
+  const items = useMemo<Array<{ route: '/' | '/sets' | '/battle' | '/leaderboard' | '/settings'; label: string; icon: IconName }>>(
+    () => [
+      { route: '/', label: t.nav.home, icon: 'home-outline' },
+      { route: '/sets', label: t.nav.library, icon: 'library-outline' },
+      { route: '/battle', label: t.nav.battle, icon: 'game-controller-outline' },
+      { route: '/leaderboard', label: t.nav.rank, icon: 'trophy-outline' },
+      { route: '/settings', label: t.nav.settings, icon: 'settings-outline' },
+    ],
+    [t.nav.home, t.nav.library, t.nav.battle, t.nav.rank, t.nav.settings]
+  );
   return (
-    <View style={[styles.bottomNav, { backgroundColor: palette.paperRaised, borderColor: palette.paperMuted }]}>
+    <View
+      style={[
+        styles.bottomNav,
+        {
+          backgroundColor: palette.paperRaised,
+          borderColor: palette.paperMuted,
+          bottom: Math.max(spacing.md, insets.bottom + 8),
+        },
+      ]}
+    >
       {items.map((item) => {
         const active = item.route === '/' ? pathname === '/' : pathname.startsWith(item.route);
         return (
-          <Pressable key={item.route} onPress={() => router.replace(item.route)} style={[styles.navItem, active ? { backgroundColor: palette.indigoTint, borderRadius: radii.sm } : undefined]}>
+          <Pressable
+            key={item.route}
+            accessibilityRole="tab"
+            accessibilityLabel={item.label}
+            accessibilityState={{ selected: active }}
+            onPress={() => router.replace(item.route)}
+            style={[styles.navItem, active ? { backgroundColor: palette.indigoTint, borderRadius: radii.sm } : undefined]}
+          >
             <Ionicons name={active ? item.icon.replace('-outline', '') as IconName : item.icon} size={22} color={active ? palette.indigo : palette.inkMuted} />
             <Text style={[typography.label, { fontSize: 10, color: active ? palette.indigo : palette.inkMuted, marginTop: 3 }]}>{item.label}</Text>
           </Pressable>
@@ -277,19 +301,22 @@ export function BottomNav() {
       })}
     </View>
   );
-}
+});
 
-export function DesktopNav() {
+export const DesktopNav = memo(function DesktopNav() {
   const router = useRouter();
   const pathname = usePathname();
   const palette = usePalette();
   const { t } = useI18n();
-  const items: Array<{ route: '/' | '/sets' | '/battle' | '/leaderboard'; label: string }> = [
-    { route: '/', label: t.nav.home },
-    { route: '/sets', label: t.nav.library },
-    { route: '/battle', label: t.nav.battle },
-    { route: '/leaderboard', label: t.nav.rank },
-  ];
+  const items = useMemo<Array<{ route: '/' | '/sets' | '/battle' | '/leaderboard'; label: string }>>(
+    () => [
+      { route: '/', label: t.nav.home },
+      { route: '/sets', label: t.nav.library },
+      { route: '/battle', label: t.nav.battle },
+      { route: '/leaderboard', label: t.nav.rank },
+    ],
+    [t.nav.home, t.nav.library, t.nav.battle, t.nav.rank]
+  );
 
   return (
     <View style={[styles.desktopNavShell, { borderBottomColor: palette.paperMuted, backgroundColor: palette.paper }]}>
@@ -329,14 +356,14 @@ export function DesktopNav() {
       </View>
     </View>
   );
-}
+});
 
-export function IconTile({ icon, tint = 'primary' }: { icon: IconName; tint?: 'primary' | 'success' | 'reward' | 'danger' | 'fire' }) {
+export const IconTile = memo(function IconTile({ icon, tint = 'primary' }: { icon: IconName; tint?: 'primary' | 'success' | 'reward' | 'danger' | 'fire' }) {
   const palette = usePalette();
   const bg = { primary: palette.indigoTint, success: palette.mintTint, reward: palette.goldTint, danger: palette.dangerTint, fire: palette.fireTint }[tint];
   const fg = { primary: palette.indigo, success: palette.mint, reward: palette.gold, danger: palette.danger, fire: palette.fire }[tint];
   return <View style={[styles.iconTile, { backgroundColor: bg }]}><Ionicons name={icon} size={22} color={fg} /></View>;
-}
+});
 
 export const uiColors = { colors, spacing, radii, typography };
 

@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Badge, BrandMark, Button, Card, IconTile, Screen, SectionHeading, StatCard, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
@@ -24,8 +24,15 @@ export default function HomeScreen() {
   const { width } = useWindowDimensions();
   const [roomCode, setRoomCode] = useState('');
   const isWide = width >= 900;
-  const totalQuestions = sets.reduce((total, set) => total + set.questions.length, 0);
-  const pendingSets = sets.filter((set) => set.syncStatus === 'pending' || set.syncStatus === 'failed').length;
+  const totalQuestions = useMemo(
+    () => sets.reduce((total, set) => total + set.questions.length, 0),
+    [sets]
+  );
+  const pendingSets = useMemo(
+    () => sets.filter((set) => set.syncStatus === 'pending' || set.syncStatus === 'failed').length,
+    [sets]
+  );
+  const recentSets = useMemo(() => sets.slice(0, 3), [sets]);
 
   const joinRoom = () => {
     const code = roomCode.trim().toUpperCase();
@@ -42,11 +49,11 @@ export default function HomeScreen() {
       <View style={styles.topHeader}>
         <View style={styles.brandIdentity}>
           <BrandMark size={44} />
-          <View>
-            <Text style={[typography.title, { color: palette.ink }]}>
+          <View style={styles.brandIdentityCopy}>
+            <Text style={[typography.title, { color: palette.ink }]} numberOfLines={1}>
               {user?.displayName ? `${t.home.greeting} ${user.displayName}` : 'Papyrus'}
             </Text>
-            <Text style={[typography.caption, { color: palette.inkMuted }]}>{t.home.subtitle}</Text>
+            <Text style={[typography.caption, { color: palette.inkMuted }]} numberOfLines={1}>{t.home.subtitle}</Text>
           </View>
         </View>
         <View style={styles.topRightControls}>
@@ -117,7 +124,7 @@ export default function HomeScreen() {
           </View>
           <Button onPress={() => router.push('/create/generate?mode=manual')}>{t.home.createManualBtn}</Button>
         </Card>
-      ) : sets.slice(0, 3).map((set) => (
+      ) : recentSets.map((set) => (
         <Card key={set.id} onPress={() => router.push({ pathname: '/study/[setId]', params: { setId: set.id } })} style={styles.setCard}>
           <IconTile icon="document-text-outline" tint="primary" />
           <View style={styles.setCopy}>
@@ -149,17 +156,18 @@ export default function HomeScreen() {
   );
 }
 
-function QuickAction({ icon, tint, title, description, onPress, palette }: { icon: 'create-outline' | 'scan-outline' | 'skull-outline' | 'extension-puzzle-outline' | 'cloud-done-outline' | 'sparkles-outline' | 'people-outline' | 'library-outline' | 'rocket-outline'; tint: 'primary' | 'success' | 'danger' | 'reward'; title: string; description: string; onPress: () => void; palette: ReturnType<typeof usePalette> }) {
+const QuickAction = memo(function QuickAction({ icon, tint, title, description, onPress, palette }: { icon: 'create-outline' | 'scan-outline' | 'skull-outline' | 'extension-puzzle-outline' | 'cloud-done-outline' | 'sparkles-outline' | 'people-outline' | 'library-outline' | 'rocket-outline'; tint: 'primary' | 'success' | 'danger' | 'reward'; title: string; description: string; onPress: () => void; palette: ReturnType<typeof usePalette> }) {
   return <Card onPress={onPress} style={styles.quickCard}>
     <IconTile icon={icon} tint={tint} />
     <Text style={[typography.title, { color: palette.ink, marginTop: spacing.md }]}>{title}</Text>
     <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 4 }]}>{description}</Text>
   </Card>;
-}
+});
 
 const styles = StyleSheet.create({
   topHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing.md, gap: spacing.sm },
-  brandIdentity: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, flex: 1 },
+  brandIdentity: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, flex: 1, minWidth: 0 },
+  brandIdentityCopy: { flex: 1, minWidth: 0 },
   topRightControls: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   utilityBar: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap', marginBottom: spacing.sm },
   langPillButton: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: spacing.md, borderRadius: radii.pill, borderWidth: 1.5 },

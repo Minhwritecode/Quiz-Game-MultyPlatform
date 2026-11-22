@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import { Animated, StyleSheet, Text, View } from 'react-native';
+import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 
 export type AvatarAction = 'idle' | 'attack' | 'hurt' | 'victory';
 
@@ -14,7 +15,7 @@ interface CharacterAvatarProps {
   hasGoldenAura?: boolean;
 }
 
-export function CharacterAvatar({
+export const CharacterAvatar = memo(function CharacterAvatar({
   color = '#4F46E5',
   name = 'Scholar',
   action = 'idle',
@@ -24,29 +25,22 @@ export function CharacterAvatar({
   reconnectCountdown = 30,
   hasGoldenAura = false,
 }: CharacterAvatarProps) {
+  const reduceMotion = usePapyrusStore((s) => s.reduceMotion);
   const bounceAnim = useRef(new Animated.Value(0)).current;
   const shakeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
-  const glowAnim = useRef(new Animated.Value(0.3)).current;
-  const freezeAnim = useRef(new Animated.Value(isDisconnected ? 1 : 0)).current;
+  const glowAnim = useRef(new Animated.Value(0.45)).current;
 
   // Active theme color (petrified stone gray + crystal frost when disconnected)
   const activeColor = isDisconnected ? '#64748B' : color;
   const skinColor = isDisconnected ? '#94A3B8' : '#FEF3C7';
   const runeGlow = isDisconnected ? '#38BDF8' : hasGoldenAura ? '#F59E0B' : activeColor;
 
+  // Idle float (only when connected and motion enabled)
   useEffect(() => {
-    Animated.timing(freezeAnim, {
-      toValue: isDisconnected ? 1 : 0,
-      duration: 400,
-      useNativeDriver: false,
-    }).start();
-  }, [isDisconnected, freezeAnim]);
-
-  // Idle float (only when connected)
-  useEffect(() => {
-    if (isDisconnected) {
+    if (isDisconnected || reduceMotion) {
       bounceAnim.setValue(0);
+      glowAnim.setValue(0.45);
       return;
     }
     const loop = Animated.loop(
@@ -69,7 +63,7 @@ export function CharacterAvatar({
       loop.stop();
       glowLoop.stop();
     };
-  }, [bounceAnim, glowAnim, isDisconnected]);
+  }, [bounceAnim, glowAnim, isDisconnected, reduceMotion]);
 
   // Action triggers
   useEffect(() => {
@@ -239,7 +233,7 @@ export function CharacterAvatar({
       />
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   wrapper: {
