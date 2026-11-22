@@ -15,6 +15,16 @@ export interface PapyrusSplash3DProps {
   onFinish: () => void;
 }
 
+interface WebDomStyleLike {
+  opacity?: string;
+  transform?: string;
+  transition?: string;
+}
+
+interface WebDomElementLike {
+  style?: WebDomStyleLike;
+}
+
 function supportsWebGL2(): boolean {
   if (typeof document === 'undefined') return false;
   try {
@@ -28,24 +38,22 @@ function supportsWebGL2(): boolean {
 /**
  * 2026 Spatial Glassmorphism 3D PowerPoint-Morph Splash Screen (Web).
  *
- * - Runs a real Three.js Shape-Key 3D Morph (Ancient Scroll -> Sculpted Papyrus "P" Logo)
- *   wrapped in <Model3DErrorBoundary> with strict GPU disposal on unmount.
- * - Palette matched 1:1 with assets/icon.png (Cosmic Midnight Navy #060A24 -> Royal Indigo #4F46E5
- *   -> Electric Violet #7C3AED -> Magenta Rim #C026D3 -> Champagne Gold #F6C358 / #F59E0B).
- * - Automatically falls back to the 2D Morph view when Reduce Motion is enabled or WebGL2 is unavailable.
+ * Performance-tuned for locked 60fps across desktop & low-end mobile browsers:
+ * - Zero React re-renders during the 2.4s timeline: overlay opacity/scale and
+ *   progress scaleX are mutated directly via DOM refs on the GPU compositor.
+ * - Pure GPU-composited exit morph (`transform` + `opacity` with `will-change`),
+ *   avoiding expensive per-frame `filter: blur(...)` full-screen rasterization.
+ * - Real Three.js Shape-Key 3D Morph wrapped in <Model3DErrorBoundary> with
+ *   strict GPU disposal on unmount and automatic 2D / Reduce Motion fallback.
  */
 export function PapyrusSplash3D({ reduceMotion = false, onFinish }: PapyrusSplash3DProps) {
   const insets = useSafeAreaInsets();
   const [dismissed, setDismissed] = useState(false);
   const [webglReady, setWebglReady] = useState(false);
   const [browserReduceMotion, setBrowserReduceMotion] = useState(false);
-  const [frameVisual, setFrameVisual] = useState({
-    progress: 0.04,
-    opacity: 1,
-    scale: 1,
-    blurPx: 0,
-  });
 
+  const overlayRef = useRef<WebDomElementLike | null>(null);
+  const progressFillRef = useRef<WebDomElementLike | null>(null);
   const finishedRef = useRef(false);
   const effectiveReduceMotion = reduceMotion || browserReduceMotion;
 
@@ -58,7 +66,12 @@ export function PapyrusSplash3D({ reduceMotion = false, onFinish }: PapyrusSplas
 
   const handleSkip = useCallback(() => {
     if (finishedRef.current) return;
-    setFrameVisual((prev) => ({ ...prev, opacity: 0, scale: 1.05, blurPx: 8 }));
+    const overlayStyle = overlayRef.current?.style;
+    if (overlayStyle) {
+      overlayStyle.transition = 'opacity 160ms ease-out, transform 160ms ease-out';
+      overlayStyle.opacity = '0';
+      overlayStyle.transform = 'scale(1.05)';
+    }
     window.setTimeout(finishOnce, 160);
   }, [finishOnce]);
 
@@ -88,7 +101,7 @@ export function PapyrusSplash3D({ reduceMotion = false, onFinish }: PapyrusSplas
     };
   }, [reduceMotion]);
 
-  // Synchronized 2.4s PowerPoint Morph progress & seamless morph-out driver
+  // Zero-rerender 2.4s PowerPoint Morph progress & pure GPU compositor exit driver
   useEffect(() => {
     if (process.env.NODE_ENV === 'test') {
       finishOnce();
@@ -100,31 +113,37 @@ export function PapyrusSplash3D({ reduceMotion = false, onFinish }: PapyrusSplas
     let rafId = 0;
     const startMs = performance.now();
 
+    const applyVisuals = (progress: number, opacity: number, scale: number) => {
+      const progressStyle = progressFillRef.current?.style;
+      if (progressStyle) {
+        progressStyle.transform = `scaleX(${progress.toFixed(4)})`;
+      }
+      const overlayStyle = overlayRef.current?.style;
+      if (overlayStyle) {
+        overlayStyle.opacity = opacity.toFixed(4);
+        overlayStyle.transform = scale === 1 ? 'scale(1)' : `scale(${scale.toFixed(4)})`;
+      }
+    };
+
     const tick = (now: number) => {
       if (finishedRef.current) return;
       const elapsedSec = (now - startMs) / 1000;
 
       if (effectiveReduceMotion) {
         const ratio = Math.min(1, elapsedSec / totalSec);
-        const fade = ratio > 0.72 ? 1 - (ratio - 0.72) / 0.28 : 1;
-        setFrameVisual({
-          progress: Math.max(0.06, ratio),
-          opacity: Math.max(0, fade),
-          scale: 1,
-          blurPx: 0,
-        });
+        const fade = ratio > 0.72 ? Math.max(0, 1 - (ratio - 0.72) / 0.28) : 1;
+        applyVisuals(Math.max(0.06, ratio), fade, 1);
         if (ratio >= 1) {
           finishOnce();
           return;
         }
       } else {
         const state = computeSplashMorphState(elapsedSec);
-        setFrameVisual({
-          progress: Math.max(0.04, state.progress),
-          opacity: state.overlayOpacity,
-          scale: state.overlayScale,
-          blurPx: state.exitProgress * 12,
-        });
+        applyVisuals(
+          Math.max(0.04, state.progress),
+          state.overlayOpacity,
+          state.overlayScale,
+        );
         if (elapsedSec >= SPLASH_TOTAL_DURATION_SEC) {
           finishOnce();
           return;
@@ -148,10 +167,9 @@ export function PapyrusSplash3D({ reduceMotion = false, onFinish }: PapyrusSplas
       'radial-gradient(circle at 50% 42%, rgba(79, 70, 229, 0.30) 0%, rgba(124, 58, 237, 0.14) 28%, rgba(6, 10, 36, 0.98) 68%), '
       + 'radial-gradient(circle at 64% 34%, rgba(245, 158, 11, 0.18) 0%, rgba(6, 10, 36, 0) 42%), '
       + 'linear-gradient(165deg, #05081D 0%, #090E2E 52%, #06091B 100%)',
-    opacity: frameVisual.opacity,
-    transform: `scale(${frameVisual.scale.toFixed(4)})`,
-    filter: frameVisual.blurPx > 0.2 ? `blur(${frameVisual.blurPx.toFixed(1)}px)` : 'none',
-    transition: 'opacity 140ms ease-out',
+    willChange: 'transform, opacity',
+    opacity: 1,
+    transform: 'scale(1)',
   } as unknown as ViewStyle;
 
   const webSkipGlass = {
@@ -160,7 +178,10 @@ export function PapyrusSplash3D({ reduceMotion = false, onFinish }: PapyrusSplas
   } as unknown as ViewStyle;
 
   const webProgressFill = {
-    width: `${Math.round(frameVisual.progress * 100)}%`,
+    width: '100%',
+    transformOrigin: 'left center',
+    transform: 'scaleX(0.04)',
+    willChange: 'transform',
     backgroundImage: 'linear-gradient(90deg, #6366F1 0%, #A855F7 52%, #F6C358 100%)',
     boxShadow: '0 0 12px rgba(246, 195, 88, 0.65)',
   } as unknown as ViewStyle;
@@ -174,6 +195,7 @@ export function PapyrusSplash3D({ reduceMotion = false, onFinish }: PapyrusSplas
 
   return (
     <View
+      ref={overlayRef as never}
       style={[styles.overlay, webOverlayStyle]}
       accessibilityLabel="Papyrus 3D Splash Screen"
     >
@@ -212,7 +234,7 @@ export function PapyrusSplash3D({ reduceMotion = false, onFinish }: PapyrusSplas
 
         {/* Ultra-thin Spatial Glass Progress Pill */}
         <View style={[styles.progressTrack, webSkipGlass]}>
-          <View style={[styles.progressFill, webProgressFill]} />
+          <View ref={progressFillRef as never} style={[styles.progressFill, webProgressFill]} />
         </View>
       </View>
 

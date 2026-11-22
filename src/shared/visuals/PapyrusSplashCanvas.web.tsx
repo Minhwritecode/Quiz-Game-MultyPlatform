@@ -460,7 +460,10 @@ function buildStarburstArrays(): { positions: Float32Array; indices: Uint16Array
   return { positions: new Float32Array(pos), indices: new Uint16Array(idx) };
 }
 
-function buildFinialArrays(side: 1 | -1): { positions: Float32Array; indices: Uint16Array } {
+/**
+ * Both left & right Liquid Gold turned roller finials merged into 1 single draw call.
+ */
+function buildMergedFinialsArrays(): { positions: Float32Array; indices: Uint16Array } {
   const rings: Array<[number, number]> = [
     [0.055, 0.76],
     [0.145, 0.8],
@@ -474,36 +477,28 @@ function buildFinialArrays(side: 1 | -1): { positions: Float32Array; indices: Ui
   const pos: number[] = [];
   const idx: number[] = [];
 
-  for (const [r, ax] of rings) {
-    for (let k = 0; k < segs; k++) {
-      const ang = (k / segs) * Math.PI * 2;
-      pos.push(side * ax, Math.sin(ang) * r, Math.cos(ang) * r);
+  for (const side of [-1, 1] as const) {
+    const baseVertex = pos.length / 3;
+    for (const [r, ax] of rings) {
+      for (let k = 0; k < segs; k++) {
+        const ang = (k / segs) * Math.PI * 2;
+        pos.push(side * ax, Math.sin(ang) * r, Math.cos(ang) * r);
+      }
     }
-  }
-  for (let ri = 0; ri < rings.length - 1; ri++) {
-    for (let k = 0; k < segs; k++) {
-      const kn = (k + 1) % segs;
-      const a = ri * segs + k;
-      const b = ri * segs + kn;
-      const c = (ri + 1) * segs + kn;
-      const d = (ri + 1) * segs + k;
-      if (side > 0) idx.push(a, b, c, a, c, d);
-      else idx.push(a, d, c, a, c, b);
+    for (let ri = 0; ri < rings.length - 1; ri++) {
+      for (let k = 0; k < segs; k++) {
+        const kn = (k + 1) % segs;
+        const a = baseVertex + ri * segs + k;
+        const b = baseVertex + ri * segs + kn;
+        const c = baseVertex + (ri + 1) * segs + kn;
+        const d = baseVertex + (ri + 1) * segs + k;
+        if (side > 0) idx.push(a, b, c, a, c, d);
+        else idx.push(a, d, c, a, c, b);
+      }
     }
   }
 
   return { positions: new Float32Array(pos), indices: new Uint16Array(idx) };
-}
-
-function attachMorphTarget(mesh: ThreeObjectLike | null, morphData: Float32Array) {
-  const geo = mesh?.geometry;
-  const posAttr = geo?.attributes?.position;
-  if (!mesh || !geo || !posAttr) return;
-  const AttrCtor = posAttr.constructor;
-  geo.morphAttributes = geo.morphAttributes ?? {};
-  geo.morphAttributes.position = [new AttrCtor(morphData, 3)];
-  geo.computeVertexNormals?.();
-  mesh.updateMorphTargets?.();
 }
 
 const STARDUST_COORDS: Array<[number, number, number, number, boolean]> = [
@@ -523,15 +518,86 @@ const STARDUST_COORDS: Array<[number, number, number, number, boolean]> = [
   [1.42, 0.04, -0.2, 0.034, false],
 ];
 
+/**
+ * All 14 floating 4-point Cosmic Stardust diamonds merged into 1 single BufferGeometry
+ * with vertexColors (reduces 14 draw calls -> 1 draw call).
+ */
+function buildMergedStardustArrays(): {
+  positions: Float32Array;
+  colors: Float32Array;
+  indices: Uint16Array;
+} {
+  const starCount = STARDUST_COORDS.length;
+  const positions = new Float32Array(starCount * 6 * 3);
+  const colors = new Float32Array(starCount * 6 * 3);
+  const indices = new Uint16Array(starCount * 8 * 3);
+
+  const goldRgb = hexToLinearRgb('#FFE999');
+  const lavenderRgb = hexToLinearRgb('#D8CCFF');
+
+  let posCursor = 0;
+  let colCursor = 0;
+  let idxCursor = 0;
+
+  for (let i = 0; i < starCount; i++) {
+    const [cx, cy, cz, sz, isGold] = STARDUST_COORDS[i]!;
+    const rx = sz * 0.78;
+    const ry = sz * 1.42;
+    const rz = sz * 0.78;
+    const base = i * 6;
+    const rgb = isGold ? goldRgb : lavenderRgb;
+
+    const verts: Vec3[] = [
+      [cx, cy + ry, cz],
+      [cx, cy - ry, cz],
+      [cx + rx, cy, cz],
+      [cx, cy, cz + rz],
+      [cx - rx, cy, cz],
+      [cx, cy, cz - rz],
+    ];
+
+    for (const [vx, vy, vz] of verts) {
+      positions[posCursor++] = vx;
+      positions[posCursor++] = vy;
+      positions[posCursor++] = vz;
+      colors[colCursor++] = rgb[0];
+      colors[colCursor++] = rgb[1];
+      colors[colCursor++] = rgb[2];
+    }
+
+    const faces: Array<[number, number, number]> = [
+      [0, 2, 3], [0, 3, 4], [0, 4, 5], [0, 5, 2],
+      [1, 3, 2], [1, 4, 3], [1, 5, 4], [1, 2, 5],
+    ];
+    for (const [a, b, c] of faces) {
+      indices[idxCursor++] = base + a;
+      indices[idxCursor++] = base + b;
+      indices[idxCursor++] = base + c;
+    }
+  }
+
+  return { positions, colors, indices };
+}
+
+function attachMorphTarget(mesh: ThreeObjectLike | null, morphData: Float32Array) {
+  const geo = mesh?.geometry;
+  const posAttr = geo?.attributes?.position;
+  if (!mesh || !geo || !posAttr) return;
+  const AttrCtor = posAttr.constructor;
+  geo.morphAttributes = geo.morphAttributes ?? {};
+  geo.morphAttributes.position = [new AttrCtor(morphData, 3)];
+  geo.computeVertexNormals?.();
+  mesh.updateMorphTargets?.();
+}
+
 function PapyrusSplashScene() {
   const elapsedRef = useRef(0);
+  const cameraAlignedRef = useRef(false);
   const rootRef = useRef<ThreeObjectLike | null>(null);
   const emblemRef = useRef<ThreeObjectLike | null>(null);
   const parchmentRef = useRef<ThreeObjectLike | null>(null);
   const ribbonRef = useRef<ThreeObjectLike | null>(null);
   const finialsRef = useRef<ThreeObjectLike | null>(null);
-  const leftFinialRef = useRef<ThreeObjectLike | null>(null);
-  const rightFinialRef = useRef<ThreeObjectLike | null>(null);
   const starburstRef = useRef<ThreeObjectLike | null>(null);
   const outerRingRef = useRef<ThreeObjectLike | null>(null);
   const innerRingRef = useRef<ThreeObjectLike | null>(null);
@@ -541,14 +607,13 @@ function PapyrusSplashScene() {
   const parchmentData = useMemo(() => buildParchmentMorphArrays(), []);
   const ribbonData = useMemo(() => buildCosmicRibbonMorphArrays(), []);
   const starburstData = useMemo(() => buildStarburstArrays(), []);
-  const leftFinialData = useMemo(() => buildFinialArrays(-1), []);
-  const rightFinialData = useMemo(() => buildFinialArrays(1), []);
+  const finialsData = useMemo(() => buildMergedFinialsArrays(), []);
+  const stardustData = useMemo(() => buildMergedStardustArrays(), []);
 
   useEffect(() => {
     attachMorphTarget(parchmentRef.current, parchmentData.morph);
     attachMorphTarget(ribbonRef.current, ribbonData.morph);
-    leftFinialRef.current?.geometry?.computeVertexNormals?.();
-    rightFinialRef.current?.geometry?.computeVertexNormals?.();
+    finialsRef.current?.geometry?.computeVertexNormals?.();
     starburstRef.current?.geometry?.computeVertexNormals?.();
 
     const root = rootRef.current;
@@ -562,8 +627,11 @@ function PapyrusSplashScene() {
     elapsedRef.current += clampedDelta;
     const frame = computeSplashMorphState(elapsedRef.current);
 
+    if (!cameraAlignedRef.current) {
+      state.camera.lookAt(0, 0.02, 0);
+      cameraAlignedRef.current = true;
+    }
     state.camera.position.z = frame.cameraZ;
-    state.camera.lookAt(0, 0.02, 0);
 
     // Real GPU Shape-Key Morph Target influences (0 = Ancient Scroll -> 1 = Papyrus "P" Logo)
     if (parchmentRef.current?.morphTargetInfluences) {
@@ -627,7 +695,7 @@ function PapyrusSplashScene() {
       <pointLight position={[1.8, -2.2, 2.0]} intensity={2.4} color="#D946EF" />
 
       <group ref={emblemRef as never}>
-        {/* 1. Morphing Champagne Parchment Scroll */}
+        {/* 1. Morphing Champagne Parchment Scroll (1 draw call) */}
         <mesh ref={parchmentRef as never}>
           <bufferGeometry>
             <bufferAttribute attach="attributes-position" args={[parchmentData.basis, 3]} />
@@ -643,7 +711,7 @@ function PapyrusSplashScene() {
           />
         </mesh>
 
-        {/* 2. Morphing Cosmic Indigo-Violet-Magenta "P" Ribbon */}
+        {/* 2. Morphing Cosmic Indigo-Violet-Magenta "P" Ribbon (1 draw call) */}
         <mesh ref={ribbonRef as never}>
           <bufferGeometry>
             <bufferAttribute attach="attributes-position" args={[ribbonData.basis, 3]} />
@@ -659,37 +727,22 @@ function PapyrusSplashScene() {
           />
         </mesh>
 
-        {/* 3. Liquid Gold Turned Roller Finials */}
-        <group ref={finialsRef as never} rotation={[0, 0, scrollTiltZ]}>
-          <mesh ref={leftFinialRef as never}>
-            <bufferGeometry>
-              <bufferAttribute attach="attributes-position" args={[leftFinialData.positions, 3]} />
-              <bufferAttribute attach="index" args={[leftFinialData.indices, 1]} />
-            </bufferGeometry>
-            <meshStandardMaterial
-              color="#F5B82E"
-              metalness={0.9}
-              roughness={0.18}
-              emissive="#D97706"
-              emissiveIntensity={0.18}
-            />
-          </mesh>
-          <mesh ref={rightFinialRef as never}>
-            <bufferGeometry>
-              <bufferAttribute attach="attributes-position" args={[rightFinialData.positions, 3]} />
-              <bufferAttribute attach="index" args={[rightFinialData.indices, 1]} />
-            </bufferGeometry>
-            <meshStandardMaterial
-              color="#F5B82E"
-              metalness={0.9}
-              roughness={0.18}
-              emissive="#D97706"
-              emissiveIntensity={0.18}
-            />
-          </mesh>
-        </group>
+        {/* 3. Merged Left & Right Liquid Gold Roller Finials (1 draw call) */}
+        <mesh ref={finialsRef as never} rotation={[0, 0, scrollTiltZ]}>
+          <bufferGeometry>
+            <bufferAttribute attach="attributes-position" args={[finialsData.positions, 3]} />
+            <bufferAttribute attach="index" args={[finialsData.indices, 1]} />
+          </bufferGeometry>
+          <meshStandardMaterial
+            color="#F5B82E"
+            metalness={0.9}
+            roughness={0.18}
+            emissive="#D97706"
+            emissiveIntensity={0.18}
+          />
+        </mesh>
 
-        {/* 4. Signature Golden-White 8-Ray Starburst Flare */}
+        {/* 4. Signature Golden-White 8-Ray Starburst Flare (1 draw call) */}
         <mesh ref={starburstRef as never} position={[0.76, 0.78, 0.3]}>
           <bufferGeometry>
             <bufferAttribute attach="attributes-position" args={[starburstData.positions, 3]} />
@@ -699,7 +752,7 @@ function PapyrusSplashScene() {
         </mesh>
       </group>
 
-      {/* 5. Dual AI Neural Orbital Rings */}
+      {/* 5. Dual AI Neural Orbital Rings (2 draw calls) */}
       <mesh ref={outerRingRef as never} rotation={[1.12, 0.38, 0]}>
         <torusGeometry args={[1.48, 0.015, 8, 44]} />
         <meshStandardMaterial
@@ -721,20 +774,15 @@ function PapyrusSplashScene() {
         />
       </mesh>
 
-      {/* 6. Floating 4-Point Cosmic Stardust Diamonds */}
-      <group ref={starsRef as never}>
-        {STARDUST_COORDS.map(([x, y, z, sz, isGold], idx) => (
-          <mesh key={idx} position={[x, y, z]} scale={[sz * 0.75, sz * 1.35, sz * 0.75]}>
-            <octahedronGeometry args={[1, 0]} />
-            <meshStandardMaterial
-              color={isGold ? '#FDE68A' : '#C4B5FD'}
-              emissive={isGold ? '#FBBF24' : '#A78BFA'}
-              emissiveIntensity={1.4}
-              roughness={0.15}
-            />
-          </mesh>
-        ))}
-      </group>
+      {/* 6. All 14 Floating Cosmic Stardust Diamonds merged into 1 single draw call */}
+      <mesh ref={starsRef as never}>
+        <bufferGeometry>
+          <bufferAttribute attach="attributes-position" args={[stardustData.positions, 3]} />
+          <bufferAttribute attach="attributes-color" args={[stardustData.colors, 3]} />
+          <bufferAttribute attach="index" args={[stardustData.indices, 1]} />
+        </bufferGeometry>
+        <meshBasicMaterial vertexColors toneMapped={false} />
+      </mesh>
     </group>
   );
 }
