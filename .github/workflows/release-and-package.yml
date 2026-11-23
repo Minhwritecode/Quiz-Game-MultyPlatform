@@ -1,0 +1,168 @@
+name: Release & Container Package
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Optional release tag to publish (e.g. v0.2.0). Leave empty to only publish Docker package.'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: release-and-package-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/papyrus-web
+
+jobs:
+  publish-package:
+    name: Build & Publish Docker Package (GHCR)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata (tags & OCI labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          flavor: |
+            latest=false
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=ref,event=branch
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}
+          labels: |
+            org.opencontainers.image.title=Papyrus Web
+            org.opencontainers.image.description=AI-Powered Gamified Study & Multiplayer Quiz Platform (Expo Router + Three.js 3D)
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.url=https://github.com/${{ github.repository }}
+            org.opencontainers.image.vendor=${{ github.repository_owner }}
+
+      - name: Build and push container image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            APP_VARIANT=production
+            EXPO_PUBLIC_SUPABASE_URL=${{ vars.EXPO_PUBLIC_SUPABASE_URL || '' }}
+            EXPO_PUBLIC_SUPABASE_ANON_KEY=${{ vars.EXPO_PUBLIC_SUPABASE_ANON_KEY || '' }}
+            EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY=${{ vars.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || '' }}
+            EXPO_PUBLIC_SENTRY_DSN=${{ vars.EXPO_PUBLIC_SENTRY_DSN || '' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  publish-release:
+    name: Build Web Bundle & Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
+    needs: publish-package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run quality verification
+        run: |
+          npm run typecheck
+          npx eslint src --quiet
+          ./scripts/check_architecture.sh
+          npm run test:release
+          npm test -- --ci
+
+      - name: Export production Web bundle
+        env:
+          APP_VARIANT: production
+          EXPO_PUBLIC_SUPABASE_URL: ${{ vars.EXPO_PUBLIC_SUPABASE_URL || '' }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.EXPO_PUBLIC_SUPABASE_ANON_KEY || '' }}
+          EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ vars.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || '' }}
+          EXPO_PUBLIC_SENTRY_DSN: ${{ vars.EXPO_PUBLIC_SENTRY_DSN || '' }}
+        run: npx --no-install expo export --platform web
+
+      - name: Package release archive & SHA-256 checksums
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+        run: |
+          mkdir -p release-assets
+          (cd dist && zip -rq "../release-assets/papyrus-web-${RELEASE_TAG}.zip" .)
+          (cd release-assets && sha256sum "papyrus-web-${RELEASE_TAG}.zip" > SHA256SUMS.txt)
+          ls -lh release-assets
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+          OWNER_RAW: ${{ github.repository_owner }}
+        run: |
+          OWNER_LOWER=$(echo "${OWNER_RAW}" | tr '[:upper:]' '[:lower:]')
+          VERSION_NUM="${RELEASE_TAG#v}"
+          cat <<EOF > release-notes.md
+          ## Papyrus ${RELEASE_TAG}
+
+          **From Ancient Scroll to AI Power** — Cross-platform AI Study, 3D Gamified Quiz Arena & Real-Time Multiplayer Platform.
+
+          ### Highlights
+          - **3D Morph Splash & Optical-Illusion Onboarding**: Blender 4.2 Shape Keys morphing GLB (\`96 KB\`) rendered with Three.js GPU morph canvas + deterministic Remotion optical-illusion onboarding intro (\`662 KB\` WebM / \`1.1 MB\` MP4).
+          - **AI Quiz Generation & Papybot RAG Tutor**: Scan/PDF/DOCX/TXT ingestion with streaming AI quiz creation and document-grounded tutoring.
+          - **Gamified Study Modes**: Survival Boss Arena, Match Pairs, Ranked 1v1 ELO Duels, Real-Time Multiplayer Rooms, Daily Streaks, and Global/Friends Leaderboards.
+          - **Offline-First & Performance Optimized**: SQLite local persistence with Supabase cloud sync, WebP-compressed UI assets, native-driver animations, and leak-free animation/timer lifecycles.
+
+          ### Quick Start via Docker (GitHub Packages)
+          \`\`\`bash
+          docker pull ghcr.io/${OWNER_LOWER}/papyrus-web:${VERSION_NUM}
+          docker run -d -p 8080:80 --name papyrus-web ghcr.io/${OWNER_LOWER}/papyrus-web:${VERSION_NUM}
+          \`\`\`
+          Open http://localhost:8080 after starting the container.
+
+          ### Included Release Assets
+          - \`papyrus-web-${RELEASE_TAG}.zip\` — Ready-to-deploy static production web bundle (Nginx, Cloudflare Pages, Netlify, Vercel).
+          - \`SHA256SUMS.txt\` — SHA-256 checksum for download verification.
+          EOF
+
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release upload "${RELEASE_TAG}" release-assets/* --clobber
+            gh release edit "${RELEASE_TAG}" --title "Papyrus ${RELEASE_TAG}" --notes-file release-notes.md --draft=false
+          else
+            gh release create "${RELEASE_TAG}" release-assets/* \
+              --target "${GITHUB_SHA}" \
+              --title "Papyrus ${RELEASE_TAG}" \
+              --notes-file release-notes.md \
+              --generate-notes
+          fi

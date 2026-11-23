@@ -22,6 +22,11 @@ ENV EXPO_PUBLIC_SENTRY_DSN=$EXPO_PUBLIC_SENTRY_DSN
 RUN npx --no-install expo export --platform web
 
 FROM nginx:1.27-alpine AS runtime
+LABEL org.opencontainers.image.title="Papyrus Web" \
+      org.opencontainers.image.description="AI-Powered Gamified Study & Multiplayer Quiz Platform (Expo Router + Three.js 3D)" \
+      org.opencontainers.image.source="https://github.com/Minhwritecode/Quiz-Game-MultyPlatform" \
+      org.opencontainers.image.url="https://github.com/Minhwritecode/Quiz-Game-MultyPlatform" \
+      org.opencontainers.image.vendor="Minhwritecode"
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /workspace/dist /usr/share/nginx/html
 EXPOSE 80
