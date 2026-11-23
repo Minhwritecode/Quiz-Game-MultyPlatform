@@ -1,0 +1,223 @@
+name: Android Free APK Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: 'App variant to build (production = Papyrus, preview = Papyrus Preview)'
+        type: choice
+        options:
+          - production
+          - preview
+        default: production
+      release_tag:
+        description: 'Optional existing or new GitHub Release tag to attach the APK to (e.g. v0.2.0)'
+        required: false
+        default: ''
+      architectures:
+        description: 'Android ABIs to compile (arm64-v8a,armeabi-v7a covers 99.9% of physical phones)'
+        required: false
+        default: 'arm64-v8a,armeabi-v7a'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-free-apk-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-android-apk:
+    name: Build Signed Android APK (Free CI)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Prebuild Android native project
+        env:
+          APP_VARIANT: ${{ inputs.variant || 'production' }}
+          EXPO_PUBLIC_SUPABASE_URL: ${{ vars.EXPO_PUBLIC_SUPABASE_URL || '' }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.EXPO_PUBLIC_SUPABASE_ANON_KEY || '' }}
+          EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ vars.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || '' }}
+          EXPO_PUBLIC_SENTRY_DSN: ${{ vars.EXPO_PUBLIC_SENTRY_DSN || '' }}
+        run: |
+          npx --no-install expo prebuild --platform android --clean --no-install
+          ARCHS="${{ inputs.architectures || 'arm64-v8a,armeabi-v7a' }}"
+          if grep -q '^org.gradle.jvmargs=' android/gradle.properties; then
+            sed -i 's|^org.gradle.jvmargs=.*|org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m|' android/gradle.properties
+          else
+            echo 'org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m' >> android/gradle.properties
+          fi
+          if grep -q '^reactNativeArchitectures=' android/gradle.properties; then
+            sed -i "s|^reactNativeArchitectures=.*|reactNativeArchitectures=${ARCHS}|" android/gradle.properties
+          else
+            echo "reactNativeArchitectures=${ARCHS}" >> android/gradle.properties
+          fi
+
+      - name: Compile Release APK (Gradle)
+        env:
+          APP_VARIANT: ${{ inputs.variant || 'production' }}
+          EXPO_PUBLIC_SUPABASE_URL: ${{ vars.EXPO_PUBLIC_SUPABASE_URL || '' }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.EXPO_PUBLIC_SUPABASE_ANON_KEY || '' }}
+          EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ vars.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || '' }}
+          EXPO_PUBLIC_SENTRY_DSN: ${{ vars.EXPO_PUBLIC_SENTRY_DSN || '' }}
+        run: |
+          cd android
+          ./gradlew :app:assembleRelease --no-daemon --max-workers=4
+
+      - name: Align, sign, and verify APK
+        id: sign
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          FIREBASE_ANDROID_APP_ID: ${{ secrets.FIREBASE_ANDROID_APP_ID }}
+          FIREBASE_SERVICE_CREDENTIALS: ${{ secrets.FIREBASE_SERVICE_CREDENTIALS }}
+          VARIANT: ${{ inputs.variant || 'production' }}
+          RELEASE_TAG: ${{ inputs.release_tag || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || '' }}
+        run: |
+          set -euo pipefail
+          SDK_DIR="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          BUILD_TOOLS_VER="$(ls -1 "${SDK_DIR}/build-tools" | sort -V | tail -n 1)"
+          BUILD_TOOLS="${SDK_DIR}/build-tools/${BUILD_TOOLS_VER}"
+          RAW_APK="android/app/build/outputs/apk/release/app-release.apk"
+
+          if [ ! -f "${RAW_APK}" ]; then
+            echo "ERROR: Expected release APK not found at ${RAW_APK}"
+            exit 1
+          fi
+
+          if "${BUILD_TOOLS}/aapt" dump badging "${RAW_APK}" | grep -q "application-debuggable"; then
+            echo "ERROR: Built APK is debuggable; refusing to publish."
+            exit 1
+          fi
+
+          APP_VERSION="$(node -p "require('./package.json').version")"
+          TAG_LABEL="${RELEASE_TAG:-v${APP_VERSION}}"
+          SUFFIX=""
+          if [ "${VARIANT}" != "production" ]; then
+            SUFFIX="-${VARIANT}"
+          fi
+          APK_NAME="papyrus-${TAG_LABEL}${SUFFIX}-android.apk"
+
+          mkdir -p release-apk "${RUNNER_TEMP}/signing"
+          ALIGNED_APK="${RUNNER_TEMP}/signing/aligned.apk"
+          SIGNED_APK="release-apk/${APK_NAME}"
+
+          if "${BUILD_TOOLS}/zipalign" -f -p -P 16 4 "${RAW_APK}" "${ALIGNED_APK}" 2>/dev/null; then
+            echo "Aligned APK with 16 KB page alignment"
+          else
+            "${BUILD_TOOLS}/zipalign" -f -p 4 "${RAW_APK}" "${ALIGNED_APK}"
+            echo "Aligned APK with standard 4-byte page alignment"
+          fi
+
+          KEYSTORE_PATH="${RUNNER_TEMP}/signing/release.jks"
+          if [ -n "${ANDROID_KEYSTORE_BASE64}" ] && [ -n "${ANDROID_KEYSTORE_PASSWORD}" ] && [ -n "${ANDROID_KEY_ALIAS}" ]; then
+            echo "Using permanent repository release keystore (store-ready certificate)"
+            echo "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > "${KEYSTORE_PATH}"
+            export KS_PASS="${ANDROID_KEYSTORE_PASSWORD}"
+            export KEY_PASS="${ANDROID_KEY_PASSWORD:-${ANDROID_KEYSTORE_PASSWORD}}"
+            ALIAS="${ANDROID_KEY_ALIAS}"
+            SIGNING_MODE="permanent-release-keystore"
+          else
+            echo "No permanent keystore secrets configured; generating temporary RSA-3072 release certificate for free distribution."
+            echo "Tip: Run 'npm run android:keystore' locally and add secrets for permanent alternative-store upgrades."
+            export KS_PASS="$(openssl rand -base64 24)"
+            export KEY_PASS="${KS_PASS}"
+            ALIAS="papyrus-community"
+            keytool -genkeypair \
+              -keystore "${KEYSTORE_PATH}" \
+              -storetype JKS \
+              -alias "${ALIAS}" \
+              -storepass:env KS_PASS \
+              -keypass:env KEY_PASS \
+              -keyalg RSA \
+              -keysize 3072 \
+              -validity 10000 \
+              -dname "CN=Papyrus Community Release, O=Papyrus, C=VN" \
+              -noprompt
+            SIGNING_MODE="ephemeral-community-certificate"
+          fi
+
+          "${BUILD_TOOLS}/apksigner" sign \
+            --ks "${KEYSTORE_PATH}" \
+            --ks-key-alias "${ALIAS}" \
+            --ks-pass env:KS_PASS \
+            --key-pass env:KEY_PASS \
+            --out "${SIGNED_APK}" \
+            "${ALIGNED_APK}"
+
+          "${BUILD_TOOLS}/apksigner" verify --verbose --print-certs "${SIGNED_APK}" | tee release-apk/android-signature.txt
+          (cd release-apk && sha256sum "${APK_NAME}" > SHA256SUMS-android.txt)
+          rm -rf "${RUNNER_TEMP}/signing"
+
+          echo "apk_path=${SIGNED_APK}" >> "${GITHUB_OUTPUT}"
+          echo "apk_name=${APK_NAME}" >> "${GITHUB_OUTPUT}"
+          echo "signing_mode=${SIGNING_MODE}" >> "${GITHUB_OUTPUT}"
+          if [ -n "${FIREBASE_ANDROID_APP_ID}" ] && [ -n "${FIREBASE_SERVICE_CREDENTIALS}" ]; then
+            echo "has_firebase=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "has_firebase=false" >> "${GITHUB_OUTPUT}"
+          fi
+          ls -lh release-apk
+
+      - name: Upload signed APK as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: papyrus-android-apk-${{ inputs.variant || 'production' }}
+          path: release-apk/
+          retention-days: 30
+
+      - name: Attach signed APK to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+          APK_NAME: ${{ steps.sign.outputs.apk_name }}
+          SIGNING_MODE: ${{ steps.sign.outputs.signing_mode }}
+        run: |
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release upload "${RELEASE_TAG}" "release-apk/${APK_NAME}" "release-apk/SHA256SUMS-android.txt" --clobber
+          else
+            gh release create "${RELEASE_TAG}" "release-apk/${APK_NAME}" "release-apk/SHA256SUMS-android.txt" \
+              --target "${GITHUB_SHA}" \
+              --title "Papyrus ${RELEASE_TAG}" \
+              --notes "Signed Android APK (\`${APK_NAME}\`, signing mode: \`${SIGNING_MODE}\`) + SHA-256 verification checksum." \
+              --generate-notes
+          fi
+
+      - name: Distribute to Firebase App Distribution (optional free tester channel)
+        if: steps.sign.outputs.has_firebase == 'true'
+        uses: wzieba/Firebase-Distribution-Github-Action@v1
+        with:
+          appId: ${{ secrets.FIREBASE_ANDROID_APP_ID }}
+          serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_CREDENTIALS }}
+          groups: testers
+          file: ${{ steps.sign.outputs.apk_path }}
+          releaseNotes: "Papyrus Android build (${{ steps.sign.outputs.apk_name }}) from commit ${{ github.sha }}"
