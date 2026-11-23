@@ -12,6 +12,7 @@ import { StreakBadge } from '@/features/streak/presentation/StreakBadge';
 import { VipBadge } from '@/features/membership/presentation/VipBadge';
 import { RenderModeToggle } from '@/shared/RenderModeToggle';
 import { SoundToggle } from '@/shared/SoundToggle';
+import { InstallWebAppButton } from '@/shared/InstallWebAppButton';
 import { useStreakStore } from '@/features/streak/state/useStreakStore';
 
 export default function HomeScreen() {
@@ -66,12 +67,13 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      {/* Gamified Utility Bar: Streak 🔥, VIP 👑, 2D/3D Mode 🔮, BGM 🔊 */}
+      {/* Gamified Utility Bar: Streak 🔥, VIP 👑, 2D/3D Mode 🔮, BGM 🔊, PWA Install */}
       <View style={styles.utilityBar}>
         <StreakBadge />
         <VipBadge />
         <RenderModeToggle compact />
         <SoundToggle />
+        <InstallWebAppButton />
       </View>
 
       <Card color={palette.indigo} style={[styles.heroCard, isWide && styles.heroCardWide]}>

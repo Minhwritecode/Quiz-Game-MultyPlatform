@@ -16,6 +16,8 @@
     "test": "jest --runInBand",
     "test:release": "node --test scripts/release.test.cjs",
     "apk:package": "node scripts/package-preview-apk.mjs",
+    "android:keystore": "bash scripts/generate-android-keystore.sh",
+    "ios:free-install": "bash scripts/ios-free-install.sh",
     "release:check": "node scripts/check-release.cjs",
     "eas-build-post-install": "node scripts/check-release.cjs"
   },
