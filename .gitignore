@@ -26,6 +26,7 @@ migrate_working_dir/
 # React Native / Expo / Node
 node_modules/
 .expo/
+.vercel/
 dist/
 web-build/
 *.tsbuildinfo
