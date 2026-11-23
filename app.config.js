@@ -6,11 +6,16 @@ module.exports = () => {
   const variant = resolveVariant(process.env.APP_VARIANT);
   const projectId = process.env.EAS_PROJECT_ID || expo.extra?.eas?.projectId;
   const sentry = process.env.SENTRY_ORG && process.env.SENTRY_PROJECT;
+  const webBaseUrl = process.env.EXPO_WEB_BASE_URL || '';
   return {
     ...expo,
     version,
     // Existing game timers are not compiler-ready yet; keep their runtime behavior.
-    experiments: { ...expo.experiments, reactCompiler: false },
+    experiments: {
+      ...expo.experiments,
+      reactCompiler: false,
+      ...(webBaseUrl ? { baseUrl: webBaseUrl } : {}),
+    },
     name: `Papyrus${variant.suffix}`,
     scheme: variant.scheme,
     android: { ...expo.android, package: variant.id, blockedPermissions: ['android.permission.RECORD_AUDIO'] },

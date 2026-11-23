@@ -1,6 +1,6 @@
-# Papyrus — Hướng dẫn Phát hành Miễn phí 100% (Android APK, Kho Ứng dụng $0 & iPhone qua Xcode)
+# Papyrus — Hướng dẫn Phát hành Miễn phí 100% (Android APK, Kho $0, Web PWA & iPhone qua Xcode)
 
-Tài liệu này hướng dẫn 3 cách phát hành và cài đặt **Papyrus** hoàn toàn miễn phí ($0 phí Google Play / $0 phí Apple Developer) sử dụng sẵn hạ tầng trong repository.
+Tài liệu này hướng dẫn đầy đủ 4 cách phát hành và cài đặt **Papyrus** hoàn toàn miễn phí ($0 phí Google Play / $0 phí Apple Developer) sử dụng sẵn hạ tầng trong repository.
 
 ---
 
@@ -68,7 +68,29 @@ Sau khi thêm 4 secret trên, mọi bản `.apk` build từ GitHub Actions sẽ 
 
 ---
 
-## 3. Cài trực tiếp lên iPhone cá nhân Miễn phí ($0 Apple ID qua Xcode trên Mac)
+## 3. Web App / PWA Miễn phí 100% (Chạy như App thật trên iPhone, Android & PC — $0)
+
+Papyrus đã được cấu hình chuẩn **Progressive Web App (PWA)** đầy đủ:
+- [`public/manifest.webmanifest`](../../public/manifest.webmanifest) (khai báo `id` ổn định, `display: "standalone"`, icon 192px & 512px maskable, màu nền `#060A24`).
+- [`public/icons/apple-touch-icon.png`](../../public/icons/apple-touch-icon.png) (icon 180×180 sắc nét khi cài trên iPhone Safari) + [`public/index.html`](../../public/index.html) (meta standalone + `viewport-fit=cover`).
+- [`public/sw.js`](../../public/sw.js) (Service Worker lưu đệm app shell + tài sản tĩnh giúp mở nhanh và hỗ trợ ngoại tuyến).
+- Nút **Cài App (`InstallWebAppButton`)** sử dụng chuẩn Web Install API (`navigator.install()`) kết hợp fallback `beforeinstallprompt` trên Chrome/Edge.
+
+### Chọn 1 trong 3 nơi host miễn phí trọn đời (đều có HTTPS tự động)
+
+| Nền tảng | Chi phí | Cách triển khai (2 phút) |
+|---|---|---|
+| **Vercel** *(Khuyên dùng — URL gọn, SPA & PWA chuẩn sẵn)* | **$0** | Vào [vercel.com/new](https://vercel.com/new) → Import repo GitHub `Quiz-Game-MultyPlatform` → dự án đã có sẵn [`vercel.json`](../../vercel.json) nên không cần chỉnh gì → thêm các biến `EXPO_PUBLIC_SUPABASE_URL` & `EXPO_PUBLIC_SUPABASE_ANON_KEY` → bấm **Deploy**. |
+| **Cloudflare Pages** *(Băng thông không giới hạn)* | **$0** | Vào Cloudflare Dashboard → **Workers & Pages → Create → Pages → Connect to Git** → Build command: `npx expo export --platform web`, Output directory: `dist` → tự dùng sẵn `public/_redirects` & `public/_headers`. |
+| **GitHub Pages** *(Không cần tạo tài khoản ngoài)* | **$0** | Trên repo GitHub: **Settings → Pages → Build and deployment → Source: GitHub Actions** → vào tab **Actions → Deploy Web PWA (GitHub Pages) → Run workflow** → app lên sóng tại `https://<username>.github.io/Quiz-Game-MultyPlatform/`. |
+
+### Cách cài PWA ra màn hình chính (không cần App Store hay CH Play)
+- **iPhone / iPad (Safari)**: Mở link web của bạn bằng **Safari** → bấm biểu tượng **Chia sẻ (Share)** ở cạnh dưới → chọn **Thêm vào MH chính (Add to Home Screen)** → bấm **Thêm**. App Papyrus hiện icon logo riêng và chạy toàn màn hình không thanh địa chỉ!
+- **Android / PC (Chrome, Edge)**: Mở link web → bấm nút **Cài App** ngay trên thanh tiện ích trang chủ (hoặc bấm biểu tượng cài đặt trên thanh địa chỉ trình duyệt).
+
+---
+
+## 4. Cài trực tiếp lên iPhone cá nhân Miễn phí ($0 Apple ID qua Xcode trên Mac)
 
 Apple cho phép dùng **Apple ID thường (Personal Team — $0)** để cài ứng dụng trực tiếp từ máy Mac vào iPhone cá nhân qua cáp USB (chứng chỉ có hiệu lực **7 ngày**, hết 7 ngày chỉ cần cắm cáp bấm Run lại trong Xcode).
 
