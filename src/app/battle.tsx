@@ -102,7 +102,7 @@ export default function BattleScreen() {
   const [battle, setBattle] = useState<Battle | null>(null);
   const [sets, setSets] = useState<{ id: string; title: string }[]>([]);
   const [roomMode, setRoomMode] = useState<'survival' | 'speed' | 'turn_pvp'>('survival');
-  const [arenaTab, setArenaTab] = useState<'rooms' | 'duel_1v1'>('rooms');
+  const [arenaTab, setArenaTab] = useState<'rooms' | 'duel_1v1' | 'arcade'>('rooms');
   const [turnPvpActive, setTurnPvpActive] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -295,17 +295,19 @@ export default function BattleScreen() {
 
   return (
     <Screen bottomNav>
-      <GameEnvironment gameMode="battle">
-        {/* Header */}
+      <GameEnvironment gameMode="battle" show3DByDefault={!roomId && !turnPvpActive}>
+        {/* High-Contrast Arena Header */}
         <View style={styles.header}>
-          <View style={{ flex: 1 }}>
-            <Text style={[typography.label, { color: palette.indigo }]}>{t.battle.badge}</Text>
-            <Text style={[typography.heading, { color: palette.ink, marginTop: spacing.xs }]}>
-              {t.battle.title} ⚔️
-            </Text>
-            <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
-              {t.battle.sub}
-            </Text>
+          <View style={styles.headerBanner}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={[typography.label, { color: '#F6C358' }]}>{t.battle.badge}</Text>
+              <Text style={[typography.heading, { color: '#F8FAFC', marginTop: 4 }]}>
+                {t.battle.title}
+              </Text>
+              <Text style={[typography.caption, { color: '#CBD5E1', marginTop: 3 }]}>
+                {t.battle.sub}
+              </Text>
+            </View>
           </View>
         </View>
 
@@ -346,29 +348,96 @@ export default function BattleScreen() {
           </View>
         )}
 
-        {/* Segmented Arena Switcher (Rooms & Groups vs Ranked 1v1 ELO Duel) */}
+        {/* Segmented Arena Switcher (Rooms, 1v1 ELO, 3D Arcade Modes) */}
         {!roomId && !turnPvpActive && (
           <View style={[styles.arenaTabs, { backgroundColor: palette.paperRaised, borderColor: palette.paperMuted }]}>
             <Pressable
+              accessibilityRole="tab"
+              accessibilityState={{ selected: arenaTab === 'rooms' }}
               onPress={() => setArenaTab('rooms')}
               style={[styles.arenaTabBtn, arenaTab === 'rooms' && { backgroundColor: palette.indigo }]}
             >
-              <Ionicons name="people-outline" size={16} color={arenaTab === 'rooms' ? '#FFFFFF' : palette.inkMuted} />
+              <Ionicons name="people-outline" size={15} color={arenaTab === 'rooms' ? '#FFFFFF' : palette.inkMuted} />
               <Text style={[typography.caption, { color: arenaTab === 'rooms' ? '#FFFFFF' : palette.inkMuted, fontWeight: '800' }]} numberOfLines={1}>
-                {language === 'vi' ? 'Phòng đấu & Nhóm' : 'Rooms & Groups'}
+                {language === 'vi' ? 'Phòng nhóm' : 'Rooms'}
               </Text>
             </Pressable>
             <Pressable
+              accessibilityRole="tab"
+              accessibilityState={{ selected: arenaTab === 'duel_1v1' }}
               onPress={() => setArenaTab('duel_1v1')}
               style={[styles.arenaTabBtn, arenaTab === 'duel_1v1' && { backgroundColor: palette.indigo }]}
             >
-              <Ionicons name="trophy-outline" size={16} color={arenaTab === 'duel_1v1' ? '#FFFFFF' : palette.inkMuted} />
+              <Ionicons name="trophy-outline" size={15} color={arenaTab === 'duel_1v1' ? '#FFFFFF' : palette.inkMuted} />
               <Text style={[typography.caption, { color: arenaTab === 'duel_1v1' ? '#FFFFFF' : palette.inkMuted, fontWeight: '800' }]} numberOfLines={1}>
-                {language === 'vi' ? '⚔️ Đấu 1v1 ELO' : '⚔️ 1v1 Ranked ELO'}
+                {language === 'vi' ? '1v1 ELO' : '1v1 ELO'}
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="tab"
+              accessibilityState={{ selected: arenaTab === 'arcade' }}
+              onPress={() => setArenaTab('arcade')}
+              style={[styles.arenaTabBtn, arenaTab === 'arcade' && { backgroundColor: palette.indigo }]}
+            >
+              <Ionicons name="cube-outline" size={15} color={arenaTab === 'arcade' ? '#FFFFFF' : palette.inkMuted} />
+              <Text style={[typography.caption, { color: arenaTab === 'arcade' ? '#FFFFFF' : palette.inkMuted, fontWeight: '800' }]} numberOfLines={1}>
+                {language === 'vi' ? 'Đấu trường 3D' : '3D Modes'}
               </Text>
             </Pressable>
           </View>
         )}
+
+        {/* Dedicated 3D & Arcade Modes Hub */}
+        {!roomId && !turnPvpActive && arenaTab === 'arcade' ? (
+          <View style={styles.lobbySections}>
+            <Card onPress={() => router.push('/games/survival')} style={styles.cardSection}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <IconTile icon="skull-outline" tint="danger" />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={[typography.title, { color: palette.ink }]}>{t.survival.title}</Text>
+                  <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
+                    {language === 'vi'
+                      ? 'Đấu Boss 3D với 3 mạng sinh tồn — trả lời nhanh để tung phép hạ Boss.'
+                      : '3-lives 3D Boss survival arena — answer fast to cast spells.'}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={palette.indigo} />
+              </View>
+            </Card>
+
+            <Card onPress={() => router.push('/games/match')} style={styles.cardSection}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <IconTile icon="extension-puzzle-outline" tint="reward" />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={[typography.title, { color: palette.ink }]}>{t.home.featMatchTitle}</Text>
+                  <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
+                    {language === 'vi'
+                      ? 'Ghép cặp câu hỏi & đáp án trong Thư viện Cổ 3D để ghi nhớ sâu.'
+                      : 'Pair questions and answers inside the 3D Grand Archives.'}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={palette.indigo} />
+              </View>
+            </Card>
+
+            <Card onPress={() => setTurnPvpActive(true)} style={styles.cardSection}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <IconTile icon="swap-horizontal-outline" tint="primary" />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={[typography.title, { color: palette.ink }]}>
+                    {language === 'vi' ? 'PvP Theo lượt (Luyện nhanh)' : 'Turn-Based PvP Arena'}
+                  </Text>
+                  <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
+                    {language === 'vi'
+                      ? 'Đấu nhanh 4 người theo lượt với AI đối thủ, chơi ngay cả khi chưa tạo phòng.'
+                      : 'Quick 4-player turn-based showdown ready anytime.'}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={palette.indigo} />
+              </View>
+            </Card>
+          </View>
+        ) : null}
 
         {/* 1v1 Ranked Matchmaking & Unrated Friend Duel */}
         {!roomId && !turnPvpActive && arenaTab === 'duel_1v1' ? (
@@ -409,15 +478,15 @@ export default function BattleScreen() {
             </Text>
             <Text style={[typography.body, { color: palette.inkMuted, textAlign: 'center', marginTop: 4 }]}>
               {language === 'vi'
-                ? 'Tính năng thi đấu thời gian thực yêu cầu tài khoản để lưu bảng điểm, hoặc bạn có thể thử ngay PvP theo lượt bên dưới.'
-                : 'Realtime battle arena requires an account to store match history, or try Turn-Based PvP immediately.'}
+                ? 'Phòng đấu thời gian thực cần tài khoản để đồng bộ bảng điểm. Bạn vẫn có thể chơi ngay các chế độ 3D.'
+                : 'Realtime rooms require sign-in to record scores. You can still play 3D Arena modes right away.'}
             </Text>
             <View style={{ marginTop: spacing.lg, width: '100%', gap: spacing.sm }}>
               <Button icon="log-in-outline" onPress={() => router.push('/auth')} fullWidth>
                 {language === 'vi' ? 'Đăng nhập ngay' : 'Sign in now'}
               </Button>
-              <Button variant="reward" icon="swap-horizontal" onPress={() => setTurnPvpActive(true)} fullWidth>
-                {language === 'vi' ? 'Chơi ngay PvP theo lượt' : 'Play Turn-Based PvP'}
+              <Button variant="secondary" icon="cube-outline" onPress={() => setArenaTab('arcade')} fullWidth>
+                {language === 'vi' ? 'Mở các chế độ Đấu trường 3D' : 'Open 3D Arena Modes'}
               </Button>
             </View>
           </Card>
@@ -426,26 +495,6 @@ export default function BattleScreen() {
         {/* Lobby - Join or Create */}
         {!turnPvpActive && arenaTab === 'rooms' && user && !roomId && (
           <View style={styles.lobbySections}>
-            {/* Instant Survival Arena Card */}
-            <Card style={{ backgroundColor: palette.dangerTint, borderColor: palette.dangerBorder, marginBottom: spacing.sm }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <IconTile icon="skull-outline" tint="danger" />
-                <View style={{ flex: 1 }}>
-                  <Text style={[typography.title, { color: palette.ink }]}>{t.survival.title}</Text>
-                  <Text style={[typography.caption, { color: palette.inkMuted }]}>
-                    {language === 'vi'
-                      ? 'Chơi ngay chế độ sinh tồn 3 mạng đấu cùng 3 AI Bot hoặc luyện tập cá nhân!'
-                      : 'Play 3-lives survival mode immediately with 3 AI Bots or solo practice!'}
-                  </Text>
-                </View>
-              </View>
-              <View style={{ marginTop: spacing.md }}>
-                <Button variant="danger" icon="flame" onPress={() => router.push('/games/survival')} fullWidth>
-                  {language === 'vi' ? 'Vào Đấu trường Sinh tồn ngay' : 'Enter Survival Arena Now'}
-                </Button>
-              </View>
-            </Card>
-
             {/* Join Room + Camera QR Scanner */}
             <Card style={styles.cardSection}>
               <Text style={[typography.title, { color: palette.ink }]}>{t.battle.enterPin}</Text>
@@ -959,7 +1008,15 @@ const styles = StyleSheet.create({
     top: -6,
     right: -4,
   },
-  header: { paddingTop: spacing.md, marginBottom: spacing.md },
+  header: { paddingTop: spacing.sm, marginBottom: spacing.md },
+  headerBanner: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: radii.md,
+    backgroundColor: 'rgba(6, 10, 36, 0.78)',
+    borderWidth: 1,
+    borderColor: 'rgba(165, 180, 252, 0.25)',
+  },
   arenaTabs: {
     flexDirection: 'row',
     padding: 4,

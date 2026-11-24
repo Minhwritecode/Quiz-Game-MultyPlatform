@@ -5,12 +5,14 @@ import {
   ActivityIndicator,
   AppState,
   FlatList,
+  Image,
   Platform,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
   useWindowDimensions,
 } from 'react-native';
@@ -24,6 +26,7 @@ import { useI18n } from '@/core/i18n';
 import { dependencies } from '@/composition/dependencies';
 import type {
   BattleHistoryItem,
+  FriendSearchCandidate,
   LeaderboardEntry,
   LeaderboardTimeframe,
   LeaderboardTopic,
@@ -36,19 +39,29 @@ const TIME_TABS: { key: LeaderboardTimeframe; label: string }[] = [
 ];
 
 const TOPIC_CHIPS: { key: LeaderboardTopic; label: string }[] = [
-  { key: 'all', label: '🌐 Tất cả' },
-  { key: 'math', label: '📐 Toán' },
-  { key: 'physics', label: '⚡ Lý' },
-  { key: 'chemistry', label: '🧪 Hóa' },
-  { key: 'biology', label: '🌿 Sinh' },
-  { key: 'history', label: '📜 Sử' },
-  { key: 'english', label: '🇬🇧 Anh' },
-  { key: 'science', label: '🔬 KHTN' },
+  { key: 'all', label: 'Tất cả' },
+  { key: 'math', label: 'Toán' },
+  { key: 'physics', label: 'Lý' },
+  { key: 'chemistry', label: 'Hóa' },
+  { key: 'biology', label: 'Sinh' },
+  { key: 'history', label: 'Sử' },
+  { key: 'english', label: 'Anh' },
+  { key: 'science', label: 'KHTN' },
 ];
 
-const PAGE_SIZE = 5;
+const PAGE_SIZE = 8;
 
-const PlayerRow = memo(function PlayerRow({ player }: { player: LeaderboardEntry }) {
+const PlayerRow = memo(function PlayerRow({
+  player,
+  showAddFriend,
+  addingId,
+  onAddFriend,
+}: {
+  player: LeaderboardEntry;
+  showAddFriend?: boolean;
+  addingId?: string | null;
+  onAddFriend?: (id: string) => void;
+}) {
   const palette = usePalette();
   const { t } = useI18n();
   const isTop1 = player.rank === 1;
@@ -66,6 +79,7 @@ const PlayerRow = memo(function PlayerRow({ player }: { player: LeaderboardEntry
     rankBg = '#FFEDD5';
     rankFg = '#C2410C';
   }
+
   return (
     <Card
       style={[
@@ -74,20 +88,44 @@ const PlayerRow = memo(function PlayerRow({ player }: { player: LeaderboardEntry
       ]}
     >
       <View style={[styles.rankBadge, { backgroundColor: rankBg }]}>
-        <Text style={{ fontWeight: '800', color: rankFg, fontSize: 14 }}>{player.rank}</Text>
+        <Text style={{ fontWeight: '800', color: rankFg, fontSize: 13 }}>{player.rank}</Text>
       </View>
-      <Text style={styles.avatar}>{player.avatar}</Text>
+
+      {player.avatarUrl ? (
+        <Image source={{ uri: player.avatarUrl }} style={styles.avatarImage} />
+      ) : (
+        <View style={[styles.avatarFallback, { backgroundColor: palette.indigoTint }]}>
+          <Text style={styles.avatar}>{player.avatar}</Text>
+        </View>
+      )}
+
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={[typography.title, { color: palette.ink, fontSize: 15 }]} numberOfLines={1}>
           {player.isMe && !player.name.includes('(Bạn)') ? `${player.name} (Bạn)` : player.name}
         </Text>
         <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]} numberOfLines={1}>
-          🔥 {player.streak} {t.home.streakDays} · {player.gamesPlayed} trận
+          {player.streak} {t.home.streakDays} · {player.gamesPlayed} trận
         </Text>
       </View>
-      <Text style={[typography.title, { color: palette.indigo, fontSize: 14 }]} numberOfLines={1}>
-        {player.scoreLabel}
-      </Text>
+
+      <View style={styles.rowRight}>
+        <Text style={[typography.title, { color: palette.indigo, fontSize: 14 }]} numberOfLines={1}>
+          {player.scoreLabel}
+        </Text>
+        {showAddFriend && !player.isMe && !player.isFriend && onAddFriend ? (
+          <Pressable
+            accessibilityRole="button"
+            disabled={addingId === player.id}
+            onPress={() => onAddFriend(player.id)}
+            style={[styles.miniAddBtn, { backgroundColor: palette.indigoTint, borderColor: palette.indigo }]}
+          >
+            <Ionicons name="person-add-outline" size={12} color={palette.indigoDeep} />
+            <Text style={{ fontSize: 11, fontWeight: '800', color: palette.indigoDeep }}>
+              {addingId === player.id ? '...' : 'Kết bạn'}
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
     </Card>
   );
 });
@@ -114,6 +152,13 @@ export default function LeaderboardScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState('');
+
+  // Friend search & add state
+  const [friendQuery, setFriendQuery] = useState('');
+  const [searchingFriends, setSearchingFriends] = useState(false);
+  const [searchResults, setSearchResults] = useState<FriendSearchCandidate[]>([]);
+  const [addingFriendId, setAddingFriendId] = useState<string | null>(null);
+  const [friendNotice, setFriendNotice] = useState('');
 
   const fetchEntries = useCallback(async () => {
     if (scope === 'friends') {
@@ -176,7 +221,6 @@ export default function LeaderboardScreen() {
     };
   }, [fetchEntries]);
 
-  // Foreground periodic refresh while screen is focused (cleans up on blur/unmount)
   useFocusEffect(
     useCallback(() => {
       const timer = setInterval(() => {
@@ -194,6 +238,50 @@ export default function LeaderboardScreen() {
     }, [handleRefresh])
   );
 
+  const handleSearchFriends = useCallback(async () => {
+    const clean = friendQuery.trim();
+    if (clean.length < 2) {
+      setSearchResults([]);
+      setFriendNotice('Nhập ít nhất 2 ký tự tên người chơi để tìm.');
+      return;
+    }
+    setSearchingFriends(true);
+    setFriendNotice('');
+    try {
+      const found = await dependencies.leaderboard.searchPlayers(clean);
+      setSearchResults(found);
+      if (found.length === 0) {
+        setFriendNotice(`Không tìm thấy người chơi phù hợp với "${clean}".`);
+      }
+    } finally {
+      setSearchingFriends(false);
+    }
+  }, [friendQuery]);
+
+  const handleAddFriend = useCallback(
+    async (friendId: string) => {
+      if (!user) {
+        router.push('/auth');
+        return;
+      }
+      setAddingFriendId(friendId);
+      setFriendNotice('');
+      try {
+        const ok = await dependencies.leaderboard.addFriend(friendId);
+        if (ok) {
+          setFriendNotice('Đã kết bạn thành công! Đang cập nhật bảng xếp hạng bạn bè...');
+          setSearchResults((prev) => prev.filter((item) => item.id !== friendId));
+          await handleRefresh();
+        } else {
+          setFriendNotice('Không thể kết bạn lúc này. Hãy thử lại.');
+        }
+      } finally {
+        setAddingFriendId(null);
+      }
+    },
+    [handleRefresh, router, user]
+  );
+
   const totalPages = useMemo(() => Math.max(1, Math.ceil(entries.length / PAGE_SIZE)), [entries.length]);
   const safePage = Math.min(page, totalPages - 1);
   const paged = useMemo(
@@ -203,8 +291,15 @@ export default function LeaderboardScreen() {
   const myEntry = useMemo(() => entries.find((p) => p.isMe), [entries]);
   const keyExtractor = useCallback((item: LeaderboardEntry) => `${item.id}-${item.rank}`, []);
   const renderItem = useCallback(
-    ({ item }: { item: LeaderboardEntry }) => <PlayerRow player={item} />,
-    []
+    ({ item }: { item: LeaderboardEntry }) => (
+      <PlayerRow
+        player={item}
+        showAddFriend={scope === 'friends' && Boolean(user)}
+        addingId={addingFriendId}
+        onAddFriend={(id) => void handleAddFriend(id)}
+      />
+    ),
+    [scope, user, addingFriendId, handleAddFriend]
   );
 
   return (
@@ -213,8 +308,8 @@ export default function LeaderboardScreen() {
         data={loading ? [] : paged}
         keyExtractor={keyExtractor}
         showsVerticalScrollIndicator={false}
-        initialNumToRender={6}
-        maxToRenderPerBatch={6}
+        initialNumToRender={8}
+        maxToRenderPerBatch={8}
         windowSize={5}
         removeClippedSubviews={Platform.OS === 'android'}
         refreshControl={
@@ -227,12 +322,12 @@ export default function LeaderboardScreen() {
         renderItem={renderItem}
         ListHeaderComponent={
           <>
-            {/* ── Header + Live/Offline Source Indicator ── */}
+            {/* Header + Live/Offline Indicator */}
             <View style={styles.header}>
               <View style={styles.headerTopRow}>
                 <Text style={[typography.label, { color: palette.indigo }]}>{t.leaderboard.badge}</Text>
                 <Badge tone={source === 'live' ? 'success' : 'neutral'}>
-                  {source === 'live' ? '● Dữ liệu trực tuyến' : '● Đấu trường ngoại tuyến'}
+                  {source === 'live' ? 'Trực tuyến' : 'Ngoại tuyến'}
                 </Badge>
               </View>
               <Text style={[typography.heading, { color: palette.ink, marginTop: spacing.xs }]}>
@@ -243,11 +338,11 @@ export default function LeaderboardScreen() {
               </Text>
             </View>
 
-            {/* ── Global vs Friends Scope Switcher ── */}
+            {/* Global vs Friends Scope Switcher */}
             <View style={[styles.tabRow, { marginBottom: spacing.sm }]}>
               {([
-                { key: 'global', label: '🌍 Toàn cầu' },
-                { key: 'friends', label: '👥 Bạn bè' },
+                { key: 'global', label: 'Toàn cầu', icon: 'globe-outline' as const },
+                { key: 'friends', label: 'Bạn bè & Đối thủ', icon: 'people-outline' as const },
               ] as const).map((sc) => (
                 <Pressable
                   key={sc.key}
@@ -265,10 +360,11 @@ export default function LeaderboardScreen() {
                     },
                   ]}
                 >
+                  <Ionicons name={sc.icon} size={15} color={scope === sc.key ? '#FFFFFF' : palette.inkMuted} />
                   <Text
                     style={[
                       typography.caption,
-                      { color: scope === sc.key ? '#fff' : palette.ink, fontWeight: '800' },
+                      { color: scope === sc.key ? '#FFFFFF' : palette.ink, fontWeight: '800' },
                     ]}
                   >
                     {sc.label}
@@ -276,6 +372,78 @@ export default function LeaderboardScreen() {
                 </Pressable>
               ))}
             </View>
+
+            {/* Search & Add Friend Bar inside Friends tab */}
+            {scope === 'friends' && (
+              <Card style={{ marginBottom: spacing.md, padding: spacing.md }}>
+                <Text style={[typography.label, { color: palette.indigo, marginBottom: spacing.xs }]}>
+                  TÌM & KẾT BẠN
+                </Text>
+                {user ? (
+                  <>
+                    <View style={styles.friendSearchRow}>
+                      <TextInput
+                        value={friendQuery}
+                        onChangeText={setFriendQuery}
+                        onSubmitEditing={() => void handleSearchFriends()}
+                        placeholder="Nhập tên hiển thị (vd: khoaimichaelminh)..."
+                        placeholderTextColor={palette.inkMuted}
+                        style={[
+                          styles.friendInput,
+                          { color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paper },
+                        ]}
+                      />
+                      <Button
+                        icon="search"
+                        disabled={searchingFriends || friendQuery.trim().length < 2}
+                        onPress={() => void handleSearchFriends()}
+                      >
+                        Tìm
+                      </Button>
+                    </View>
+                    {!!friendNotice && (
+                      <Text style={[typography.caption, { color: palette.indigo, marginTop: spacing.xs }]}>
+                        {friendNotice}
+                      </Text>
+                    )}
+                    {searchResults.length > 0 && (
+                      <View style={{ marginTop: spacing.sm, gap: spacing.xs }}>
+                        {searchResults.map((cand) => (
+                          <View
+                            key={cand.id}
+                            style={[styles.searchResultRow, { backgroundColor: palette.paper, borderColor: palette.paperMuted }]}
+                          >
+                            <View style={{ flex: 1, minWidth: 0 }}>
+                              <Text style={[typography.body, { color: palette.ink, fontWeight: '700' }]} numberOfLines={1}>
+                                {cand.displayName}
+                              </Text>
+                              <Text style={[typography.caption, { color: palette.inkMuted }]}>
+                                {cand.eloRating} ELO · {cand.totalScore.toLocaleString('vi-VN')} XP
+                              </Text>
+                            </View>
+                            <Pressable
+                              accessibilityRole="button"
+                              disabled={addingFriendId === cand.id}
+                              onPress={() => void handleAddFriend(cand.id)}
+                              style={[styles.addFriendBtn, { backgroundColor: palette.indigo }]}
+                            >
+                              <Ionicons name="person-add" size={14} color="#FFFFFF" />
+                              <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '800' }}>
+                                {addingFriendId === cand.id ? '...' : 'Kết bạn'}
+                              </Text>
+                            </Pressable>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                  </>
+                ) : (
+                  <Button icon="log-in-outline" onPress={() => router.push('/auth')} fullWidth>
+                    Đăng nhập để kết bạn & xem bảng xếp hạng bạn bè
+                  </Button>
+                )}
+              </Card>
+            )}
 
             {loadError ? (
               <Card style={{ marginBottom: spacing.sm, borderColor: palette.danger, borderWidth: 1 }}>
@@ -288,7 +456,7 @@ export default function LeaderboardScreen() {
               </Card>
             ) : null}
 
-            {/* ── Time filter tabs ── */}
+            {/* Time filter tabs */}
             <View style={styles.tabRow}>
               {TIME_TABS.map((tab) => (
                 <Pressable
@@ -310,7 +478,7 @@ export default function LeaderboardScreen() {
                   <Text
                     style={[
                       typography.caption,
-                      { color: timeFilter === tab.key ? '#fff' : palette.inkMuted, fontWeight: '700' },
+                      { color: timeFilter === tab.key ? '#FFFFFF' : palette.inkMuted, fontWeight: '700' },
                     ]}
                   >
                     {tab.label}
@@ -319,17 +487,17 @@ export default function LeaderboardScreen() {
               ))}
             </View>
 
-            {/* ── Streak highlight card ── */}
+            {/* Streak highlight card */}
             <Card color={palette.goldTint} style={styles.streakCard}>
               <View style={[styles.medal, { backgroundColor: palette.gold }]}>
-                <Ionicons name="flame" size={26} color={palette.white} />
+                <Ionicons name="flame" size={24} color={palette.white} />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={[typography.label, { color: palette.gold }]} numberOfLines={1}>
                   {t.leaderboard.streakTitle}
                 </Text>
                 <Text style={[typography.title, { color: palette.ink, marginTop: 2 }]} numberOfLines={1}>
-                  {localStreak > 0 ? `Chuỗi ${localStreak} ngày liên tiếp 🎯` : t.leaderboard.streakSub}
+                  {localStreak > 0 ? `Chuỗi ${localStreak} ngày liên tiếp` : t.leaderboard.streakSub}
                 </Text>
                 <Text style={[typography.caption, { color: palette.inkMuted }]} numberOfLines={1}>
                   {t.leaderboard.streakBonus}
@@ -338,12 +506,12 @@ export default function LeaderboardScreen() {
               <Badge tone="fire">{myEntry ? `#${myEntry.rank}` : t.leaderboard.rank1}</Badge>
             </Card>
 
-            {/* ── My rank snapshot + ELO Rating + Link to Profile/History ── */}
+            {/* My rank snapshot + ELO */}
             {myEntry ? (
               <Card onPress={() => router.push('/profile')} style={[styles.myRank, { borderColor: palette.indigo }]}>
                 <Ionicons name="person-circle" size={20} color={palette.indigo} />
                 <Text style={[typography.caption, { color: palette.indigo, flex: 1, fontWeight: '700' }]} numberOfLines={1}>
-                  Hạng #{myEntry.rank} · {eloTier.badge} {eloRating} ELO · Xem hồ sơ →
+                  Hạng #{myEntry.rank} · {eloTier.badge} {eloRating} ELO · Xem hồ sơ
                 </Text>
                 <Text style={[typography.caption, { color: palette.inkMuted, fontWeight: '700' }]}>
                   {myEntry.scoreLabel}
@@ -351,11 +519,11 @@ export default function LeaderboardScreen() {
               </Card>
             ) : null}
 
-            {/* ── Recent Personal Battle History (Supabase RPC) ── */}
+            {/* Recent Personal Battle History */}
             {battleHistory.length > 0 && (
               <Card style={{ marginBottom: spacing.md, padding: spacing.md }}>
-                <Text style={[typography.caption, { color: palette.indigo, fontWeight: '800', marginBottom: 6 }]}>
-                  📜 LỊCH SỬ TRẬN ĐẤU GẦN ĐÂY ({battleHistory.length})
+                <Text style={[typography.label, { color: palette.indigo, marginBottom: 8 }]}>
+                  LỊCH SỬ TRẬN ĐẤU GẦN ĐÂY ({battleHistory.length})
                 </Text>
                 {battleHistory.slice(0, 3).map((item) => (
                   <View
@@ -364,7 +532,7 @@ export default function LeaderboardScreen() {
                       flexDirection: 'row',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      paddingVertical: 5,
+                      paddingVertical: 6,
                       borderBottomWidth: 1,
                       borderBottomColor: palette.paperMuted,
                     }}
@@ -391,36 +559,38 @@ export default function LeaderboardScreen() {
               </Card>
             )}
 
-            {/* ── Topic filter chips ── */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipScroll}>
-              {TOPIC_CHIPS.map((chip) => (
-                <Pressable
-                  key={chip.key}
-                  accessibilityRole="tab"
-                  accessibilityState={{ selected: topicFilter === chip.key }}
-                  onPress={() => {
-                    setTopicFilter(chip.key);
-                    setPage(0);
-                  }}
-                  style={[
-                    styles.chip,
-                    { backgroundColor: topicFilter === chip.key ? palette.indigo : palette.paperMuted },
-                  ]}
-                >
-                  <Text
+            {/* Topic filter chips (Global only) */}
+            {scope === 'global' && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipScroll}>
+                {TOPIC_CHIPS.map((chip) => (
+                  <Pressable
+                    key={chip.key}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: topicFilter === chip.key }}
+                    onPress={() => {
+                      setTopicFilter(chip.key);
+                      setPage(0);
+                    }}
                     style={[
-                      typography.caption,
-                      { color: topicFilter === chip.key ? '#fff' : palette.inkMuted, fontWeight: '600' },
+                      styles.chip,
+                      { backgroundColor: topicFilter === chip.key ? palette.indigo : palette.paperMuted },
                     ]}
                   >
-                    {chip.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
+                    <Text
+                      style={[
+                        typography.caption,
+                        { color: topicFilter === chip.key ? '#FFFFFF' : palette.inkMuted, fontWeight: '700' },
+                      ]}
+                    >
+                      {chip.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            )}
 
             <Text style={[typography.title, { color: palette.ink, marginTop: spacing.lg, marginBottom: spacing.sm }]}>
-              {t.leaderboard.topPlayers}
+              {scope === 'friends' ? 'Bảng xếp hạng bạn bè & đối thủ' : t.leaderboard.topPlayers}
             </Text>
           </>
         }
@@ -429,12 +599,12 @@ export default function LeaderboardScreen() {
             <View style={{ alignItems: 'center', paddingVertical: spacing.xxl }}>
               <ActivityIndicator size="large" color={palette.indigo} />
               <Text style={[typography.caption, { color: palette.inkMuted, marginTop: spacing.sm }]}>
-                Đang tải bảng xếp hạng từ máy chủ...
+                Đang tải bảng xếp hạng...
               </Text>
             </View>
           ) : (
             <View style={{ alignItems: 'center', paddingVertical: spacing.xxl }}>
-              <Text style={{ fontSize: 36 }}>🔍</Text>
+              <Ionicons name="trophy-outline" size={34} color={palette.inkMuted} />
               <Text style={[typography.caption, { color: palette.inkMuted, marginTop: spacing.sm }]}>
                 Chưa có dữ liệu cho bộ lọc này
               </Text>
@@ -469,7 +639,7 @@ export default function LeaderboardScreen() {
                   <Text
                     style={[
                       typography.caption,
-                      { color: safePage === i ? '#fff' : palette.inkMuted, fontWeight: '700' },
+                      { color: safePage === i ? '#FFFFFF' : palette.inkMuted, fontWeight: '700' },
                     ]}
                   >
                     {i + 1}
@@ -502,17 +672,76 @@ export default function LeaderboardScreen() {
 const styles = StyleSheet.create({
   list: { paddingBottom: spacing.xxl },
   header: { marginTop: spacing.sm, marginBottom: spacing.lg },
-  headerTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: spacing.xs },
+  headerTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
   tabRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
-  tab: { flex: 1, alignItems: 'center', paddingVertical: spacing.sm, borderRadius: radii.md, borderWidth: 1.5 },
+  tab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.md,
+    borderWidth: 1.5,
+  },
+  friendSearchRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  friendInput: {
+    flex: 1,
+    minHeight: 46,
+    borderWidth: 1,
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing.md,
+    fontSize: 14,
+  },
+  searchResultRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+  },
+  addFriendBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    borderRadius: radii.pill,
+  },
   streakCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.md, marginBottom: spacing.md },
-  medal: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center' },
-  myRank: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.md, borderWidth: 1.5, padding: spacing.sm },
+  medal: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  myRank: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+    borderWidth: 1.5,
+    padding: spacing.sm,
+  },
   chipScroll: { gap: spacing.sm, paddingVertical: spacing.xs },
   chip: { paddingHorizontal: spacing.md, paddingVertical: 7, borderRadius: radii.pill },
   playerCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.md, marginBottom: spacing.sm },
   rankBadge: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  avatar: { fontSize: 22 },
+  avatarFallback: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  avatarImage: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: '#6366F1' },
+  avatar: { fontSize: 18 },
+  rowRight: { alignItems: 'flex-end', gap: 4 },
+  miniAddBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+  },
   pagination: { flexDirection: 'row', justifyContent: 'center', gap: spacing.sm, paddingVertical: spacing.xl },
   pageBtn: { width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
 });

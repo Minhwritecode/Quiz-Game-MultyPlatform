@@ -20,7 +20,6 @@ import { CharacterHero, CharacterAction } from '@/shared/CharacterHero';
 import { GameEnvironment } from '@/shared/GameEnvironment';
 import { MagicParticles } from '@/shared/MagicParticles';
 import { sfx } from '@/core/audio/sfx';
-import { RenderModeToggle } from '@/shared/RenderModeToggle';
 import { SoundToggle } from '@/shared/SoundToggle';
 import { useStreakStore } from '@/features/streak/state/useStreakStore';
 import { useMembershipStore } from '@/features/membership/state/useMembershipStore';
@@ -515,7 +514,6 @@ export default function MatchGameScreen() {
           </Text>
         </View>
         <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
-          <RenderModeToggle compact />
           <SoundToggle />
         </View>
       </View>

@@ -43,9 +43,9 @@ export function CharacterHero({
   mode,
 }: CharacterHeroProps) {
   const palette = usePalette();
-  const globalRender3D = usePapyrusStore((state) => state.render3DMode);
+  const reduceMotion = usePapyrusStore((state) => state.reduceMotion);
   const isVip = useMembershipStore((state) => state.tier === 'archmage');
-  const activeMode = mode !== undefined ? mode : globalRender3D ? '3d' : '2d';
+  const activeMode = mode !== undefined ? mode : reduceMotion ? '2d' : '3d';
 
   const floatAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;

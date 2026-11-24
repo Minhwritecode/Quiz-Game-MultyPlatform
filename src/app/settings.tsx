@@ -87,6 +87,9 @@ export default function SettingsScreen() {
   const toggleHaptics = usePapyrusStore((state) => state.toggleHaptics);
   const toggleReduceMotion = usePapyrusStore((state) => state.toggleReduceMotion);
 
+  const isAdmin =
+    user?.role === 'admin' || user?.role === 'superadmin' || user?.role === 'moderator';
+
   const handleSignOut = async () => {
     await dependencies.auth.signOut();
     useAuthStore.getState().clear();
@@ -218,27 +221,31 @@ export default function SettingsScreen() {
           </View>
           <Badge tone="neutral">{clearingCache ? '...' : language === 'vi' ? 'Dọn' : 'Clear'}</Badge>
         </Pressable>
-        <View style={[styles.separator, { backgroundColor: palette.paperMuted }]} />
-        <Pressable accessibilityRole="button" style={styles.row} onPress={() => setModerationOpen(true)}>
-          <View style={[styles.iconWrap, { backgroundColor: palette.paper }]}>
-            <Ionicons name="shield-checkmark-outline" size={20} color={palette.indigo} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[typography.body, { color: palette.ink, fontWeight: '700' }]}>
-              {language === 'vi' ? 'Kiểm duyệt AI & Superadmin Console' : 'AI Moderation & Superadmin Console'}
-            </Text>
-            <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
-              {language === 'vi'
-                ? 'AI Auto-Gate duyệt báo cáo câu hỏi, quản lý User/Role và kho đề chung'
-                : 'AI Auto-Gate reports, manage users/roles and community sets'}
-            </Text>
-          </View>
-          {openReportCount > 0 ? (
-            <Badge tone="danger">{openReportCount}</Badge>
-          ) : (
-            <Ionicons name="chevron-forward" size={20} color={palette.indigo} />
-          )}
-        </Pressable>
+        {isAdmin && (
+          <>
+            <View style={[styles.separator, { backgroundColor: palette.paperMuted }]} />
+            <Pressable accessibilityRole="button" style={styles.row} onPress={() => setModerationOpen(true)}>
+              <View style={[styles.iconWrap, { backgroundColor: palette.paper }]}>
+                <Ionicons name="shield-checkmark-outline" size={20} color={palette.indigo} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[typography.body, { color: palette.ink, fontWeight: '700' }]}>
+                  {language === 'vi' ? 'Kiểm duyệt AI & Quản trị hệ thống' : 'AI Moderation & Admin Console'}
+                </Text>
+                <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
+                  {language === 'vi'
+                    ? 'Chỉ dành cho quản trị viên · Duyệt báo cáo câu hỏi & kho đề cộng đồng'
+                    : 'Admins only · Review question reports and community sets'}
+                </Text>
+              </View>
+              {openReportCount > 0 ? (
+                <Badge tone="danger">{openReportCount}</Badge>
+              ) : (
+                <Ionicons name="chevron-forward" size={20} color={palette.indigo} />
+              )}
+            </Pressable>
+          </>
+        )}
         <View style={[styles.separator, { backgroundColor: palette.paperMuted }]} />
         <Pressable accessibilityRole="button" style={styles.row} onPress={() => setBillingOpen(true)}>
           <View style={[styles.iconWrap, { backgroundColor: palette.paper }]}>
@@ -259,7 +266,9 @@ export default function SettingsScreen() {
           </Badge>
         </Pressable>
       </Card>
-      <ModerationQueueModal visible={moderationOpen} onClose={() => setModerationOpen(false)} />
+      {isAdmin && (
+        <ModerationQueueModal visible={moderationOpen} onClose={() => setModerationOpen(false)} />
+      )}
       <VipCheckoutModal visible={billingOpen} onClose={() => setBillingOpen(false)} />
 
       {Platform.OS !== 'web' && <Card style={{marginTop:spacing.lg}}>

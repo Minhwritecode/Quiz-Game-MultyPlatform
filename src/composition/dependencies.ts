@@ -5,15 +5,17 @@ import { battleSession } from '@/features/room-battle/data/session';
 import { leaderboardRepository } from '@/features/leaderboard/data/repository';
 import { createLeaderboardUseCases } from '@/features/leaderboard/domain/repository';
 import {
+  addFriendById,
   fetchFriendsLeaderboard,
   fetchGlobalLeaderboard,
   fetchMyBattleHistory,
+  searchPlayersForFriend,
 } from '@/features/leaderboard/data/leaderboardRepository';
 import { pickRichSourceDocument, pickSourceDocument } from '@/features/scan-ocr/data/documentSource';
 import { reminders } from '@/features/reminders/data/reminders';
 import { roomRepository, battleRepository } from '@/features/room-battle/data/roomRepository';
 import { localSyncQueue } from '@/features/sync/data/localQueue';
-import { authRepository, updateDisplayName } from '@/features/auth/data/authRepository';
+import { authRepository, updateDisplayName, updateUserAvatar } from '@/features/auth/data/authRepository';
 import { cloudSets } from '@/features/sync/data/cloudSets';
 import { releaseService } from '@/features/release/data/releaseService';
 import { deleteCurrentAccount } from '@/features/auth/data/accountDeletion';
@@ -33,6 +35,8 @@ export const dependencies = {
     fetchGlobal: fetchGlobalLeaderboard,
     fetchFriends: fetchFriendsLeaderboard,
     fetchBattleHistory: fetchMyBattleHistory,
+    searchPlayers: searchPlayersForFriend,
+    addFriend: addFriendById,
   },
   reminders,
   release: releaseService,
@@ -49,6 +53,7 @@ export const dependencies = {
   syncQueue: localSyncQueue,
   auth: authRepository,
   updateDisplayName,
+  updateUserAvatar,
   cloudSets,
   onboarding: onboardingRepository,
 };

@@ -1,5 +1,5 @@
 import React, { lazy, Suspense, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useI18n } from '@/core/i18n';
 import { OnboardingIllusionFallback } from './OnboardingIllusionFallback';
@@ -13,8 +13,8 @@ export interface OnboardingIllusionModalProps {
 }
 
 /**
- * Web First-Time Optical Illusion Onboarding Overlay.
- * Lazily loads the video player chunk ONLY when `visible` is true so initial app bundle size stays untouched.
+ * Full-bleed borderless Web First-Time Onboarding Cinema Overlay.
+ * Auto-advances straight to Home when video finishes.
  */
 export function OnboardingIllusionModal({
   visible,
@@ -49,19 +49,8 @@ export function OnboardingIllusionModal({
 
   const effectiveReduceMotion = reduceMotion || browserReduceMotion;
 
-  const backdropStyle = {
-    backgroundImage:
-      'radial-gradient(circle at 50% 42%, rgba(79, 70, 229, 0.30) 0%, rgba(124, 58, 237, 0.14) 30%, rgba(5, 8, 29, 0.96) 72%), '
-      + 'linear-gradient(165deg, rgba(5, 8, 29, 0.96) 0%, rgba(9, 14, 46, 0.97) 100%)',
-    backdropFilter: 'blur(14px)',
-    WebkitBackdropFilter: 'blur(14px)',
-  } as unknown as ViewStyle;
-
   return (
-    <View
-      style={[styles.overlay, backdropStyle]}
-      accessibilityLabel="Papyrus Onboarding Video"
-    >
+    <View style={styles.overlay} accessibilityLabel="Papyrus Onboarding Video">
       <Pressable
         onPress={onClose}
         accessibilityRole="button"
@@ -74,7 +63,7 @@ export function OnboardingIllusionModal({
         <Text style={styles.skipText}>{language === 'vi' ? 'Bỏ qua' : 'Skip'}</Text>
       </Pressable>
 
-      <View style={styles.center}>
+      <View style={styles.fullStage}>
         {effectiveReduceMotion ? (
           <OnboardingIllusionFallback onComplete={onClose} reduceMotion />
         ) : (
@@ -91,29 +80,29 @@ const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFill,
     zIndex: 9990,
-    backgroundColor: 'rgba(5, 8, 29, 0.96)',
+    backgroundColor: '#05081D',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 16,
   },
   skipBtn: {
     position: 'absolute',
-    right: 20,
-    zIndex: 20,
-    paddingHorizontal: 15,
-    paddingVertical: 8,
+    right: 18,
+    zIndex: 30,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
     borderRadius: 999,
-    backgroundColor: 'rgba(15, 23, 66, 0.74)',
+    backgroundColor: 'rgba(6, 10, 36, 0.58)',
     borderWidth: 1,
-    borderColor: 'rgba(199, 210, 254, 0.30)',
+    borderColor: 'rgba(224, 231, 255, 0.25)',
   },
   skipText: {
     fontSize: 12.5,
     fontWeight: '700',
     color: '#E0E7FF',
   },
-  center: {
+  fullStage: {
     width: '100%',
+    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -416,11 +416,11 @@ const SanctuaryBackdrop = memo(function SanctuaryBackdrop({ reduceMotion }: { re
 export function GameEnvironment({
   gameMode,
   children,
-  show3DByDefault = false,
+  show3DByDefault = true,
   enable3DToggle = true,
 }: GameEnvironmentProps) {
-  const [show3D, setShow3D] = useState(show3DByDefault);
   const reduceMotion = usePapyrusStore((s) => s.reduceMotion);
+  const [show3D, setShow3D] = useState(() => show3DByDefault && !reduceMotion);
   const config = CONFIGS[gameMode];
 
   const backdrop =
@@ -436,58 +436,55 @@ export function GameEnvironment({
 
   return (
     <View style={[styles.container, { backgroundColor: config.bgColor }]}>
-      {/* Gradient Top & Bottom Ambience */}
+      {/* Subtle Cosmic Gradient Ambience (kept strictly behind content) */}
       <View style={[styles.gradientTop, { backgroundColor: config.gradientTop }]} pointerEvents="none" />
       <View style={[styles.gradientBottom, { backgroundColor: config.gradientBottom }]} pointerEvents="none" />
 
-      {/* Rich Architectural Landscape Backdrop */}
-      {backdrop}
+      {/* Architectural Backdrop (softened so foreground text stays readable) */}
+      <View style={[StyleSheet.absoluteFill, { opacity: 0.38 }]} pointerEvents="none">
+        {backdrop}
+      </View>
 
-      {/* 3D Realm Interactive Toggle Bar */}
-      {enable3DToggle && (
-        <View style={styles.toggleRow}>
-          <Pressable
-            onPress={() => setShow3D(!show3D)}
-            style={({ pressed }) => [
-              styles.togglePill,
-              {
-                backgroundColor: show3D ? 'rgba(99, 102, 241, 0.3)' : 'rgba(255, 255, 255, 0.12)',
-                borderColor: show3D ? '#818CF8' : 'rgba(255, 255, 255, 0.25)',
-                opacity: pressed ? 0.75 : 1,
-              },
-            ]}
-          >
-            <Ionicons
-              name={show3D ? 'cube' : 'cube-outline'}
-              size={14}
-              color={show3D ? '#A5B4FC' : '#94A3B8'}
-            />
-            <Text
-              style={[
-                styles.toggleText,
-                { color: show3D ? '#C7D2FE' : '#94A3B8' },
+      {/* Framed Blender 3D Realm Showcase Stage */}
+      {enable3DToggle && !reduceMotion && (
+        <View style={styles.stageHeaderWrap}>
+          {show3D ? (
+            <View style={styles.stage3DContainer}>
+              <Model3DErrorBoundary>
+                <Model3DView
+                  model={gameMode}
+                  height={176}
+                  autoRotate={true}
+                  interactive={true}
+                />
+              </Model3DErrorBoundary>
+              <View style={styles.stageFooterRow}>
+                <Text style={styles.stage3DHint}>
+                  Kéo để xoay đấu trường 3D
+                </Text>
+                <Pressable
+                  onPress={() => setShow3D(false)}
+                  accessibilityRole="button"
+                  style={styles.stageCollapseBtn}
+                >
+                  <Ionicons name="chevron-up" size={14} color="#C7D2FE" />
+                  <Text style={styles.stageCollapseText}>Thu gọn 3D</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : (
+            <Pressable
+              onPress={() => setShow3D(true)}
+              accessibilityRole="button"
+              style={({ pressed }) => [
+                styles.stageExpandPill,
+                { opacity: pressed ? 0.8 : 1 },
               ]}
             >
-              {show3D ? '🔮 3D Realm (Active)' : '✨ Tap for 3D View'}
-            </Text>
-          </Pressable>
-        </View>
-      )}
-
-      {/* Interactive 3D Model Stage */}
-      {show3D && (
-        <View style={styles.stage3DContainer}>
-          <Model3DErrorBoundary>
-            <Model3DView
-              model={gameMode}
-              height={200}
-              autoRotate={true}
-              interactive={true}
-            />
-          </Model3DErrorBoundary>
-          <Text style={styles.stage3DHint}>
-            👆 Drag to rotate 3D realm • Pinch to zoom
-          </Text>
+              <Ionicons name="cube-outline" size={14} color="#C7D2FE" />
+              <Text style={styles.stageCollapseText}>Mở sân khấu 3D</Text>
+            </Pressable>
+          )}
         </View>
       )}
 
@@ -641,38 +638,54 @@ const styles = StyleSheet.create({
     backgroundColor: '#6EE7B7',
     transform: [{ rotate: '8deg' }],
   },
-  toggleRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    zIndex: 10,
+  stageHeaderWrap: {
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    zIndex: 5,
   },
-  togglePill: {
+  stage3DContainer: {
+    width: '100%',
+    zIndex: 5,
+  },
+  stageFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 6,
+    paddingHorizontal: 4,
+  },
+  stage3DHint: {
+    fontSize: 11,
+    color: '#CBD5E1',
+    letterSpacing: 0.2,
+  },
+  stageCollapseBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(15, 23, 66, 0.72)',
+    borderWidth: 1,
+    borderColor: 'rgba(165, 180, 252, 0.35)',
+  },
+  stageExpandPill: {
+    alignSelf: 'flex-end',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 999,
+    backgroundColor: 'rgba(15, 23, 66, 0.78)',
     borderWidth: 1,
+    borderColor: 'rgba(165, 180, 252, 0.38)',
   },
-  toggleText: {
+  stageCollapseText: {
     fontSize: 11,
     fontWeight: '700',
-    letterSpacing: 0.3,
-  },
-  stage3DContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    zIndex: 5,
-  },
-  stage3DHint: {
-    fontSize: 10,
-    color: '#94A3B8',
-    textAlign: 'center',
-    marginTop: 4,
-    letterSpacing: 0.4,
+    color: '#E0E7FF',
   },
   content: {
     flex: 1,
