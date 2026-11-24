@@ -27,6 +27,12 @@
       ]
     },
     {
+      "source": "/version.json",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+      ]
+    },
+    {
       "source": "/(.*)\\.glb",
       "headers": [
         { "key": "Content-Type", "value": "model/gltf-binary" },
@@ -42,7 +48,7 @@
   ],
   "rewrites": [
     {
-      "source": "/((?!_expo/|assets/|icons/|manifest\\.webmanifest|sw\\.js|favicon\\.png).*)",
+      "source": "/((?!_expo/|assets/|icons/|manifest\\.webmanifest|sw\\.js|version\\.json|favicon\\.png).*)",
       "destination": "/index.html"
     }
   ]

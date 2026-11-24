@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { checkWebAppVersionUpdate } from '@/composition/platform';
 
-const LOCAL_BUILD_ID = '20261124-2000';
+const LOCAL_BUILD_ID = '20261125-0230';
 
 /**
  * Web/PWA live developer update detector:
@@ -115,7 +115,7 @@ export function AppUpdateBanner() {
 const styles = StyleSheet.create({
   wrap: {
     position: 'fixed' as unknown as 'absolute',
-    top: 12,
+    top: 'calc(env(safe-area-inset-top, 0px) + 12px)' as unknown as number,
     left: spacing.md,
     right: spacing.md,
     zIndex: 9999,
