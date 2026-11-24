@@ -6,6 +6,7 @@ import { KeyboardAvoidingView, Linking, Platform, Pressable, StyleSheet, Text, T
 import { BrandMark, Button, Card, Screen, SmoothReveal, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { dependencies } from '@/composition/dependencies';
+import { sendMagicLinkEmail } from '@/composition/platform';
 import { useI18n } from '@/core/i18n';
 import { useAuthStore } from '@/core/state/useAuthStore';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
@@ -156,7 +157,7 @@ export default function AuthScreen() {
         if (result.error.startsWith('PROVIDER_NOT_ENABLED:')) {
           setErrorMsg(
             provider === 'google'
-              ? t.auth.providerNotEnabledGoogle
+              ? 'Đăng nhập Google hiện chưa bật trên Supabase Dashboard (Authentication → Providers → Google). Bạn có thể dùng "Đăng nhập nhanh qua Email Magic Link" bên dưới hoặc Email + Mật khẩu ngay lúc này!'
               : t.auth.providerNotEnabledFacebook
           );
         } else {
@@ -171,6 +172,35 @@ export default function AuthScreen() {
       }
     } catch (err) {
       setErrorMsg(errorMessage(err, 'OAuth request failed'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleMagicLink = async () => {
+    const cleanEmail = email.trim();
+    if (!cleanEmail) {
+      setErrorMsg(
+        language === 'vi'
+          ? 'Nhập địa chỉ Email ở ô phía trên rồi bấm nút Magic Link để nhận liên kết đăng nhập 1 chạm!'
+          : 'Enter your email address above first to receive a one-tap Magic Link!'
+      );
+      return;
+    }
+    setErrorMsg(null);
+    setInfoMsg(null);
+    setBusy(true);
+    try {
+      const err = await sendMagicLinkEmail(cleanEmail);
+      if (err) {
+        setErrorMsg(err);
+      } else {
+        setInfoMsg(
+          language === 'vi'
+            ? `✨ Đã gửi liên kết đăng nhập 1 chạm tới ${cleanEmail}! Hãy mở hộp thư và chạm vào liên kết để vào thẳng Papyrus.`
+            : `✨ Magic sign-in link sent to ${cleanEmail}! Check your inbox.`
+        );
+      }
     } finally {
       setBusy(false);
     }
@@ -217,8 +247,8 @@ export default function AuthScreen() {
           </View>
         </SmoothReveal>
 
-        {/* Main Form Card */}
-        <SmoothReveal delay={70}>
+        {/* Main Form Card — re-animates smoothly alongside Three.js 3D Constellation Morph on mode switch */}
+        <SmoothReveal key={mode} delay={30}>
         <Card
           style={[
             styles.formCard,
@@ -463,6 +493,17 @@ export default function AuthScreen() {
                       </Button>
                     </View>
                   </View>
+
+                  {/* Passwordless 1-Tap Magic Link Login */}
+                  <Button
+                    variant="ghost"
+                    icon="mail-open-outline"
+                    onPress={() => void handleMagicLink()}
+                    disabled={busy}
+                    fullWidth
+                  >
+                    {language === 'vi' ? '✨ Đăng nhập 1 chạm bằng Email Magic Link' : '✨ Sign in with Email Magic Link'}
+                  </Button>
 
                   {/* Guest Login */}
                   <Pressable

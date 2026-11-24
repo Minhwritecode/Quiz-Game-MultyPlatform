@@ -1,8 +1,14 @@
 export { aiQuizApi } from '@/features/ai-quiz/services/aiQuiz.api';
+export { extractTextFromPdfBase64 } from '@/features/ai-quiz/services/documentTextExtractor';
 export { knowledgeSpacesRepository } from '@/features/ai-quiz/data/knowledgeSpacesRepository';
 export { quizApi } from '@/features/quiz-library/services/quiz.api';
 export { roomApi } from '@/features/multiplayer/services/room.api';
 export { gameApi } from '@/features/multiplayer/services/game.api';
+export {
+  createRealtimeKahootChannel,
+  removeRealtimeKahootChannel,
+  type RealtimeBroadcastChannel,
+} from '@/features/multiplayer/data/kahootRealtimeBridge';
 export {
   fetchBillingHistory,
   processBillingCheckout,
@@ -30,3 +36,15 @@ export {
   type AdminUserSummary,
   type ExternalPermissionState,
 } from '@/features/notifications/data/pushNotifier';
+export { subscribeRealtimeAdminGifts } from '@/features/notifications/data/giftRealtime';
+export {
+  formatScholarCode,
+  getOnlineScholarCandidates,
+  registerScholarPresence,
+  subscribeOnlineScholars,
+} from '@/features/leaderboard/data/liveScholarDirectory';
+export { sendMagicLinkEmail } from '@/features/auth/data/authRepository';
+export {
+  resolveHistoryConflict,
+  type ChatConflictResolution,
+} from '@/features/assistant/data/historySync';

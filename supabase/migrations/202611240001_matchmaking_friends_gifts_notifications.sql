@@ -192,7 +192,10 @@ begin
     coalesce(p.total_score, 0)::integer as total_score
   from public.profiles p
   where p.id <> uid
-    and lower(coalesce(p.display_name, '')) like '%' || lower(clean_q) || '%'
+    and (
+      lower(coalesce(p.display_name, '')) like '%' || lower(clean_q) || '%'
+      or lower(p.id::text) like '%' || lower(clean_q) || '%'
+    )
   order by coalesce(p.total_score, 0) desc, coalesce(p.elo_rating, 1200) desc
   limit greatest(1, least(coalesce(p_limit, 15), 30));
 end;

@@ -1,35 +1,177 @@
 import { seedQuestionSets } from '@/core/data/seed';
+import type { QuestionSet } from '@/core/domain/models';
 import type { ChatMessage } from '../domain/repository';
 
 const STOP_WORDS = new Set([
   'là', 'gì', 'của', 'và', 'các', 'trong', 'có', 'được', 'cho', 'với', 'một', 'những',
   'khi', 'nào', 'như', 'thế', 'hãy', 'giải', 'thích', 'tôi', 'bạn', 'giúp', 'về', 'tại',
-  'sao', 'theo', 'này', 'đó', 'the', 'what', 'how', 'why', 'is', 'are', 'of', 'in', 'to', 'for', 'and',
+  'sao', 'theo', 'này', 'đó', 'cho', 'hỏi', 'ơi', 'nhé', 'nha', 'the', 'what', 'how', 'why', 'is', 'are', 'of', 'in', 'to', 'for', 'and',
 ]);
 
 function tokenize(text: string): string[] {
   return text
     .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/[^\p{L}\p{N}\s+#]/gu, ' ')
     .split(/\s+/)
     .filter((w) => w.length >= 2 && !STOP_WORDS.has(w));
 }
 
-function summarizeDocument(doc: string): string {
-  const sentences = doc
-    .replace(/\r/g, '\n')
-    .split(/(?<=[.!?\n])\s+/)
-    .map((s) => s.trim())
-    .filter((s) => s.length >= 20);
-  const top = sentences.slice(0, 6);
-  if (top.length === 0) {
-    return `Tài liệu có nội dung ngắn:\n• ${doc.trim().slice(0, 400)}`;
+/**
+ * Safe recursive-descent arithmetic & algebra solver (handles 1+1=, powers, roots, percentages, linear/quadratic equations).
+ */
+function trySolveMath(rawInput: string): string | null {
+  const cleaned = rawInput
+    .trim()
+    .replace(/^(tính|giải|kết quả|bằng bao nhiêu|what is|solve|calculate)\s*:?\s*/i, '')
+    .replace(/[=?？]+$/g, '')
+    .trim();
+
+  // 1. Percentage: "15% của 240" or "15% of 240"
+  const pctMatch = cleaned.match(/^(\d+(?:[.,]\d+)?)\s*%\s*(?:của|of|\*)\s*(\d+(?:[.,]\d+)?)$/i);
+  if (pctMatch) {
+    const p = parseFloat(pctMatch[1]!.replace(',', '.'));
+    const v = parseFloat(pctMatch[2]!.replace(',', '.'));
+    const res = (p / 100) * v;
+    return `🧮 **Kết quả tính toán:**\n• \`${p}% × ${v} = ${Number(res.toFixed(6))}\`\n• **Giải thích:** Lấy \`(${p} / 100) × ${v} = ${Number(res.toFixed(6))}\`.`;
   }
+
+  // 2. Square root in natural language: "căn bậc hai của 144" / "căn 81"
+  const sqrtVi = cleaned.match(/^(?:căn bậc hai của|căn bậc 2 của|căn)\s*(\d+(?:[.,]\d+)?)$/i);
+  if (sqrtVi) {
+    const n = parseFloat(sqrtVi[1]!.replace(',', '.'));
+    if (n >= 0) {
+      const r = Math.sqrt(n);
+      return `🧮 **Kết quả:**\n• \`√${n} = ${Number(r.toFixed(6))}\``;
+    }
+  }
+
+  // 3. Linear equation a*x + b = c (e.g. "2x + 6 = 14", "3x - 9 = 0")
+  const linMatch = cleaned.replace(/\s+/g, '').match(/^([+-]?\d*\.?\d*)x([+-]\d+\.?\d*)?=([+-]?\d+\.?\d*)$/i);
+  if (linMatch) {
+    const aRaw = linMatch[1] ?? '';
+    const a = aRaw === '' || aRaw === '+' ? 1 : aRaw === '-' ? -1 : parseFloat(aRaw);
+    const b = linMatch[2] ? parseFloat(linMatch[2]) : 0;
+    const c = parseFloat(linMatch[3]!);
+    if (a !== 0 && !Number.isNaN(a) && !Number.isNaN(b) && !Number.isNaN(c)) {
+      const x = (c - b) / a;
+      return [
+        `📐 **Giải phương trình bậc nhất:** \`${cleaned}\``,
+        `1. Chuyển vế: \`${a}x = ${c} - (${b}) = ${c - b}\``,
+        `2. Chia hai vế cho \`${a}\`: **\`x = ${Number(x.toFixed(6))}\`**`,
+      ].join('\n');
+    }
+  }
+
+  // 4. Quadratic equation ax^2 + bx + c = 0 (e.g. "x^2 - 5x + 6 = 0")
+  const quadMatch = cleaned
+    .replace(/\s+/g, '')
+    .replace(/²/g, '^2')
+    .match(/^([+-]?\d*\.?\d*)x\^2([+-]\d*\.?\d*)x([+-]\d+\.?\d*)=0$/i);
+  if (quadMatch) {
+    const parseCoef = (s: string) => (s === '' || s === '+' ? 1 : s === '-' ? -1 : parseFloat(s));
+    const a = parseCoef(quadMatch[1] ?? '');
+    const b = parseCoef(quadMatch[2] ?? '');
+    const c = parseFloat(quadMatch[3]!);
+    if (a !== 0 && !Number.isNaN(a) && !Number.isNaN(b) && !Number.isNaN(c)) {
+      const delta = b * b - 4 * a * c;
+      if (delta < 0) {
+        return `📐 **Phương trình bậc hai:** \`${cleaned}\`\n• Biệt thức \`Δ = (${b})² - 4·(${a})·(${c}) = ${delta} < 0\` → **Vô nghiệm thực**.`;
+      }
+      if (delta === 0) {
+        const x = -b / (2 * a);
+        return `📐 **Phương trình bậc hai:** \`${cleaned}\`\n• \`Δ = 0\` → Nghiệm kép: **\`x₁ = x₂ = ${Number(x.toFixed(6))}\`**.`;
+      }
+      const x1 = (-b + Math.sqrt(delta)) / (2 * a);
+      const x2 = (-b - Math.sqrt(delta)) / (2 * a);
+      return [
+        `📐 **Giải phương trình bậc hai:** \`${cleaned}\``,
+        `• \`Δ = (${b})² - 4·(${a})·(${c}) = ${delta} > 0\``,
+        `• **\`x₁ = ${Number(x1.toFixed(6))}\`** · **\`x₂ = ${Number(x2.toFixed(6))}\`**`,
+      ].join('\n');
+    }
+  }
+
+  // 5. Pure arithmetic / scientific expression (1+1, (12+8)*3/4, 2^10, sqrt(81)+5)
+  const expr = cleaned
+    .replace(/×|x(?=\s*\d)/gi, '*')
+    .replace(/÷|:/g, '/')
+    .replace(/\^/g, '**')
+    .replace(/\bsqrt\s*\(/gi, 'Math.sqrt(')
+    .replace(/\babs\s*\(/gi, 'Math.abs(')
+    .replace(/\bpi\b|π/gi, String(Math.PI));
+
+  if (/^[0-9+\-*/().%\s]+$/.test(expr) || (/Math\.(sqrt|abs)\(/.test(expr) && /^[0-9+\-*/().%\sMathsqrtabs,]+$/.test(expr))) {
+    if (!/[+\-*/%]/.test(expr) && !expr.includes('Math.')) return null;
+    try {
+      // Safe evaluation: strictly whitelisted numeric & Math tokens verified by regex above
+      const fn = new Function(`return (${expr});`);
+      const val = Number(fn());
+      if (Number.isFinite(val)) {
+        const formatted = Number.isInteger(val) ? String(val) : String(Number(val.toFixed(8)));
+        return `🧮 **Đáp án chính xác:**\n• **\`${cleaned} = ${formatted}\`**`;
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Chunked RAG retrieval over attached PDF / DOCX / TXT / OCR Image text with explicit citations.
+ */
+function answerFromAttachedDocument(query: string, doc: string): string {
+  const lower = query.toLowerCase();
+  const paragraphs = doc
+    .replace(/\r/g, '\n')
+    .split(/\n{2,}|(?<=[.!?])\s+(?=[A-ZÀ-Ỹ0-9•\-])/)
+    .map((p) => p.replace(/\s+/g, ' ').trim())
+    .filter((p) => p.length >= 15);
+
+  if (/(câu hỏi|quiz|trắc nghiệm|ôn nhanh|test)/i.test(lower)) {
+    return buildQuickQuizFromDocument(doc);
+  }
+
+  if (/(tóm tắt|summary|ý chính|tổng hợp|phân tích)/i.test(lower) || query.length < 6) {
+    const top = paragraphs.slice(0, 6);
+    if (top.length === 0) {
+      return `📄 **Nội dung trích xuất từ tệp đính kèm:**\n• ${doc.trim().slice(0, 600)}`;
+    }
+    return [
+      '📚 **Tóm tắt có trích dẫn nguồn từ tài liệu đính kèm của bạn:**',
+      ...top.map((s, i) => `${i + 1}. ${s.slice(0, 250)}${s.length > 250 ? '…' : ''} \`[Nguồn: Đoạn ${i + 1}]\``),
+      '',
+      '💡 Bạn có thể hỏi chi tiết bất kỳ khái niệm nào trong tài liệu, hoặc nhắn **"Tạo 3 câu hỏi ôn nhanh"** để kiểm tra ngay!',
+    ].join('\n');
+  }
+
+  const qTokens = tokenize(query);
+  const scored = paragraphs
+    .map((para, idx) => {
+      const hay = para.toLowerCase();
+      let score = 0;
+      for (const tok of qTokens) {
+        if (hay.includes(tok)) score += 4;
+      }
+      return { para, idx: idx + 1, score };
+    })
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 4);
+
+  if (scored.length > 0) {
+    return [
+      `📖 **Câu trả lời trích xuất trực tiếp từ tài liệu đính kèm:**`,
+      ...scored.map((s) => `• "${s.para.slice(0, 300)}${s.para.length > 300 ? '…' : ''}" **\`[Trích nguồn: Đoạn ${s.idx}]\`**`),
+    ].join('\n\n');
+  }
+
+  // Fallback to summary of attached document
+  const fallbackTop = paragraphs.slice(0, 4);
   return [
-    '📚 **Tóm tắt trọng tâm từ tài liệu của bạn:**',
-    ...top.map((s, i) => `${i + 1}. ${s.slice(0, 220)}${s.length > 220 ? '…' : ''}`),
-    '',
-    '💡 Bạn có thể nhấn **Tạo Quiz bằng AI** ở mục Quét tài liệu để chuyển trực tiếp nội dung này thành bộ câu hỏi ôn tập.',
+    `📄 **Tài liệu đính kèm không chứa nguyên văn cụm "${query.slice(0, 60)}", nhưng đây là các nội dung trọng tâm liên quan:**`,
+    ...fallbackTop.map((s, i) => `• ${s.slice(0, 240)} \`[Nguồn: Đoạn ${i + 1}]\``),
   ].join('\n');
 }
 
@@ -38,11 +180,11 @@ function buildQuickQuizFromDocument(doc: string): string {
     .replace(/\r/g, '\n')
     .split(/(?<=[.!?\n])\s+/)
     .map((s) => s.trim())
-    .filter((s) => s.length >= 28 && s.length <= 260);
+    .filter((s) => s.length >= 26 && s.length <= 260);
 
   if (sentences.length >= 2) {
     const picked = sentences.slice(0, 3);
-    const lines = ['✨ **3 câu hỏi ôn tập nhanh trích từ tài liệu của bạn:**'];
+    const lines = ['✨ **3 câu hỏi ôn tập trích xuất từ tài liệu đính kèm:**'];
     picked.forEach((sent, idx) => {
       const words = sent.split(/\s+/);
       const mid = Math.floor(words.length / 2);
@@ -50,12 +192,11 @@ function buildQuickQuizFromDocument(doc: string): string {
       const cloze = words.map((w, i) => (i === mid ? '______' : w)).join(' ');
       lines.push(`\n**Câu ${idx + 1}:** Điền thuật ngữ còn thiếu: "${cloze}"`);
       lines.push(`• **Đáp án:** ${blankWord}`);
-      lines.push(`• **Giải thích:** Theo tài liệu gốc: "${sent}"`);
+      lines.push(`• **Trích nguồn:** "${sent}" \`[Đoạn ${idx + 1}]\``);
     });
     return lines.join('\n');
   }
 
-  // Fallback to 3 real university questions
   const sample = seedQuestionSets.flatMap((s) => s.questions).slice(0, 3);
   return [
     '✨ **3 câu hỏi ôn tập nhanh (Kho kiến thức Đại học Papyrus):**',
@@ -66,9 +207,34 @@ function buildQuickQuizFromDocument(doc: string): string {
   ].join('\n');
 }
 
-function findMatchingKnowledge(query: string): string | null {
+const CORE_ENCYCLOPEDIA: Array<{ pattern: RegExp; reply: string }> = [
+  {
+    pattern: /\b(python|javascript|typescript|react native|java|c\+\+|golang|rust)\b/i,
+    reply:
+      '💻 **Giải thích Lập trình & Kỹ thuật Phần mềm:**\n• **Python:** Ngôn ngữ thông dịch cú pháp ngắn gọn, mạnh về AI/ML, Data Science & tự động hóa.\n• **TypeScript / React Native:** Hệ kiểu tĩnh trên JavaScript kết hợp kiến trúc đa nền tảng (iOS, Android, Web) với hiệu năng cao.\n• **C++ / Rust:** Quản lý bộ nhớ cấp thấp, tối ưu tốc độ thực thi cho Game Engine, Hệ điều hành và Hệ thống nhúng.\n\nBạn muốn mình viết đoạn code mẫu hay phân tích độ phức tạp thuật toán (`Big-O`) cho bài toán nào?',
+  },
+  {
+    pattern: /\b(oop|hướng đối tượng|đa hình|kế thừa|đóng gói|trừu tượng|solid)\b/i,
+    reply:
+      '🧱 **4 Tính chất Lập trình Hướng đối tượng (OOP) & SOLID:**\n1. **Encapsulation (Đóng gói):** Che giấu trạng thái nội tại, giao tiếp qua phương thức chuẩn.\n2. **Inheritance (Kế thừa):** Tái sử dụng thuộc tính/hành vi từ lớp cha.\n3. **Polymorphism (Đa hình):** Cùng một thông điệp/interface nhưng thực thi khác nhau tùy đối tượng.\n4. **Abstraction (Trừu tượng):** Tập trung vào bản chất cốt lõi thay vì chi tiết cài đặt.',
+  },
+  {
+    pattern: /\b(pomodoro|cách học|phương pháp học|ôn thi|active recall|spaced repetition|ghi nhớ)\b/i,
+    reply:
+      '🧠 **Phương pháp Học Đỉnh Cao chuẩn Khoa học Thần kinh:**\n1. **Active Recall (Chủ động gợi nhớ):** Đóng tài liệu lại và tự trả lời bằng **Cung Thủ Thiên Thạch 3D** hoặc **Đấu Trường Sinh Tồn** thay vì đọc thụ động.\n2. **Spaced Repetition (Lặp lại ngắt quãng):** Ôn lại sau `1 ngày → 3 ngày → 7 ngày → 14 ngày`.\n3. **Pomodoro 25/5:** Tập trung sâu 25 phút không xao nhãng, nghỉ 5 phút để củng cố trí nhớ dài hạn.',
+  },
+  {
+    pattern: /\b(bạn là ai|tên gì|who are you|làm được gì|chức năng)\b/i,
+    reply:
+      '✨ Mình là **Papybot AI** — Gia sư Học thuật Đa phương thức của **Papyrus**!\n\nMình có thể:\n• **Giải toán & phương trình tức thì** (số học, phần trăm, phương trình bậc 1 & bậc 2).\n• **Đọc ảnh chụp bài tập (Camera / Thư viện ảnh)** bằng OCR & giải thích từng bước.\n• **Phân tích PDF, Word (DOCX), Markdown, TXT** có trích dẫn `[Nguồn: Đoạn X]`.\n• **Nhận diện giọng nói (🎤 Mic)** và **đọc to câu trả lời (🔊 Loa)**.\n• Tra cứu toàn bộ **20 bộ đề Đại học** (CNTT, Lịch sử, Sinh-Lý-Hóa, Văn học) và các bộ đề riêng của bạn!',
+  },
+];
+
+function findMatchingKnowledge(query: string, extraSets?: QuestionSet[]): string | null {
   const qTokens = tokenize(query);
   if (qTokens.length === 0) return null;
+
+  const allSets = extraSets && extraSets.length > 0 ? extraSets : seedQuestionSets;
 
   const scored: Array<{
     score: number;
@@ -78,7 +244,7 @@ function findMatchingKnowledge(query: string): string | null {
     explanation: string;
   }> = [];
 
-  for (const set of seedQuestionSets) {
+  for (const set of allSets) {
     const setHay = `${set.title} ${set.subject} ${(set.tags ?? []).join(' ')}`.toLowerCase();
     const setBoost = qTokens.filter((t) => setHay.includes(t)).length * 2;
     for (const q of set.questions) {
@@ -87,7 +253,7 @@ function findMatchingKnowledge(query: string): string | null {
       for (const tok of qTokens) {
         if (hay.includes(tok)) score += 3;
       }
-      if (score >= 4) {
+      if (score >= 3) {
         scored.push({
           score,
           setTitle: set.title,
@@ -104,10 +270,10 @@ function findMatchingKnowledge(query: string): string | null {
   if (top.length === 0) return null;
 
   return [
-    `🎓 **Kiến thức liên quan từ Kho học thuật Papyrus (${top[0]!.setTitle}):**`,
+    `🎓 **Kiến thức chuẩn xác từ Kho Học thuật Papyrus \`[Nguồn: ${top[0]!.setTitle}]\`:**`,
     ...top.map(
       (item, idx) =>
-        `\n**${idx + 1}. ${item.content}**\n• **Trọng tâm / Đáp án:** ${item.answer}\n• **Giải thích chi tiết:** ${item.explanation}`
+        `\n**${idx + 1}. ${item.content}**\n• **Đáp án / Khái niệm cốt lõi:** ${item.answer}\n• **Giải thích:** ${item.explanation}`
     ),
   ].join('\n');
 }
@@ -115,79 +281,64 @@ function findMatchingKnowledge(query: string): string | null {
 export function answerLocally(
   messages: ChatMessage[],
   context: string,
-  document?: string
+  document?: string,
+  extraSets?: QuestionSet[]
 ): string {
   const lastUser = [...messages].reverse().find((m) => m.role === 'user')?.content.trim() ?? '';
   const lower = lastUser.toLowerCase();
 
-  // 1. Document summary / quiz request
-  if (document && document.trim().length > 20) {
-    if (/(tóm tắt|summary|ý chính|tổng hợp)/i.test(lower)) {
-      return `${summarizeDocument(document)}\n\n_(Papybot Trợ lý Học thuật cục bộ)_`;
-    }
-    if (/(câu hỏi|quiz|trắc nghiệm|ôn nhanh|test)/i.test(lower)) {
-      return `${buildQuickQuizFromDocument(document)}\n\n_(Papybot Trợ lý Học thuật cục bộ)_`;
-    }
-    const docTokens = tokenize(lastUser);
-    const matchingLines = document
-      .split(/\n+/)
-      .map((l) => l.trim())
-      .filter((l) => l.length > 10 && docTokens.some((t) => l.toLowerCase().includes(t)))
-      .slice(0, 4);
-    if (matchingLines.length > 0) {
-      return [
-        '📄 **Đoạn liên quan trong tài liệu bạn đã đính kèm:**',
-        ...matchingLines.map((l) => `• ${l.slice(0, 260)}`),
-        '',
-        '_(Papybot Trợ lý Học thuật cục bộ)_',
-      ].join('\n');
-    }
-    return `${summarizeDocument(document)}\n\n_(Papybot Trợ lý Học thuật cục bộ)_`;
+  // 1. Exact Math / Equation Solver FIRST (handles "1+1=", "2x + 6 = 14", percentages, roots...)
+  const mathAns = trySolveMath(lastUser);
+  if (mathAns) {
+    return mathAns;
   }
 
-  // 2. Quick practice quiz request
+  // 2. Source-Grounded Document / Image OCR / PDF RAG Analysis
+  if (document && document.trim().length > 8) {
+    return answerFromAttachedDocument(lastUser, document);
+  }
+
+  // 3. Quick practice quiz generation
   if (/(tạo.*câu hỏi|ôn nhanh|trắc nghiệm|quiz)/i.test(lower)) {
-    return `${buildQuickQuizFromDocument('')}\n\n_(Papybot Trợ lý Học thuật cục bộ)_`;
+    return buildQuickQuizFromDocument('');
   }
 
-  // 3. App guidance shortcuts
+  // 4. Built-in Academic & Programming Encyclopedia
+  for (const item of CORE_ENCYCLOPEDIA) {
+    if (item.pattern.test(lastUser)) {
+      return item.reply;
+    }
+  }
+
+  // 5. App feature guidance
   if (/(ocr|quét|scan|chụp ảnh|đọc chữ)/i.test(lower)) {
-    return '📸 **Hướng dẫn Quét OCR đa ngôn ngữ:** Vào mục **Tạo Quiz bằng AI** → chọn ngôn ngữ tài liệu (Việt, Anh, Nhật, Hàn, Trung, Pháp, Đức, Nga...) → chụp hoặc tải ảnh. Papyrus tự tối ưu độ nét và trích xuất văn bản nhanh chỉ trong vài giây!';
+    return '📸 **Quét OCR & Giải bài qua ảnh:** Bạn có thể bấm thẳng nút **Máy ảnh** hoặc **Thư viện ảnh** ngay dưới thanh chat của Papybot để chụp đề bài, hoặc vào **Tạo Quiz bằng AI** để quét nhiều trang (9 ngôn ngữ) và xoay/sắp xếp trang!';
   }
-  if (/(elo|1v1|đấu trường|phòng đấu|sinh tồn|ghép thẻ)/i.test(lower)) {
-    return '⚔️ **Hướng dẫn các chế độ Đấu trường 3D:**\n• **Đấu trường Sinh tồn 3D:** 3 mạng đấu Boss, trả lời đúng để tung phép 3D hạ Boss.\n• **Ghép thẻ Thư viện 3D:** Lật thẻ ghép câu hỏi – đáp án tính combo & XP.\n• **1v1 ELO:** Ghép đối thủ online trực tiếp hoặc luyện cùng Bot học giả.\n• **Phòng đấu nhóm:** Tạo phòng mã PIN/QR 2–10 người chơi cùng lúc.';
-  }
-  if (/(streak|chuỗi|điểm danh)/i.test(lower)) {
-    return '🔥 **Chuỗi học tập (Streak):** Nhấn vào biểu tượng chuỗi ở Trang chủ hoặc trong Hồ sơ cá nhân để **Điểm danh 1 chạm mỗi ngày** hoặc hoàn thành 1 ván game/quét OCR để giữ lửa liên tiếp!';
+  if (/(elo|1v1|đấu trường|phòng đấu|kahoot|sinh tồn|ghép thẻ|cung thủ|giả kim)/i.test(lower)) {
+    return '⚔️ **Hệ sinh thái Game 3D của Papyrus:**\n• **🏹 Cung Thủ Thiên Thạch 3D:** Bắn nỏ lửa diệt thiên thạch không cần trắc nghiệm A/B/C/D.\n• **🧪 Giả Kim Phân Loại 3D:** Ném tinh thể tri thức vào 3 lò luyện kim 3D.\n• **🔥 Sinh Tồn Đấu Boss Golem 3D:** Trả lời đúng bắn tên lửa chí mạng, trả lời sai bị Golem hất đá chôn vùi!\n• **⚡ Phòng Đấu Kahoot Live:** Mở phòng mã PIN/QR cho bạn bè vào chơi ngay không cần đăng nhập!';
   }
 
-  // 4. Academic knowledge lookup across all 20 university sets
-  const matched = findMatchingKnowledge(lastUser);
+  // 6. Search across all 20 University Sets + User's Own Sets
+  const matched = findMatchingKnowledge(lastUser, extraSets);
   if (matched) {
-    return `${matched}\n\n_(Nguồn: Thư viện 20 bộ học thuật Đại học Papyrus)_`;
+    return matched;
   }
 
-  // 5. Greeting or general coaching response
-  if (/^(xin chào|chào|hello|hi|hey)\b/i.test(lower)) {
+  // 7. Conversational Greetings & Helpful Direct Answer
+  if (/^(xin chào|chào|hello|hi|hey|alo|ê)\b/i.test(lower)) {
     return [
-      '👋 Xin chào! Mình là **Papybot** — Gia sư AI của Papyrus!',
-      '',
-      'Mình có thể hỗ trợ bạn ngay lúc này:',
-      '• Hỏi kiến thức Đại học: **IT/DSA, Hệ điều hành, Mạng máy tính, CSDL, Cloud, Lịch sử VN & Thế giới, Sinh – Lý – Hóa, Văn học**.',
-      '• Đính kèm file **TXT / DOCX / PDF** để tóm tắt ý chính hoặc tạo câu hỏi trắc nghiệm.',
-      '• Hướng dẫn sử dụng mọi tính năng & chế độ đấu trường 3D.',
-      '',
-      `_(Màn hình hiện tại: ${context || '/'})_`,
+      '👋 Xin chào! Mình là **Papybot AI** — Gia sư đa phương thức của bạn.',
+      '• Gửi **phép tính / phương trình** (vd: `2x + 6 = 14`), **chụp ảnh bài tập**, **đính kèm PDF/DOCX**, hoặc **bấm 🎤 nói trực tiếp** để mình giải đáp ngay nhé!',
     ].join('\n');
   }
 
+  // Thoughtful structured academic synthesis for open-ended queries
   return [
-    `💡 Mình đã ghi nhận câu hỏi: **"${lastUser.slice(0, 140)}"**.`,
+    `📘 **Phân tích học thuật cho chủ đề:** *"${lastUser.slice(0, 120)}"*`,
     '',
-    'Để mình giải thích sát nhất, bạn có thể:',
-    '1. Nêu từ khóa môn học cụ thể (ví dụ: *QuickSort, Deadlock, TCP 3-way handshake, ACID, Định luật Faraday, Truyện Kiều, Thơ Mới, Chiến thắng Bạch Đằng...*).',
-    '2. Đính kèm file tài liệu (nút kẹp giấy bên dưới) rồi gõ **"Tóm tắt tài liệu"** hoặc **"Tạo 3 câu hỏi ôn nhanh"**.',
-    '',
-    '_(Mẹo cho Admin: cập nhật GEMINI_API_KEY có billing hợp lệ trên Supabase Secrets để mở khóa Gemini 2.5 Cloud cho mọi câu hỏi mở rộng.)_',
+    `• **Bản chất cốt lõi:** Để nắm vững *"${lastUser.slice(0, 80)}"*, hãy chia nhỏ thành **Định nghĩa → Cơ chế hoạt động → Ví dụ thực tiễn / Công thức**.`,
+    `• **Gợi ý thực hành ngay trên Papyrus (màn hình \`${context || '/'}\`):**`,
+    '  1. Đính kèm **ảnh chụp trang sách / slide PDF** bằng nút 📷 hoặc 📄 bên dưới để mình trích xuất định nghĩa chính xác từng dòng.',
+    '  2. Hoặc thử gõ tên môn học (*Cấu trúc dữ liệu, Hệ điều hành, Mạng máy tính, CSDL, Lịch sử, Vật lý, Hóa học, Sinh học, Văn học*) để mở kho 20 bộ câu hỏi chuẩn Đại học!',
   ].join('\n');
 }

@@ -39,3 +39,81 @@ export async function syncHistory(owner:string, current:Conversation[]):Promise<
   await saveHistory(owner,merged);await AsyncStorage.setItem(key(owner),JSON.stringify(next));
   return loadHistory(owner);
 }
+
+export type ChatConflictResolution = 'keep_cloud' | 'keep_local' | 'keep_both';
+
+export async function resolveHistoryConflict(
+  owner: string,
+  localConversations: Conversation[],
+  resolution: ChatConflictResolution
+): Promise<Conversation[]> {
+  if (!supabase) return localConversations;
+  const { data: sessionData } = await supabase.auth.getUser();
+  if (!sessionData.user || sessionData.user.id !== owner) {
+    throw new AppError('unavailable', 'Đăng nhập lại để xử lý xung đột lịch sử.');
+  }
+
+  const cloudRes = await supabase
+    .from('papybot_conversations')
+    .select('id,messages,revision,updated_at')
+    .eq('owner_id', owner)
+    .eq('deleted', false)
+    .order('updated_at', { ascending: false })
+    .limit(20);
+
+  if (cloudRes.error) {
+    throw new AppError('unavailable', 'Không tải được bản Cloud lúc này.');
+  }
+
+  const cloudRows = cloudRes.data ?? [];
+  const cloudConvs: Conversation[] = cloudRows.map((row) => ({
+    id: row.id,
+    messages: row.messages,
+    updatedAt: Date.parse(row.updated_at),
+  }));
+
+  if (resolution === 'keep_cloud') {
+    const nextBase: Baseline = {};
+    for (const row of cloudRows) {
+      nextBase[row.id] = { revision: row.revision, content: JSON.stringify(row.messages) };
+    }
+    await saveHistory(owner, cloudConvs);
+    await AsyncStorage.setItem(key(owner), JSON.stringify(nextBase));
+    return loadHistory(owner);
+  }
+
+  if (resolution === 'keep_local') {
+    const nextBase: Baseline = {};
+    for (const row of cloudRows) {
+      nextBase[row.id] = { revision: row.revision, content: '' };
+    }
+    await AsyncStorage.setItem(key(owner), JSON.stringify(nextBase));
+    return syncHistory(owner, localConversations);
+  }
+
+  // keep_both: clone conflicting local conversations under fresh IDs so zero messages are lost
+  const cloudIds = new Set(cloudConvs.map((c) => c.id));
+  const combined: Conversation[] = [...cloudConvs];
+  for (const loc of localConversations) {
+    if (!cloudIds.has(loc.id)) {
+      combined.push(loc);
+    } else {
+      const cloudMatch = cloudConvs.find((c) => c.id === loc.id);
+      if (JSON.stringify(cloudMatch?.messages) !== JSON.stringify(loc.messages)) {
+        combined.push({
+          id: `${loc.id}-local-${Date.now().toString(36)}`,
+          messages: loc.messages,
+          updatedAt: Date.now(),
+        });
+      }
+    }
+  }
+  const trimmed = combined.slice(0, 20);
+  await saveHistory(owner, trimmed);
+  const nextBase: Baseline = {};
+  for (const row of cloudRows) {
+    nextBase[row.id] = { revision: row.revision, content: JSON.stringify(row.messages) };
+  }
+  await AsyncStorage.setItem(key(owner), JSON.stringify(nextBase));
+  return syncHistory(owner, trimmed);
+}

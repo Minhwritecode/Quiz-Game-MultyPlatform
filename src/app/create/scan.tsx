@@ -3,7 +3,7 @@ import { randomUUID } from 'expo-crypto';
 import { AppError, errorMessage } from '@/core/domain/failure';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Badge, Button, Card, IconTile, PageHeader, ProgressBar, Screen, TopBar, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
@@ -54,6 +54,65 @@ export default function ScanScreen() {
     setPages(nextPages);
     const { combinedText } = buildCombinedSourceText(nextPages);
     if (combinedText) setText(combinedText);
+  };
+
+  // Rotate scanned image 90 degrees clockwise (Canvas on Web + automatic re-OCR)
+  const rotatePage90 = async (page: ScanPage) => {
+    if (busy || !page.uri) return;
+    if (Platform.OS !== 'web' || typeof document === 'undefined') {
+      Alert.alert('Xoay trang', 'Bạn có thể dùng nút Chụp lại bên cạnh để căn thẳng trang sách trên camera.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const rotatedUri = await new Promise<string>((resolve, reject) => {
+        const img = new window.Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalHeight || img.height;
+          canvas.height = img.naturalWidth || img.width;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            reject(new Error('Canvas context unavailable'));
+            return;
+          }
+          ctx.translate(canvas.width / 2, canvas.height / 2);
+          ctx.rotate(Math.PI / 2);
+          ctx.drawImage(img, -img.width / 2, -img.height / 2);
+          resolve(canvas.toDataURL('image/jpeg', 0.88));
+        };
+        img.onerror = () => reject(new Error('Failed to load image for rotation'));
+        img.src = page.uri!;
+      });
+
+      setScanProgress({ current: 1, total: 1, ratio: 0.2, stage: 'Đang nhận diện lại sau khi xoay 90°...' });
+      const reOcr = (
+        await recognizeLocalImage(rotatedUri, {
+          language: ocrLanguage,
+          onProgress: (ratio, stage) => setScanProgress({ current: 1, total: 1, ratio, stage }),
+        })
+      ).trim();
+
+      const updated = pages.map((p) =>
+        p.id === page.id
+          ? {
+              ...p,
+              uri: rotatedUri,
+              text: reOcr || p.text,
+              needsReview: reOcr.length < 24,
+              status: reOcr ? ('done' as const) : p.status,
+            }
+          : p
+      );
+      syncManualFromPages(updated);
+      sfx.playCorrect();
+    } catch {
+      Alert.alert('Không thể xoay ảnh', 'Vui lòng thử chụp lại trang này.');
+    } finally {
+      setScanProgress(null);
+      setBusy(false);
+    }
   };
 
   const chooseImage = async (camera = false, replacePageId?: string) => {
@@ -316,6 +375,16 @@ export default function ScanScreen() {
                   >
                     <Ionicons name="arrow-down" size={15} color={palette.ink} />
                   </Pressable>
+                  {pg.uri ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Xoay trang 90 độ"
+                      onPress={() => void rotatePage90(pg)}
+                      style={styles.miniBtn}
+                    >
+                      <Ionicons name="refresh-circle-outline" size={17} color={palette.indigo} />
+                    </Pressable>
+                  ) : null}
                   <Pressable onPress={() => void chooseImage(true, pg.id)} style={styles.miniBtn}>
                     <Ionicons name="camera-reverse-outline" size={15} color={palette.indigo} />
                   </Pressable>

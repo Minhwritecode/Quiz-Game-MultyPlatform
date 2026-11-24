@@ -3,7 +3,18 @@ import { StyleSheet, View, ViewStyle, ActivityIndicator, Text } from 'react-nati
 import { WebView } from 'react-native-webview';
 import { loadModelDataUri } from './modelLoader';
 
-export type Model3DType = 'survival' | 'battle' | 'match' | 'study' | 'character' | 'questEmblem' | 'splashMorph';
+export type Model3DType =
+  | 'survival'
+  | 'battle'
+  | 'match'
+  | 'study'
+  | 'character'
+  | 'questEmblem'
+  | 'splashMorph'
+  | 'bossGolem'
+  | 'archerBow'
+  | 'royalScroll'
+  | 'alchemyCauldrons';
 export type Character3DAnimation = 'Idle' | 'Cast_Spell' | 'Hit_Reaction' | 'Victory_Dance';
 export type Model3DActionEffect = 'idle' | 'attack' | 'hurt' | 'victory';
 

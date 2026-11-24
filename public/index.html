@@ -50,6 +50,10 @@
         height: 100dvh;
         min-height: 100dvh;
         flex: 1;
+        box-sizing: border-box;
+        padding-top: env(safe-area-inset-top, 0px);
+        padding-left: env(safe-area-inset-left, 0px);
+        padding-right: env(safe-area-inset-right, 0px);
       }
       /* Smooth interactive micro-transitions on Web */
       [role="button"],

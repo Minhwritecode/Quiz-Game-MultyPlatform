@@ -7,8 +7,10 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Alert, Animated, AppState, Easing, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { preferenceStorage } from '@/composition/preferences';
 import { Ionicons } from '@expo/vector-icons';
-import { Badge, Button, Card, IconTile, Screen, usePalette } from '@/shared/ui';
+import { Badge, Button, Card, IconTile, Screen, TopBar, usePalette } from '@/shared/ui';
 import { dependencies } from '@/composition/dependencies';
+import { roomApi } from '@/composition/platform';
+import { seedQuestionSets } from '@/composition/preferences';
 import { useAuthStore } from '@/core/state/useAuthStore';
 import type { Battle } from '@/features/room-battle/domain/battle';
 import { radii, spacing, typography } from '@/core/theme/tokens';
@@ -90,6 +92,7 @@ export default function BattleScreen() {
   const palette = usePalette();
   const { language, t } = useI18n();
   const user = useAuthStore((s) => s.user);
+  const localQuestionSets = usePapyrusStore((s) => s.questionSets);
   const recordGameResult = usePapyrusStore((s) => s.recordGameResult);
   const isVip = useMembershipStore((state) => state.tier === 'archmage');
   const params = useLocalSearchParams<{ code?: string; invite?: string }>();
@@ -142,24 +145,35 @@ export default function BattleScreen() {
     let active = true;
     setRoomId(null);
     setBattle(null);
-    setSets([]);
+    const availableLocal = localQuestionSets.length > 0 ? localQuestionSets : seedQuestionSets;
+    setSets(availableLocal.map((s) => ({ id: s.id, title: s.title })));
+
     if (user) {
-      void dependencies.battleSession.load(roomOwner).then((id) => {
-        if (active) setRoomId(id);
-      }).catch(error=>{if(active)setError(errorMessage(error,'Không khôi phục được phòng gần nhất.'));});
+      void dependencies.battleSession
+        .load(roomOwner)
+        .then((id) => {
+          if (active) setRoomId(id);
+        })
+        .catch(() => undefined);
       void dependencies.battle
         .sets()
-        .then((value: { id: string; title: string }[]) => {
-          if (active) setSets(value);
+        .then((cloudValue: { id: string; title: string }[]) => {
+          if (!active) return;
+          const byTitle = new Set(cloudValue.map((c) => c.title.toLowerCase()));
+          const merged = [
+            ...cloudValue,
+            ...availableLocal
+              .filter((loc) => !byTitle.has(loc.title.toLowerCase()))
+              .map((loc) => ({ id: loc.id, title: loc.title })),
+          ];
+          setSets(merged);
         })
-        .catch((e: { message?: string }) => {
-          if (active) setError(errorMessage(e, 'Không tải được danh sách bộ đề.'));
-        });
+        .catch(() => undefined);
     }
     return () => {
       active = false;
     };
-  }, [user?.id, roomOwner]);
+  }, [user?.id, roomOwner, localQuestionSets]);
 
   // Handle deep-link room/duel invites reliably when app is opened, resumed, or unauthenticated
   useEffect(() => {
@@ -295,21 +309,47 @@ export default function BattleScreen() {
 
   return (
     <Screen bottomNav>
-      <GameEnvironment gameMode="battle" show3DByDefault={!roomId && !turnPvpActive}>
-        {/* High-Contrast Arena Header */}
-        <View style={styles.header}>
-          <View style={styles.headerBanner}>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={[typography.label, { color: '#F6C358' }]}>{t.battle.badge}</Text>
-              <Text style={[typography.heading, { color: '#F8FAFC', marginTop: 4 }]}>
-                {t.battle.title}
-              </Text>
-              <Text style={[typography.caption, { color: '#CBD5E1', marginTop: 3 }]}>
-                {t.battle.sub}
-              </Text>
+      <TopBar title={t.battle.title} />
+      <GameEnvironment gameMode="battle" enable3DToggle={false}>
+        {/* Instant Kahoot Party Live Banner (Zero-Login Join for Classrooms & Friends!) */}
+        {!roomId && !turnPvpActive && (
+          <Card color="#1E1B4B" style={{ marginBottom: spacing.md, borderColor: '#818CF8', borderWidth: 1.5 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <IconTile icon="flash" tint="reward" />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Badge tone="reward">⚡ KAHOOT PARTY LIVE · KHÔNG CẦN ĐĂNG NHẬP</Badge>
+                <Text style={[typography.title, { color: '#FFFFFF', marginTop: 6 }]}>
+                  Chơi Nhóm Tức Thì Bằng Mã PIN & Biệt Danh
+                </Text>
+                <Text style={[typography.caption, { color: '#C7D2FE', marginTop: 2 }]}>
+                  Bạn bè chỉ cần nhập mã PIN 6 ký tự + Biệt danh là vào đấu bảng màu Tam giác / Thoi / Tròn / Vuông ngay!
+                </Text>
+              </View>
             </View>
-          </View>
-        </View>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: spacing.md }}>
+              <Button
+                variant="reward"
+                icon="megaphone-outline"
+                onPress={async () => {
+                  const sourcePool = localQuestionSets.length > 0 ? localQuestionSets : seedQuestionSets;
+                  const firstSet = sourcePool[0];
+                  if (!firstSet) return;
+                  const created = await roomApi.create(firstSet.id, user?.displayName || 'Chủ phòng');
+                  router.push({ pathname: '/multiplayer/host/[roomCode]', params: { roomCode: created.roomCode } });
+                }}
+              >
+                Mở Phòng Kahoot Nhanh
+              </Button>
+              <Button
+                variant="secondary"
+                icon="enter-outline"
+                onPress={() => router.push('/multiplayer/join')}
+              >
+                Nhập PIN Vào Chơi Ngay
+              </Button>
+            </View>
+          </Card>
+        )}
 
         {/* Connection & 30s Seat-Hold Status Banner */}
         {roomId && connectionBanner !== 'connected' && (
@@ -387,18 +427,48 @@ export default function BattleScreen() {
           </View>
         )}
 
-        {/* Dedicated 3D & Arcade Modes Hub */}
+        {/* Dedicated 3D & Non-Quiz Arcade Modes Hub */}
         {!roomId && !turnPvpActive && arenaTab === 'arcade' ? (
           <View style={styles.lobbySections}>
+            <Card onPress={() => router.push('/games/archer')} style={styles.cardSection}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <IconTile icon="flame" tint="fire" />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Badge tone="fire">MỚI · BẮN CUNG 3D KHÔNG TRẮC NGHIỆM</Badge>
+                  <Text style={[typography.title, { color: palette.ink, marginTop: 4 }]}>
+                    🏹 Cung Thủ Diệt Thiên Thạch 3D
+                  </Text>
+                  <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
+                    Ngắm bắn tên lửa Phượng Hoàng hoặc gõ chữ khắc cổ ngữ hạ thiên thạch bay — học cực cuốn không A/B/C/D!
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={palette.indigo} />
+              </View>
+            </Card>
+
+            <Card onPress={() => router.push('/games/alchemy')} style={styles.cardSection}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <IconTile icon="flask-outline" tint="success" />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Badge tone="success">MỚI · PHÂN LOẠI KHÔNG GIAN 3D</Badge>
+                  <Text style={[typography.title, { color: palette.ink, marginTop: 4 }]}>
+                    🧪 Giả Kim Thuật Phân Loại 3D
+                  </Text>
+                  <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
+                    Ném tinh thể kiến thức vào 3 lò giả kim 3D đang sôi (Ngọc Lục Bảo · Lam Tinh · Hoàng Kim) tích chuỗi Combo!
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={palette.indigo} />
+              </View>
+            </Card>
+
             <Card onPress={() => router.push('/games/survival')} style={styles.cardSection}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                 <IconTile icon="skull-outline" tint="danger" />
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={[typography.title, { color: palette.ink }]}>{t.survival.title}</Text>
                   <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
-                    {language === 'vi'
-                      ? 'Đấu Boss 3D với 3 mạng sinh tồn — trả lời nhanh để tung phép hạ Boss.'
-                      : '3-lives 3D Boss survival arena — answer fast to cast spells.'}
+                    Đứng trực diện trên sàn đấu 3D: trả lời đúng bắn tên lửa hạ Golem, sai bị Golem hất đá chôn vùi!
                   </Text>
                 </View>
                 <Ionicons name="chevron-forward" size={20} color={palette.indigo} />
@@ -695,35 +765,70 @@ export default function BattleScreen() {
                 </View>
               ) : (
                 <View style={styles.setsList}>
-                  {sets.map((set) => (
-                    <Button
-                      key={set.id}
-                      disabled={busy}
-                      variant="secondary"
-                      icon="play"
-                      onPress={() =>
-                        void run(async () => {
-                          if (!useMembershipStore.getState().canCreateBattle()) {
-                            Alert.alert(
-                              'Đạt giới hạn tạo phòng hôm nay',
-                              'Học Giả Tập Sự được tạo tối đa 3 phòng đấu/ngày. Bạn có thể nâng cấp lên VIP để tạo phòng không giới hạn!'
-                            );
-                            return;
+                  {sets.slice(0, 20).map((set) => (
+                    <View key={set.id} style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                      <View style={{ flex: 1 }}>
+                        <Button
+                          disabled={busy}
+                          variant="secondary"
+                          icon="play"
+                          fullWidth
+                          onPress={() =>
+                            void run(async () => {
+                              if (!useMembershipStore.getState().canCreateBattle()) {
+                                Alert.alert(
+                                  'Đạt giới hạn tạo phòng hôm nay',
+                                  'Học Giả Tập Sự được tạo tối đa 3 phòng đấu/ngày. Bạn có thể nâng cấp lên VIP để tạo phòng không giới hạn!'
+                                );
+                                return;
+                              }
+                              const sourcePool = localQuestionSets.length > 0 ? localQuestionSets : seedQuestionSets;
+                              const fullLocal = sourcePool.find(
+                                (item) => item.id === set.id || item.title === set.title
+                              );
+                              const cloudSetId = fullLocal
+                                ? await dependencies.battle.ensureCloudSet(fullLocal)
+                                : set.id;
+                              const room = await dependencies.rooms.create({
+                                setId: cloudSetId,
+                                questionCount: Math.min(questionCount, fullLocal?.questions.length ?? questionCount),
+                                secondsPerQuestion,
+                                mode: roomMode,
+                                maxPlayers,
+                              });
+                              useMembershipStore.getState().consumeBattle();
+                              await enter(room.id);
+                            })
                           }
-                          const room = await dependencies.rooms.create({
-                            setId: set.id,
-                            questionCount,
-                            secondsPerQuestion,
-                            mode: roomMode,
-                            maxPlayers,
+                        >
+                          {`Colosseum (${maxPlayers}P): ${set.title}`}
+                        </Button>
+                      </View>
+                      <Pressable
+                        disabled={busy}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Mở Kahoot nhanh ${set.title}`}
+                        onPress={async () => {
+                          const created = await roomApi.create(set.id, user?.displayName || 'Chủ phòng');
+                          router.push({
+                            pathname: '/multiplayer/host/[roomCode]',
+                            params: { roomCode: created.roomCode },
                           });
-                          useMembershipStore.getState().consumeBattle();
-                          await enter(room.id);
-                        })
-                      }
-                    >
-                      {language === 'vi' ? `Tạo phòng (${maxPlayers} người): ${set.title}` : `Host (${maxPlayers}P): ${set.title}`}
-                    </Button>
+                        }}
+                        style={{
+                          minHeight: 48,
+                          paddingHorizontal: 12,
+                          borderRadius: radii.sm,
+                          backgroundColor: palette.goldTint,
+                          borderWidth: 1,
+                          borderColor: palette.gold,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <Text style={{ color: palette.gold, fontWeight: '900', fontSize: 12 }}>⚡ Kahoot</Text>
+                      </Pressable>
+                    </View>
                   ))}
                 </View>
               )}

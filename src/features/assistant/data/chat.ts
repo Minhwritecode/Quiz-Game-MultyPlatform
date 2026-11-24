@@ -4,7 +4,9 @@ import { createAnswerParser } from './stream';
 import type { PdfAttachment } from './pdf';
 import { supabase } from '@/core/network/supabase';
 import type { ChatMessage } from '../domain/repository';
+import type { QuestionSet } from '@/core/domain/models';
 import { answerLocally } from './localTutor';
+import { extractTextFromPdfBase64 } from '@/features/ai-quiz/services/documentTextExtractor';
 export type { ChatMessage } from '../domain/repository';
 
 export async function askPapybot(
@@ -13,10 +15,11 @@ export async function askPapybot(
   document: string | undefined,
   signal: AbortSignal,
   onText?: (text: string) => void,
-  pdf?: PdfAttachment
+  pdf?: PdfAttachment,
+  extraSets?: QuestionSet[]
 ): Promise<string> {
   if (!supabase) {
-    const local = answerLocally(messages, context, document);
+    const local = answerLocally(messages, context, document, extraSets);
     onText?.(local);
     return local;
   }
@@ -34,7 +37,13 @@ export async function askPapybot(
   const key = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
   const fallbackLocal = (): string => {
-    const reply = answerLocally(messages, context, document);
+    const effectiveDoc =
+      document && document.trim().length > 0
+        ? document
+        : pdf?.data
+        ? extractTextFromPdfBase64(pdf.data)
+        : undefined;
+    const reply = answerLocally(messages, context, effectiveDoc, extraSets);
     onText?.(reply);
     return reply;
   };

@@ -12,7 +12,8 @@ import { radii, spacing, typography } from '@/core/theme/tokens';
 import { useI18n } from '@/core/i18n';
 import { GameEnvironment } from '@/shared/GameEnvironment';
 import { MagicParticles } from '@/shared/MagicParticles';
-import { CharacterAvatar } from '@/shared/CharacterAvatar';
+import { RpgCombatArena3D } from '@/shared/visuals/RpgCombatArena3D';
+import { PapyrusPageSkeleton } from '@/shared/PapyrusLoader';
 import { sfx } from '@/core/audio/sfx';
 import { InteractiveQuestionView } from '@/features/study/components/InteractiveQuestionView';
 import {
@@ -131,7 +132,12 @@ export default function StudyScreen() {
   };
 
   if (!progressLoaded) {
-    return <Screen><TopBar title={t.study.studyMode} /><Card style={styles.empty}><Text style={[typography.body, { color: palette.inkMuted }]}>{t.study.restoringProgress}</Text></Card></Screen>;
+    return (
+      <Screen>
+        <TopBar title={t.study.studyMode} />
+        <PapyrusPageSkeleton variant="study" label={t.study.restoringProgress} />
+      </Screen>
+    );
   }
 
   if (!questionSet || !question) {
@@ -233,8 +239,14 @@ export default function StudyScreen() {
       : 'hurt'
     : 'idle';
 
+  const studyCombatState = revealed
+    ? selected === question.correctIndex
+      ? 'player_attack'
+      : 'enemy_attack'
+    : 'idle';
+
   return (
-    <GameEnvironment gameMode="study" actionEffect={studyActionEffect} pulseTrigger={particleTrigger}>
+    <GameEnvironment gameMode="study" enable3DToggle={false} actionEffect={studyActionEffect} pulseTrigger={particleTrigger}>
       <Screen transparent>
       <TopBar
         title={questionSet.title}
@@ -280,48 +292,28 @@ export default function StudyScreen() {
       {/* Magic Particles */}
       <MagicParticles trigger={particleTrigger} type="sparkles" />
 
-      {/* Zen Scholar Header & EXP Gauge */}
-      <Card style={styles.scholarHeaderCard}>
-        <View style={styles.scholarHeaderRow}>
-          <CharacterAvatar
-            color="#10B981"
-            name="Zen Scholar"
-            action={revealed ? (selected === question.correctIndex ? 'victory' : 'hurt') : 'idle'}
-            size={52}
-            showName={false}
-          />
-          <View style={{ flex: 1, gap: 4 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text style={[typography.title, { color: palette.ink, fontSize: 15 }]}>
-                🌸 Sanctuary of Scholars
-              </Text>
-              <Badge tone="reward">
-                Lv. {level}
-              </Badge>
-            </View>
+      {/* Immersive 3D RPG Sanctuary Trial Stage + EXP Gauge */}
+      <RpgCombatArena3D
+        combatState={studyCombatState}
+        combo={level}
+        triggerKey={index * 10 + (revealed ? 1 : 0) + particleTrigger}
+        playerHp={100}
+        playerMaxHp={100}
+        bossHp={Math.max(5, effectiveQuestions.length - index)}
+        bossMaxHp={Math.max(1, effectiveQuestions.length)}
+        playerLabel={`Đại Pháp Sư · Lv.${level} (${exp}/100 EXP)`}
+        bossLabel="Hộ Pháp Cổ Ngữ"
+        arenaTheme="sanctuary"
+        height={210}
+      />
 
-            {/* Wisdom EXP Bar */}
-            <View style={styles.expBarTrack}>
-              <View style={[styles.expBarFill, { width: `${exp}%` }]} />
-            </View>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <Text style={{ fontSize: 11, color: palette.inkMuted, fontWeight: '600' }}>
-                EXP +25 per correct answer
-              </Text>
-              <Text style={{ fontSize: 11, color: '#10B981', fontWeight: '800' }}>
-                {exp}/100 EXP
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Level Up Banner */}
-        {levelUpMessage && (
+      {levelUpMessage && (
+        <Card style={{ marginBottom: spacing.sm, padding: spacing.sm }}>
           <View style={styles.levelUpBanner}>
             <Text style={styles.levelUpText}>✨ LEVEL UP! Wisdom +1 (Lv. {level}) ✨</Text>
           </View>
-        )}
-      </Card>
+        </Card>
+      )}
 
       {/* Progress Section */}
       <View style={styles.progressContainer}>

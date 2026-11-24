@@ -16,6 +16,11 @@ import { AppUpdateBanner } from '@/shared/AppUpdateBanner';
 import { Button, Card, Screen } from '@/shared/ui';
 import { PapyrusSplash3D } from '@/shared/visuals/PapyrusSplash3D';
 import { OnboardingIllusionModal } from '@/features/onboarding/presentation/OnboardingIllusionModal';
+import {
+  registerScholarPresence,
+  subscribeRealtimeAdminGifts,
+} from '@/composition/platform';
+import { useNotificationStore } from '@/features/notifications/state/useNotificationStore';
 import { sfx } from '@/core/audio/sfx';
 
 export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
@@ -63,6 +68,65 @@ function RootLayout() {
   useEffect(() => dependencies.learning.start(), []);
   const bootstrapAuth = useAuthStore((state) => state.bootstrap);
   const bgmMuted = usePapyrusStore((state) => state.bgmMuted);
+  const eloRating = usePapyrusStore((state) => state.eloRating);
+  const totalScore = usePapyrusStore((state) => state.totalScore);
+  const questionSets = usePapyrusStore((state) => state.questionSets);
+
+  // 1. Live Online Scholar Directory Presence (enables instant real-user friend discovery across devices)
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'test') return;
+    registerScholarPresence(authUser, eloRating, totalScore);
+  }, [authUser, eloRating, totalScore]);
+
+  // 2. Duolingo-style 20-Hour Inactivity & Unfinished Lesson Smart Reminder Check + Realtime Admin Push
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'test') return;
+    let active = true;
+
+    void dependencies.study
+      .listProgress()
+      .then((drafts) => {
+        if (!active) return;
+        const firstDraft = drafts[0];
+        const unfinishedSet = firstDraft
+          ? questionSets.find((s) => s.id === firstDraft.questionSetId)
+          : undefined;
+        void dependencies.reminders.checkAndTouchActivity(
+          unfinishedSet?.title,
+          (title, body) => {
+            useNotificationStore.getState().pushNotification(
+              { recipientId: authUser?.id ?? 'all', kind: 'streak', title, body, actionRoute: '/' },
+              false
+            );
+          }
+        );
+      })
+      .catch(() => {
+        void dependencies.reminders.checkAndTouchActivity();
+      });
+
+    if (!authUser?.id) return () => { active = false; };
+
+    void useNotificationStore.getState().syncCloudGifts(authUser.id);
+    const unsubscribeGifts = subscribeRealtimeAdminGifts(authUser.id, (gift) => {
+      void useNotificationStore.getState().syncCloudGifts(authUser.id);
+      useNotificationStore.getState().pushNotification(
+        {
+          recipientId: authUser.id,
+          kind: 'gift',
+          title: `🎁 Quà mới từ Admin: ${gift.title}`,
+          body: gift.message,
+          actionRoute: '/profile',
+        },
+        true
+      );
+    });
+
+    return () => {
+      active = false;
+      unsubscribeGifts();
+    };
+  }, [authUser?.id, questionSets.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     sfx.setBgmMuted(bgmMuted);

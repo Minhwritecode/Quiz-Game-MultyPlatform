@@ -1,4 +1,5 @@
 import { supabase } from '@/core/network/supabase';
+import { searchOnlineScholars } from './liveScholarDirectory';
 import type {
   BattleHistoryItem,
   FriendSearchCandidate,
@@ -315,12 +316,32 @@ export async function fetchFriendsLeaderboard(params: {
 
 export async function searchPlayersForFriend(query: string): Promise<FriendSearchCandidate[]> {
   const clean = query.trim();
-  if (!supabase || clean.length < 2) return [];
+  if (clean.length < 2) return [];
   const lower = clean.toLowerCase();
   try {
-    const { data: sessionData } = await supabase.auth.getSession();
-    const myId = sessionData.session?.user?.id;
+    const sessionData = supabase ? (await supabase.auth.getSession()).data : null;
+    const myId = sessionData?.session?.user?.id;
     const byId = new Map<string, FriendSearchCandidate>();
+
+    // 0. Direct UUID / Invite Link match (allows instant friend add by pasting UUID or link!)
+    const uuidMatch = clean.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+    if (uuidMatch && uuidMatch[0] !== myId) {
+      const targetUuid = uuidMatch[0].toLowerCase();
+      byId.set(targetUuid, {
+        id: targetUuid,
+        displayName: `Học giả (${targetUuid.slice(0, 8).toUpperCase()})`,
+        avatarUrl: null,
+        eloRating: 1200,
+        totalScore: 0,
+      });
+    }
+
+    // 0b. Realtime Online Scholar Directory (works immediately across devices even before SQL migration!)
+    for (const liveCand of searchOnlineScholars(clean, myId)) {
+      byId.set(liveCand.id, liveCand);
+    }
+
+    if (!supabase) return Array.from(byId.values()).slice(0, 15);
 
     // 1. Primary: SECURITY DEFINER search RPC (bypasses strict read-own-profile RLS safely)
     try {

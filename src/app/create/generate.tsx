@@ -4,11 +4,12 @@ import { errorMessage } from '@/core/domain/failure';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Button, Card, PageHeader, Screen, TopBar, usePalette } from '@/shared/ui';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { dependencies } from '@/composition/dependencies';
 import { saveQuestionSet } from '@/features/question-sets/domain/saveQuestionSet';
+import { exportQuestionSetToCsv, parseQuizCsv, SAMPLE_QUIZ_CSV } from '@/features/question-sets/domain/csvTransfer';
 import { useI18n } from '@/core/i18n';
 import {
   isValidQuestion,
@@ -42,10 +43,10 @@ function GenerationEditor() {
   const manualMode = params.mode === 'manual';
   const existingSet = usePapyrusStore((state) => state.questionSets.find((item) => item.id === params.setId));
   const { language, t } = useI18n();
-  const [title,setTitle]=useState(existingSet?.title ?? '');
-  const [subject,setSubject]=useState(existingSet?.subject ?? '');
-  const [tagText,setTagText]=useState((existingSet?.tags ?? []).join(', '));
-  const [message,setMessage]=useState('');
+  const [title, setTitle] = useState(existingSet?.title ?? '');
+  const [subject, setSubject] = useState(existingSet?.subject ?? '');
+  const [tagText, setTagText] = useState((existingSet?.tags ?? []).join(', '));
+  const [message, setMessage] = useState('');
   const palette = usePalette();
   const saveToStore = usePapyrusStore((state) => state.saveQuestionSet);
   const sourceDocument = usePapyrusStore((state) => state.sourceDocument);
@@ -54,10 +55,12 @@ function GenerationEditor() {
   const [sourceTitle, setSourceTitle] = useState(sourceDocument?.title ?? '');
   const [questions, setQuestions] = useState<Question[]>(() => existingSet?.questions ?? (manualMode ? [{ id: createLocalId(), content: '', options: ['', '', '', ''], correctIndex: 0, explanation: '', position: 0 }] : []));
   const [openCodeIds, setOpenCodeIds] = useState<Record<string, boolean>>({});
+  const [csvPanelOpen, setCsvPanelOpen] = useState(false);
+  const [csvRawText, setCsvRawText] = useState('');
   const [count, setCount] = useState(10);
   const [difficulty, setDifficulty] = useState<'Easy' | 'Balanced' | 'Challenge'>('Balanced');
   const [busy, setBusy] = useState(false);
-  const [jobs,setJobs]=useState<GenerationJob[]>([]);
+  const [jobs, setJobs] = useState<GenerationJob[]>([]);
   const generation = useRef<AbortController | null>(null);
   const activeJob = useRef<string | null>(null);
   const running = useRef(false);
@@ -77,7 +80,7 @@ function GenerationEditor() {
     generation.current = controller;
     try {
       const before = (await dependencies.generation.jobs.list(owner)).find(item => item.id === jobId);
-      if (!before || ['completed','cancelled'].includes(before.status)) return;
+      if (!before || ['completed', 'cancelled'].includes(before.status)) return;
       if (!(await dependencies.generation.online()) || controller.signal.aborted || useAuthStore.getState().user?.id !== owner) return;
       activeJob.current = jobId;
       const runningJob = await dependencies.generation.jobs.markRunning(owner, jobId);
@@ -98,8 +101,8 @@ function GenerationEditor() {
         await dependencies.generation.jobs.complete(owner, jobId);
       } else {
         const excluded = [...(runningJob.request.excludeQuestions ?? []),
-          ...runningJob.initialQuestions.filter(item => item.id !== runningJob.replaceQuestionId).map(item => item.content),
-          ...runningJob.questions.map(item => item.content)];
+        ...runningJob.initialQuestions.filter(item => item.id !== runningJob.replaceQuestionId).map(item => item.content),
+        ...runningJob.questions.map(item => item.content)];
         const response = await dependencies.generation.generate({
           ...runningJob.request, questionCount: missing,
           excludeQuestions: [...new Set(excluded)].slice(0, 30),
@@ -128,8 +131,8 @@ function GenerationEditor() {
           setMessage(replacementMissing
             ? (language === 'vi' ? 'Chưa có câu thay thế hợp lệ; công việc đã lưu để bạn thử lại.' : 'No valid replacement yet; the job is saved for retry.')
             : complete
-            ? (language === 'vi' ? 'Đã tạo xong câu hỏi. Hãy rà đáp án trước khi lưu.' : 'Questions generated. Review the answers before saving.')
-            : (language === 'vi' ? 'AI trả về ' + actual + ' câu mới. Bấm “Tạo bù” để hoàn thành bộ đề.' : 'AI returned ' + actual + ' new questions. Use “Fill missing” to complete the set.'));
+              ? (language === 'vi' ? 'Đã tạo xong câu hỏi. Hãy rà đáp án trước khi lưu.' : 'Questions generated. Review the answers before saving.')
+              : (language === 'vi' ? 'AI trả về ' + actual + ' câu mới. Bấm “Tạo bù” để hoàn thành bộ đề.' : 'AI returned ' + actual + ' new questions. Use “Fill missing” to complete the set.'));
         }
       }
       await refreshJobs(owner);
@@ -153,9 +156,9 @@ function GenerationEditor() {
   const resumeNext = useCallback(async (owner: string) => {
     if (running.current || useAuthStore.getState().user?.id !== owner) return;
     const stored = await dependencies.generation.jobs.list(owner);
-    const next = stored.find(job => ['queued','failed'].includes(job.status) && job.retryAt <= Date.now());
+    const next = stored.find(job => ['queued', 'failed'].includes(job.status) && job.retryAt <= Date.now());
     if (next) {
-      if (next.status === 'failed') await dependencies.generation.jobs.retry(owner,next.id);
+      if (next.status === 'failed') await dependencies.generation.jobs.retry(owner, next.id);
       await runJob(next.id, owner);
     }
   }, [runJob]);
@@ -203,7 +206,7 @@ function GenerationEditor() {
       void resumeNext(account);
     }).catch(() => setMessage('Could not restore the saved generation queue.'));
     const stop = dependencies.generation.observeWake(() => void resumeNext(account));
-    const timer=setInterval(()=>void resumeNext(account),30000);
+    const timer = setInterval(() => void resumeNext(account), 30000);
     return () => { active = false; stop(); clearInterval(timer); };
   }, [account, manualMode, existingSet?.id, resumeNext]);
 
@@ -223,14 +226,14 @@ function GenerationEditor() {
     }
     setMessage('');
     try {
-    const metadata = { title: title.trim(), subject: subject.trim(), tags: tagValues(tagText), sourceDocumentId, sourceDocumentTitle: sourceTitle };
-    const job = await dependencies.generation.jobs.enqueue(account, request, metadata, initialQuestions, replaceQuestionId);
-    await refreshJobs(account);
-    if (!(await dependencies.generation.online())) {
-      setMessage(language === 'vi' ? 'Đang ngoại tuyến. Công việc đã lưu, app sẽ tiếp tục khi có mạng hoặc khi bạn mở lại màn này.' : 'Offline. Job saved and will resume when online or when you reopen this screen.');
-      return;
-    }
-    void runJob(job.id, account);
+      const metadata = { title: title.trim(), subject: subject.trim(), tags: tagValues(tagText), sourceDocumentId, sourceDocumentTitle: sourceTitle };
+      const job = await dependencies.generation.jobs.enqueue(account, request, metadata, initialQuestions, replaceQuestionId);
+      await refreshJobs(account);
+      if (!(await dependencies.generation.online())) {
+        setMessage(language === 'vi' ? 'Đang ngoại tuyến. Công việc đã lưu, app sẽ tiếp tục khi có mạng hoặc khi bạn mở lại màn này.' : 'Offline. Job saved and will resume when online or when you reopen this screen.');
+        return;
+      }
+      void runJob(job.id, account);
     } catch (error) { setMessage(errorMessage(error, 'Could not save the generation job. Try again.')); }
   };
 
@@ -291,7 +294,7 @@ function GenerationEditor() {
     }
     setMessage('');
     setBusy(true);
-    const owner=useAuthStore.getState().user?.id;
+    const owner = useAuthStore.getState().user?.id;
     const questionSet: QuestionSet = {
       id: existingSet?.id ?? createLocalId(), title: title.trim(), subject: subject.trim(),
       tags: tagValues(tagText), sourceDocumentId,
@@ -299,7 +302,7 @@ function GenerationEditor() {
     };
     try {
       await saveQuestionSet(dependencies.questionSets, questionSet);
-      if(useAuthStore.getState().user?.id!==owner)return;
+      if (useAuthStore.getState().user?.id !== owner) return;
       if (existingSet) await dependencies.study.clearProgress(existingSet.id);
       saveToStore(questionSet);
       if (owner) await dependencies.generation.jobs.clearCompleted(owner);
@@ -311,7 +314,7 @@ function GenerationEditor() {
     }
   };
 
-  const queuedJobs = jobs.filter(job => ['queued','running','failed'].includes(job.status));
+  const queuedJobs = jobs.filter(job => ['queued', 'running', 'failed'].includes(job.status));
   return <Screen>
     <TopBar title={existingSet ? t.home.editSet : manualMode ? t.home.manualTitle : (language === 'vi' ? 'Tạo & chỉnh sửa bộ đề' : 'Shape your quiz')} />
     <PageHeader
@@ -320,12 +323,12 @@ function GenerationEditor() {
       subtitle={manualMode ? t.home.manualSubtitle : (language === 'vi' ? 'Chọn số câu và độ khó, kiểm tra đáp án rồi lưu bộ đề vào thư viện.' : 'Choose the output, review every answer and save only what you trust.')}
     />
     <Card style={styles.controls}>
-      {!manualMode && <Text style={[typography.caption,{color:palette.inkMuted}]}>{language === 'vi' ? 'AI sẽ sinh câu hỏi bám sát nội dung bạn đã duyệt. Bạn có thể sửa lại bất kỳ câu hỏi nào trước khi lưu.' : 'AI generates questions grounded in your reviewed text. You can edit any question before saving.'}</Text>}
-      <TextInput testID="set-title" editable={!busy} accessibilityLabel="Question set title" placeholder={language === 'vi' ? 'Tên bộ câu hỏi (ví dụ: Lịch sử Chương 3)' : 'Question set title'} placeholderTextColor={palette.inkMuted} value={title} onChangeText={setTitle} maxLength={160} style={[styles.questionInput,{color:palette.ink,borderColor:palette.paperMuted}]} />
-      <TextInput testID="set-subject" editable={!busy} accessibilityLabel={t.home.subjectLabel} placeholder={t.home.subjectPlaceholder} placeholderTextColor={palette.inkMuted} value={subject} onChangeText={setSubject} maxLength={100} style={[styles.questionInput,{color:palette.ink,borderColor:palette.paperMuted}]} />
-      <TextInput testID="set-tags" editable={!busy} accessibilityLabel={language === 'vi' ? 'Thẻ của bộ đề, cách nhau bằng dấu phẩy' : 'Question set tags, comma separated'} placeholder={language === 'vi' ? 'Thẻ: đại số, chương 2, ôn thi' : 'Tags: algebra, chapter 2, exam'} placeholderTextColor={palette.inkMuted} value={tagText} onChangeText={setTagText} maxLength={400} style={[styles.questionInput,{color:palette.ink,borderColor:palette.paperMuted}]} />
-      {!manualMode && <Text style={[typography.caption,{color:palette.inkMuted}]}>{language === 'vi' ? 'Nguồn: ' : 'Source: '}{sourceTitle || (questions.length ? (language === 'vi' ? 'Khôi phục từ phiên trước' : 'Restored from saved job') : (language === 'vi' ? 'Chưa có tài liệu nguồn' : 'No source attached'))}</Text>}
-      {message ? <Text accessibilityRole="alert" style={{color:palette.danger, fontWeight:'600'}}>{message}</Text> : null}
+      {!manualMode && <Text style={[typography.caption, { color: palette.inkMuted }]}>{language === 'vi' ? 'AI sẽ sinh câu hỏi bám sát nội dung bạn đã duyệt. Bạn có thể sửa lại bất kỳ câu hỏi nào trước khi lưu.' : 'AI generates questions grounded in your reviewed text. You can edit any question before saving.'}</Text>}
+      <TextInput testID="set-title" editable={!busy} accessibilityLabel="Question set title" placeholder={language === 'vi' ? 'Tên bộ câu hỏi (ví dụ: Lịch sử Chương 3)' : 'Question set title'} placeholderTextColor={palette.inkMuted} value={title} onChangeText={setTitle} maxLength={160} style={[styles.questionInput, { color: palette.ink, borderColor: palette.paperMuted }]} />
+      <TextInput testID="set-subject" editable={!busy} accessibilityLabel={t.home.subjectLabel} placeholder={t.home.subjectPlaceholder} placeholderTextColor={palette.inkMuted} value={subject} onChangeText={setSubject} maxLength={100} style={[styles.questionInput, { color: palette.ink, borderColor: palette.paperMuted }]} />
+      <TextInput testID="set-tags" editable={!busy} accessibilityLabel={language === 'vi' ? 'Thẻ của bộ đề, cách nhau bằng dấu phẩy' : 'Question set tags, comma separated'} placeholder={language === 'vi' ? 'Thẻ: đại số, chương 2, ôn thi' : 'Tags: algebra, chapter 2, exam'} placeholderTextColor={palette.inkMuted} value={tagText} onChangeText={setTagText} maxLength={400} style={[styles.questionInput, { color: palette.ink, borderColor: palette.paperMuted }]} />
+      {!manualMode && <Text style={[typography.caption, { color: palette.inkMuted }]}>{language === 'vi' ? 'Nguồn: ' : 'Source: '}{sourceTitle || (questions.length ? (language === 'vi' ? 'Khôi phục từ phiên trước' : 'Restored from saved job') : (language === 'vi' ? 'Chưa có tài liệu nguồn' : 'No source attached'))}</Text>}
+      {message ? <Text accessibilityRole="alert" style={{ color: palette.danger, fontWeight: '600' }}>{message}</Text> : null}
       {!manualMode && <>
         <Text style={[typography.title, { color: palette.ink }]}>{language === 'vi' ? 'Số lượng câu hỏi' : 'Question count'}</Text>
         <View style={styles.choiceRow}>{[5, 10, 15].map((value) => <Button key={value} variant={count === value ? 'primary' : 'secondary'} onPress={() => setCount(value)} disabled={busy}>{String(value)}</Button>)}</View>
@@ -355,7 +358,82 @@ function GenerationEditor() {
     <Text style={[typography.title, { color: palette.ink, marginTop: spacing.xl, marginBottom: spacing.md }]}>{manualMode ? t.home.correctAnswerHint : 'Review before saving'}</Text>
     {questions.length === 0 && <Card><Text style={[typography.body, { color: palette.inkMuted }]}>No questions yet. Generate from your saved source or write them manually.</Text></Card>}
     {!manualMode && questions.length > 0 && questions.length < count && <Button variant="secondary" disabled={busy} onPress={fillMissing}>{language === 'vi' ? 'Tạo bù ' + (count - questions.length) + ' câu còn thiếu' : 'Fill ' + (count - questions.length) + ' missing questions'}</Button>}
-    <Button variant="secondary" disabled={busy || questions.length >= 30} onPress={() => setQuestions(current => [...current, { id: createLocalId(), content: '', options: ['', '', '', ''], correctIndex: 0, explanation: '', position: current.length }])}>{t.home.addQuestion}</Button>
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: spacing.sm }}>
+      <Button
+        variant="secondary"
+        disabled={busy || questions.length >= 30}
+        onPress={() =>
+          setQuestions((current) => [
+            ...current,
+            { id: createLocalId(), content: '', options: ['', '', '', ''], correctIndex: 0, explanation: '', position: current.length },
+          ])
+        }
+      >
+        {t.home.addQuestion}
+      </Button>
+      <Button variant="ghost" disabled={busy} onPress={() => setCsvPanelOpen((v) => !v)}>
+        {language === 'vi' ? '📥 Nhập / Xuất CSV' : '📥 CSV Import / Export'}
+      </Button>
+    </View>
+    {csvPanelOpen && (
+      <Card style={{ marginBottom: spacing.md, gap: spacing.xs }}>
+        <Text style={[typography.label, { color: palette.indigo }]}>NHẬP HOẶC XUẤT BỘ ĐỀ QUA CSV</Text>
+        <TextInput
+          value={csvRawText}
+          onChangeText={setCsvRawText}
+          multiline
+          placeholder="Dán nội dung CSV vào đây hoặc bấm Nạp CSV mẫu..."
+          placeholderTextColor={palette.inkMuted}
+          style={[styles.questionInput, { minHeight: 84, color: palette.ink, borderColor: palette.paperMuted }]}
+        />
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          <Button variant="ghost" onPress={() => setCsvRawText(SAMPLE_QUIZ_CSV)}>
+            Nạp CSV mẫu
+          </Button>
+          <Button
+            variant="primary"
+            onPress={() => {
+              try {
+                const parsed = parseQuizCsv(csvRawText, title || 'Bộ đề CSV');
+                if (!title.trim()) setTitle(parsed.title);
+                if (!subject.trim()) setSubject(parsed.subject);
+                setQuestions((prev) =>
+                  [...prev.filter((q) => q.content.trim().length > 0), ...parsed.questions].map((q, idx) => ({
+                    ...q,
+                    position: idx,
+                  }))
+                );
+                setCsvPanelOpen(false);
+                setMessage(`Đã nhập thành công ${parsed.questions.length} câu hỏi từ CSV!`);
+              } catch (err) {
+                setMessage(err instanceof Error ? err.message : 'Định dạng CSV chưa hợp lệ.');
+              }
+            }}
+          >
+            Nhập vào bộ đề
+          </Button>
+          {questions.length > 0 && (
+            <Button
+              variant="secondary"
+              onPress={() => {
+                const csv = exportQuestionSetToCsv({
+                  id: existingSet?.id || 'export',
+                  title: title || 'Papyrus Quiz',
+                  subject: subject || 'General',
+                  updatedAt: new Date().toISOString(),
+                  syncStatus: 'synced',
+                  questions,
+                });
+                setCsvRawText(csv);
+                void Share.share({ message: csv }).catch(() => undefined);
+              }}
+            >
+              Xuất ra CSV
+            </Button>
+          )}
+        </View>
+      </Card>
+    )}
     {questions.map((question, index) => <Card key={question.id || `question-${index}`} style={styles.question}>
       <View style={styles.questionHeader}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -380,8 +458,8 @@ function GenerationEditor() {
                   ? 'Hợp lệ'
                   : 'Ready'
                 : language === 'vi'
-                ? 'Cần điền đủ'
-                : 'Incomplete'}
+                  ? 'Cần điền đủ'
+                  : 'Incomplete'}
             </Text>
           </View>
         </View>
@@ -434,10 +512,10 @@ function GenerationEditor() {
                     item.id === 'true_false'
                       ? [language === 'vi' ? 'Đúng' : 'True', language === 'vi' ? 'Sai' : 'False']
                       : item.id === 'word_cloud' || item.id === 'rating' || item.id === 'open_text'
-                      ? []
-                      : current.options.length === 4
-                      ? current.options
-                      : ['', '', '', ''],
+                        ? []
+                        : current.options.length === 4
+                          ? current.options
+                          : ['', '', '', ''],
                   correctIndex: item.id === 'true_false' ? Math.min(current.correctIndex, 1) : current.correctIndex,
                   ratingMax: item.id === 'rating' ? (current.ratingMax ?? 5) : current.ratingMax,
                 }))

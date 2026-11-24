@@ -42,6 +42,7 @@ export interface LeaderboardPlayer {
   playerId: string;
   nickname: string;
   score: number;
+  rank?: number;
 }
 
 export interface LeaderboardData {

@@ -43,6 +43,26 @@ export async function loadModelDataUri(model: Model3DType): Promise<string> {
       uri = mod.GLB_SPLASH_MORPH_B64;
       break;
     }
+    case 'bossGolem': {
+      const mod = require('./models3d/bossGolem');
+      uri = mod.GLB_BOSS_GOLEM_B64;
+      break;
+    }
+    case 'archerBow': {
+      const mod = require('./models3d/archerBow');
+      uri = mod.GLB_ARCHER_BOW_B64;
+      break;
+    }
+    case 'royalScroll': {
+      const mod = require('./models3d/royalScroll');
+      uri = mod.GLB_ROYAL_SCROLL_B64;
+      break;
+    }
+    case 'alchemyCauldrons': {
+      const mod = require('./models3d/alchemyCauldrons');
+      uri = mod.GLB_ALCHEMY_CAULDRONS_B64;
+      break;
+    }
     case 'study':
     default: {
       const mod = require('./models3d/sanctuary');

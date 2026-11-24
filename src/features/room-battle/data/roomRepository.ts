@@ -1,4 +1,6 @@
+import * as Crypto from 'expo-crypto';
 import { supabase } from '@/core/network/supabase';
+import type { QuestionSet } from '@/core/domain/models';
 import type { RoomRecord, RoomRepository } from '../domain/repository';
 import { battleSchema } from '../domain/battle';
 
@@ -47,14 +49,120 @@ async function rpc(name: string, args: Record<string, unknown>) {
   return data as unknown;
 }
 
+/**
+ * Generates a deterministic valid v4-shaped UUID scoped to (userId + rawKey)
+ * so seed/local sets can be materialized per user via sync_push_set without cross-owner UUID collisions.
+ */
+function deterministicUserUuid(userId: string, rawKey: string): string {
+  const input = `${userId}::${rawKey}`;
+  const bytes = new Uint8Array(16);
+  let h1 = 0x811c9dc5;
+  let h2 = 0x01000193;
+  for (let i = 0; i < input.length; i++) {
+    const c = input.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0;
+    h2 = Math.imul(h2 ^ (c + i), 0x85ebca6b) >>> 0;
+    bytes[i % 16] = (bytes[i % 16]! ^ ((h1 >>> ((i % 4) * 8)) & 0xff) ^ ((h2 >>> (((i + 1) % 4) * 8)) & 0xff)) & 0xff;
+  }
+  for (let j = 0; j < 16; j++) {
+    h1 = Math.imul(h1 ^ (j * 31 + 17), 0x27d4eb2d) >>> 0;
+    bytes[j] = (bytes[j]! ^ (h1 & 0xff)) & 0xff;
+  }
+  bytes[6] = (bytes[6]! & 0x0f) | 0x40;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+}
+
 export const battleRepository = {
   async sets() {
-    if(!supabase) throw new Error('Server is not configured.');
-    const {data:user,error:authError}=await supabase.auth.getUser();
-    if(authError || !user.user) throw new Error('Sign in to play online.');
-    const {data,error}=await supabase.from('question_sets').select('id,title').eq('owner_id',user.user.id).eq('is_deleted',false);
-    if(error) throw new Error(error.message);
-    return (data ?? []) as {id:string;title:string}[];
+    if (!supabase) return [];
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const uid = sessionData.session?.user?.id;
+      if (!uid) return [];
+      const { data, error } = await supabase
+        .from('question_sets')
+        .select('id,title')
+        .eq('owner_id', uid)
+        .eq('is_deleted', false);
+      if (error) return [];
+      return (data ?? []) as { id: string; title: string }[];
+    } catch {
+      return [];
+    }
+  },
+  async ensureCloudSet(localSet: QuestionSet): Promise<string> {
+    if (!supabase) throw new Error('Server is not configured.');
+    const { data: sessionData } = await supabase.auth.getSession();
+    const uid = sessionData.session?.user?.id;
+    if (!uid) throw new Error('Sign in to host an online room.');
+
+    // Check if already owned directly
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(localSet.id);
+    if (isUuid) {
+      const existing = await supabase
+        .from('question_sets')
+        .select('id')
+        .eq('id', localSet.id)
+        .eq('owner_id', uid)
+        .eq('is_deleted', false)
+        .maybeSingle();
+      if (existing.data?.id) return existing.data.id;
+    }
+
+    const mappedSetId = deterministicUserUuid(uid, localSet.id);
+    const alreadyMapped = await supabase
+      .from('question_sets')
+      .select('id')
+      .eq('id', mappedSetId)
+      .eq('owner_id', uid)
+      .eq('is_deleted', false)
+      .maybeSingle();
+    if (alreadyMapped.data?.id) return alreadyMapped.data.id;
+
+    // Normalize questions to strict 4 distinct options so sync_push_set succeeds across any schema version
+    const normalizedQuestions = localSet.questions.slice(0, 50).map((q, idx) => {
+      const baseOpts = q.options.map((o) => o.trim()).filter(Boolean);
+      const padded = [...baseOpts];
+      const fillers = ['Phương án bổ sung A', 'Phương án bổ sung B', 'Phương án bổ sung C', 'Phương án bổ sung D'];
+      let fi = 0;
+      while (padded.length < 4) {
+        const cand = fillers[fi % fillers.length]!;
+        fi++;
+        if (!padded.some((x) => x.toLowerCase() === cand.toLowerCase())) {
+          padded.push(cand);
+        } else {
+          padded.push(`${cand} (${fi})`);
+        }
+      }
+      const fourOpts = padded.slice(0, 4).map((opt, oi) => {
+        const dup = padded.slice(0, oi).some((prev) => prev.toLowerCase() === opt.toLowerCase());
+        return dup ? `${opt} [${oi + 1}]` : opt;
+      });
+      return {
+        id: deterministicUserUuid(uid, `${localSet.id}::${q.id}::${idx}`),
+        content: q.content.trim() || `Câu hỏi ${idx + 1}`,
+        options: fourOpts,
+        correctIndex: Math.max(0, Math.min(3, q.correctIndex)),
+        explanation: q.explanation || '',
+        position: idx,
+      };
+    });
+
+    const pushRes = await supabase.rpc('sync_push_set', {
+      mutation_id: Crypto.randomUUID(),
+      base_revision: '0',
+      document: {
+        id: mappedSetId,
+        title: localSet.title.slice(0, 190),
+        subject: (localSet.subject || 'Đại học').slice(0, 80),
+        deleted: false,
+        questions: normalizedQuestions,
+      },
+    });
+    if (pushRes.error) throw new Error(pushRes.error.message);
+    return mappedSetId;
   },
   async snapshot(id:string) {return battleSchema.parse(await rpc('battle_snapshot',{target:id}));},
   async start(id:string) {await rpc('battle_start',{target:id});},

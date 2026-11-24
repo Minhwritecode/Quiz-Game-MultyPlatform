@@ -1,3 +1,5 @@
+import * as Linking from 'expo-linking';
+import { Platform } from 'react-native';
 import { AppError, errorMessage, serviceFailure } from '@/core/domain/failure';
 import { supabase } from '@/core/network/supabase';
 import type { AppUser, UserRole } from '@/core/domain/models';
@@ -72,9 +74,16 @@ async function hydrateProfileFields(
   }
 }
 
-function getWebRedirectUrl(pathname: string): string | undefined {
-  if (typeof window === 'undefined' || !window.location?.origin) return undefined;
-  return `${window.location.origin}${pathname}`;
+function getAuthRedirectUrl(pathname: string): string | undefined {
+  if (Platform.OS === 'web') {
+    if (typeof window === 'undefined' || !window.location?.origin) return undefined;
+    return `${window.location.origin}${pathname}`;
+  }
+  try {
+    return Linking.createURL(pathname);
+  } catch {
+    return 'papyrus://auth';
+  }
 }
 
 export async function getCurrentUser(): Promise<AppUser | null> {
@@ -95,7 +104,7 @@ export async function signInWithPassword(email: string, password: string): Promi
 
 export async function signUpWithPassword(email: string, password: string): Promise<string | null> {
   if (!supabase) return 'Supabase is not configured.';
-  const emailRedirectTo = getWebRedirectUrl('/auth');
+  const emailRedirectTo = getAuthRedirectUrl('/auth');
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
@@ -115,13 +124,29 @@ export async function signUpWithPassword(email: string, password: string): Promi
 
 export async function resetPasswordForEmail(email: string): Promise<string | null> {
   if (!supabase) return 'Supabase is not configured.';
-  const redirectTo = getWebRedirectUrl('/auth');
+  const redirectTo = getAuthRedirectUrl('/auth');
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
     redirectTo,
   });
   if (error) {
     if (error.message.includes('rate limit')) {
       return 'Email rate limit exceeded. Please wait a few minutes before trying again.';
+    }
+    return errorMessage(serviceFailure(error.status));
+  }
+  return null;
+}
+
+export async function sendMagicLinkEmail(email: string): Promise<string | null> {
+  if (!supabase) return 'Supabase is not configured.';
+  const emailRedirectTo = getAuthRedirectUrl('/');
+  const { error } = await supabase.auth.signInWithOtp({
+    email: email.trim(),
+    options: emailRedirectTo ? { emailRedirectTo } : undefined,
+  });
+  if (error) {
+    if (error.message.includes('rate limit')) {
+      return ' Tạm thời vượt giới hạn gửi email. Vui lòng thử lại sau ít phút.';
     }
     return errorMessage(serviceFailure(error.status));
   }
@@ -139,11 +164,33 @@ export async function updatePassword(newPassword: string): Promise<string | null
 
 export async function startOAuth(provider: AuthProvider): Promise<{ url?: string; error?: string }> {
   if (!supabase) return { error: 'Supabase is not configured.' };
-  const redirectTo = getWebRedirectUrl('/');
+
+  // Pre-flight check Supabase /auth/v1/settings so disabled OAuth providers NEVER navigate
+  // the browser to Supabase's raw white JSON 400 error page!
+  const supaUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+  const supaKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+  if (supaUrl && supaKey) {
+    try {
+      const settingsRes = await fetch(`${supaUrl}/auth/v1/settings`, {
+        headers: { apikey: supaKey },
+      });
+      if (settingsRes.ok) {
+        const settingsJson = (await settingsRes.json()) as { external?: Record<string, boolean> };
+        if (settingsJson?.external && settingsJson.external[provider] === false) {
+          return { error: `PROVIDER_NOT_ENABLED:${provider}` };
+        }
+      }
+    } catch {
+      // Proceed to signInWithOAuth if preflight cannot reach settings
+    }
+  }
+
+  const redirectTo = getAuthRedirectUrl('/auth');
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider,
     options: {
       redirectTo,
+      skipBrowserRedirect: true,
     },
   });
   if (error) {

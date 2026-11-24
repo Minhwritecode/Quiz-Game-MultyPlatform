@@ -217,29 +217,75 @@ export const TopBar = memo(function TopBar({
 }) {
   const palette = usePalette();
   const router = useRouter();
+  const hapticsEnabled = usePapyrusStore((s) => s.haptics);
   const fg = lightContent ? '#F8FAFC' : palette.ink;
-  const borderCol = lightContent ? 'rgba(255,255,255,0.14)' : palette.paperMuted;
+  const surfaceBg = lightContent ? 'rgba(15, 23, 66, 0.84)' : palette.paperRaised;
+  const borderCol = lightContent ? 'rgba(129, 140, 248, 0.42)' : palette.indigoBorder;
+  const backBg = lightContent ? 'rgba(99, 102, 241, 0.28)' : palette.indigoTint;
+  const backBorder = lightContent ? 'rgba(165, 180, 252, 0.48)' : palette.indigoBorder;
+
+  const handleBack = () => {
+    if (hapticsEnabled && Platform.OS !== 'web') {
+      void Haptics.selectionAsync().catch(() => undefined);
+    }
+    if (onBack) {
+      onBack();
+      return;
+    }
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/');
+    }
+  };
+
   return (
-    <View style={[styles.topBar, { borderBottomColor: borderCol }]}>
+    <View
+      style={[
+        styles.topBar,
+        shadows.card,
+        {
+          backgroundColor: surfaceBg,
+          borderColor: borderCol,
+        },
+        Platform.OS === 'web'
+          ? ({
+              backdropFilter: 'blur(16px)',
+              WebkitBackdropFilter: 'blur(16px)',
+            } as unknown as ViewStyle)
+          : undefined,
+      ]}
+    >
       <Pressable
-        hitSlop={10}
+        hitSlop={12}
         accessibilityRole="button"
         accessibilityLabel="Go back"
-        onPress={onBack ?? (() => router.back())}
+        onPress={handleBack}
         style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
           styles.iconButton,
           {
-            backgroundColor: hovered || pressed ? (lightContent ? 'rgba(255,255,255,0.12)' : palette.indigoTint) : 'transparent',
-            transform: pressed ? [{ scale: 0.94 }] : undefined,
+            backgroundColor: hovered || pressed ? palette.indigo : backBg,
+            borderColor: backBorder,
+            borderWidth: 1,
+            transform: pressed ? [{ scale: 0.93 }] : undefined,
           },
+          Platform.OS === 'web' ? ({ cursor: 'pointer' } as unknown as ViewStyle) : undefined,
         ]}
       >
-        <Ionicons name="arrow-back" size={22} color={fg} />
+        {({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => (
+          <Ionicons
+            name="arrow-back"
+            size={20}
+            color={hovered || pressed ? '#FFFFFF' : lightContent ? '#E0E7FF' : palette.indigoDeep}
+          />
+        )}
       </Pressable>
-      <Text style={[typography.title, { color: fg, flex: 1 }]} numberOfLines={1}>
-        {title}
-      </Text>
-      <View style={styles.topAction}>{action}</View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={[typography.title, { color: fg, fontWeight: '800' }]} numberOfLines={1}>
+          {title}
+        </Text>
+      </View>
+      <View style={styles.topAction}>{action ?? <OnlineStatusDot />}</View>
     </View>
   );
 });
@@ -849,15 +895,21 @@ const styles = StyleSheet.create({
   content: { width: '100%', flexGrow: 1 },
   nonScrollContent: { flex: 1, alignSelf: 'center', paddingHorizontal: spacing.lg },
   topBar: {
-    minHeight: 56,
+    minHeight: 58,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    borderBottomWidth: 1,
-    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderRadius: radii.md,
+    borderCurve: 'continuous',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    marginTop: spacing.xs,
+    marginBottom: spacing.md,
+    zIndex: 40,
   },
-  topAction: { marginLeft: 'auto', minWidth: 36, alignItems: 'flex-end' },
-  iconButton: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
+  topAction: { marginLeft: 'auto', minWidth: 36, alignItems: 'flex-end', justifyContent: 'center' },
+  iconButton: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   brandMark: { alignItems: 'center', justifyContent: 'center' },
   card: { borderRadius: radii.md, borderCurve: 'continuous', borderWidth: 1, padding: spacing.lg },
   button: {
