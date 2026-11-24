@@ -5,6 +5,7 @@ import { loadModelDataUri } from './modelLoader';
 
 export type Model3DType = 'survival' | 'battle' | 'match' | 'study' | 'character' | 'questEmblem' | 'splashMorph';
 export type Character3DAnimation = 'Idle' | 'Cast_Spell' | 'Hit_Reaction' | 'Victory_Dance';
+export type Model3DActionEffect = 'idle' | 'attack' | 'hurt' | 'victory';
 
 interface Model3DViewProps {
   model: Model3DType;
@@ -14,6 +15,8 @@ interface Model3DViewProps {
   interactive?: boolean;
   cameraOrbit?: string;
   animationName?: Character3DAnimation | string;
+  actionEffect?: Model3DActionEffect;
+  pulseTrigger?: number;
   autoplay?: boolean;
 }
 

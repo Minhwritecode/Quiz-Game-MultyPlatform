@@ -1,6 +1,7 @@
 import { supabase } from '@/core/network/supabase';
 import type {
   BattleHistoryItem,
+  FriendSearchCandidate,
   LeaderboardEntry,
   LeaderboardFetchResult,
   LeaderboardTimeframe,
@@ -9,6 +10,7 @@ import type {
 
 export type {
   BattleHistoryItem,
+  FriendSearchCandidate,
   LeaderboardEntry,
   LeaderboardFetchResult,
   LeaderboardTimeframe,
@@ -34,11 +36,6 @@ const COMMUNITY_BENCHMARK: Array<Omit<LeaderboardEntry, 'scoreLabel'>> = [
   { id: 'b3', rank: 3, name: 'An Phạm', score: 11200, gamesPlayed: 17, streak: 7, avatar: '🥉', isMe: false, topic: 'chemistry' },
   { id: 'b4', rank: 4, name: 'Hải Đăng', score: 9800, gamesPlayed: 15, streak: 5, avatar: '⭐', isMe: false, topic: 'biology' },
   { id: 'b5', rank: 5, name: 'Thu Hà', score: 8500, gamesPlayed: 12, streak: 4, avatar: '⚡', isMe: false, topic: 'history' },
-  { id: 'b6', rank: 6, name: 'Duy Khang', score: 7200, gamesPlayed: 11, streak: 3, avatar: '🎯', isMe: false, topic: 'english' },
-  { id: 'b7', rank: 7, name: 'Ngọc Anh', score: 6100, gamesPlayed: 9, streak: 3, avatar: '🔥', isMe: false, topic: 'science' },
-  { id: 'b8', rank: 8, name: 'Thanh Long', score: 5300, gamesPlayed: 8, streak: 2, avatar: '💫', isMe: false, topic: 'math' },
-  { id: 'b9', rank: 9, name: 'Bảo Châu', score: 4200, gamesPlayed: 6, streak: 1, avatar: '🌟', isMe: false, topic: 'physics' },
-  { id: 'b10', rank: 10, name: 'Việt Anh', score: 3100, gamesPlayed: 5, streak: 1, avatar: '✨', isMe: false, topic: 'chemistry' },
 ];
 
 type RpcRow = {
@@ -50,14 +47,13 @@ type RpcRow = {
   rank: number | string;
 };
 
-type DirectRoomPlayerRow = {
-  user_id: string;
-  score: number;
-};
-
 type ProfileRow = {
   id: string;
   display_name: string | null;
+  avatar_url?: string | null;
+  total_score?: number | null;
+  games_played?: number | null;
+  elo_rating?: number | null;
 };
 
 function formatXp(score: number): string {
@@ -83,8 +79,8 @@ export async function fetchGlobalLeaderboard(params: {
     localStreak = 0,
   } = params;
 
-  // 1. Try real Supabase RPC first
   if (supabase) {
+    // 1. Primary: real Supabase aggregation RPC
     try {
       const { data, error } = await supabase.rpc('get_leaderboard_players', {
         p_timeframe: timeframe,
@@ -108,6 +104,7 @@ export async function fetchGlobalLeaderboard(params: {
             gamesPlayed: games,
             streak: row.user_id === currentUserId ? localStreak : Math.max(1, Math.min(14, games)),
             avatar: AVATARS[idx % AVATARS.length] ?? '⭐',
+            avatarUrl: row.avatar_url ?? null,
             isMe: Boolean(currentUserId && row.user_id === currentUserId),
             topic,
           };
@@ -115,64 +112,44 @@ export async function fetchGlobalLeaderboard(params: {
         return { entries, source: 'live', totalCount: entries.length };
       }
     } catch {
-      // Fall through to direct table query
+      // Fall through to real profiles query
     }
 
-    // 2. Fallback: aggregate directly from room_players + profiles if RPC not yet deployed
+    // 2. Fallback on live backend: query real registered profiles directly (no fake mock names!)
     try {
-      const { data: rpRows, error: rpErr } = await supabase
-        .from('room_players')
-        .select('user_id, score')
-        .gt('score', 0)
-        .limit(200);
+      const { data: profiles, error: profErr } = await supabase
+        .from('profiles')
+        .select('id, display_name, avatar_url, total_score, games_played, elo_rating')
+        .order('total_score', { ascending: false })
+        .order('elo_rating', { ascending: false })
+        .limit(50);
 
-      if (!rpErr && Array.isArray(rpRows) && rpRows.length > 0) {
-        const totals = new Map<string, { score: number; games: number }>();
-        for (const row of rpRows as DirectRoomPlayerRow[]) {
-          const prev = totals.get(row.user_id) ?? { score: 0, games: 0 };
-          totals.set(row.user_id, {
-            score: prev.score + (row.score || 0),
-            games: prev.games + 1,
-          });
-        }
-        const ids = Array.from(totals.keys());
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, display_name')
-          .in('id', ids);
-
-        const nameById = new Map<string, string>();
-        for (const p of (profiles ?? []) as ProfileRow[]) {
-          nameById.set(p.id, p.display_name || 'Học giả Papyrus');
-        }
-
-        const sorted = Array.from(totals.entries())
-          .sort((a, b) => b[1].score - a[1].score)
-          .slice(0, 30);
-
-        const entries: LeaderboardEntry[] = sorted.map(([uid, agg], idx) => ({
-          id: uid,
-          rank: idx + 1,
-          name: nameById.get(uid) || 'Học giả Papyrus',
-          score: agg.score,
-          scoreLabel: formatXp(agg.score),
-          gamesPlayed: agg.games,
-          streak: uid === currentUserId ? localStreak : Math.max(1, Math.min(10, agg.games)),
-          avatar: AVATARS[idx % AVATARS.length] ?? '⭐',
-          isMe: Boolean(currentUserId && uid === currentUserId),
-          topic,
-        }));
-
-        if (entries.length > 0) {
-          return { entries, source: 'live', totalCount: entries.length };
-        }
+      if (!profErr && Array.isArray(profiles) && profiles.length > 0) {
+        const entries: LeaderboardEntry[] = (profiles as ProfileRow[]).map((p, idx) => {
+          const score = Number(p.total_score ?? 0);
+          const games = Number(p.games_played ?? 0);
+          return {
+            id: p.id,
+            rank: idx + 1,
+            name: p.display_name || 'Học giả Papyrus',
+            score,
+            scoreLabel: formatXp(score),
+            gamesPlayed: games,
+            streak: p.id === currentUserId ? localStreak : Math.max(0, Math.min(14, games)),
+            avatar: AVATARS[idx % AVATARS.length] ?? '⭐',
+            avatarUrl: p.avatar_url ?? null,
+            isMe: Boolean(currentUserId && p.id === currentUserId),
+            topic,
+          };
+        });
+        return { entries, source: 'live', totalCount: entries.length };
       }
     } catch {
-      // Fall through to offline benchmark
+      // Fall through to offline mode only if completely unreachable
     }
   }
 
-  // 3. Offline / Unseeded Backend Fallback — dynamically ranks user's real local score!
+  // 3. Offline-only fallback when Supabase is unreachable / unconfigured
   const multiplier = timeframe === 'week' ? 1 : timeframe === 'month' ? 2.8 : 6.5;
   const filtered = COMMUNITY_BENCHMARK
     .filter((p) => topic === 'all' || p.topic === topic)
@@ -216,49 +193,224 @@ export async function fetchFriendsLeaderboard(params: {
   if (supabase) {
     try {
       const { data: sessionData } = await supabase.auth.getSession();
-      if (sessionData.session) {
+      const uid = sessionData.session?.user?.id ?? params.currentUserId;
+      if (sessionData.session && uid) {
+        const entryMap = new Map<string, LeaderboardEntry>();
+        const acceptedFriendIds = new Set<string>();
+
+        // 1. Formal friends from RPC
         const { data, error } = await supabase.rpc('get_friends_leaderboard', {
           p_timeframe: params.timeframe,
           p_limit: 30,
           p_offset: 0,
         });
-        if (!error && Array.isArray(data) && data.length > 0) {
-          const entries: LeaderboardEntry[] = data.map((row: Record<string, unknown>, idx: number) => {
+
+        if (!error && Array.isArray(data)) {
+          data.forEach((row: Record<string, unknown>, idx: number) => {
+            const id = String(row.user_id ?? `f-${idx}`);
             const score = Number(row.total_score ?? 0);
             const games = Number(row.games_played ?? 0);
-            const uid = String(row.user_id ?? `f-${idx}`);
-            return {
-              id: uid,
+            const isMe = id === uid;
+            if (!isMe) acceptedFriendIds.add(id);
+            entryMap.set(id, {
+              id,
               rank: Number(row.rank ?? idx + 1),
               name: String(row.display_name || 'Bạn học Papyrus'),
               score,
               scoreLabel: formatXp(score),
               gamesPlayed: games,
-              streak: uid === params.currentUserId ? params.localStreak ?? 1 : Math.max(1, Math.min(14, games)),
+              streak: isMe ? params.localStreak ?? 1 : Math.max(1, Math.min(14, games)),
               avatar: AVATARS[idx % AVATARS.length] ?? '👥',
-              isMe: Boolean(params.currentUserId && uid === params.currentUserId),
+              avatarUrl: typeof row.avatar_url === 'string' ? row.avatar_url : null,
+              isMe,
+              isFriend: !isMe,
               topic: 'all',
-            };
+            });
           });
-          return { entries, source: 'live', totalCount: entries.length };
+        }
+
+        // 2. Also discover real recent battle opponents from duel_matches & room_players
+        //    so players you just battled (e.g. khoaimichaelminh) appear immediately with 1-tap Add Friend!
+        const opponentIds = new Set<string>();
+        try {
+          const { data: duels } = await supabase
+            .from('duel_matches')
+            .select('challenger_id, opponent_id')
+            .or(`challenger_id.eq.${uid},opponent_id.eq.${uid}`)
+            .order('created_at', { ascending: false })
+            .limit(30);
+
+          for (const d of (duels ?? []) as Array<{ challenger_id?: string | null; opponent_id?: string | null }>) {
+            if (d.challenger_id && d.challenger_id !== uid) opponentIds.add(d.challenger_id);
+            if (d.opponent_id && d.opponent_id !== uid) opponentIds.add(d.opponent_id);
+          }
+        } catch {
+          // Non-fatal if duel_matches query restricted
+        }
+
+        const missingIds = Array.from(opponentIds).filter((id) => !entryMap.has(id));
+        if (missingIds.length > 0) {
+          try {
+            const { data: oppProfiles } = await supabase
+              .from('profiles')
+              .select('id, display_name, avatar_url, total_score, games_played')
+              .in('id', missingIds);
+
+            for (const p of (oppProfiles ?? []) as ProfileRow[]) {
+              const score = Number(p.total_score ?? 0);
+              const games = Number(p.games_played ?? 1);
+              entryMap.set(p.id, {
+                id: p.id,
+                rank: 0,
+                name: p.display_name || 'Đối thủ gần đây',
+                score,
+                scoreLabel: formatXp(score),
+                gamesPlayed: games,
+                streak: Math.max(1, Math.min(14, games)),
+                avatar: '⚔️',
+                avatarUrl: p.avatar_url ?? null,
+                isMe: false,
+                isFriend: acceptedFriendIds.has(p.id),
+                topic: 'all',
+              });
+            }
+          } catch {
+            // Non-fatal
+          }
+        }
+
+        if (entryMap.size > 0) {
+          const sorted = Array.from(entryMap.values())
+            .sort((a, b) => b.score - a.score)
+            .map((entry, idx) => ({
+              ...entry,
+              rank: idx + 1,
+            }));
+          return { entries: sorted, source: 'live', totalCount: sorted.length };
         }
       }
     } catch {
-      // Fallback below
+      // Fall through only when offline
     }
   }
 
-  // Offline / no friends added yet fallback: show user + 2 friend benchmarks
-  const myScore = Math.max(params.localScore ?? 0, 1450);
-  const raw = [
-    { id: 'fr-1', rank: 1, name: 'Minh Anh (Bạn học)', score: 3800, gamesPlayed: 9, streak: 5, avatar: '🤝', isMe: false, topic: 'all' as const },
-    { id: params.currentUserId || 'local-me', rank: 2, name: params.currentUserName || 'Bạn (Học giả)', score: myScore, gamesPlayed: Math.max(1, params.localGamesPlayed ?? 1), streak: Math.max(1, params.localStreak ?? 1), avatar: '🧙', isMe: true, topic: 'all' as const },
-    { id: 'fr-2', rank: 3, name: 'Gia Huy (Bạn học)', score: 1200, gamesPlayed: 4, streak: 2, avatar: '🎯', isMe: false, topic: 'all' as const },
-  ]
-    .sort((a, b) => b.score - a.score)
-    .map((item, idx) => ({ ...item, rank: idx + 1, scoreLabel: formatXp(item.score) }));
+  // Offline / signed-out fallback (honest single user row if signed out)
+  const myScore = params.localScore ?? 0;
+  const selfOnly: LeaderboardEntry[] = [
+    {
+      id: params.currentUserId || 'local-me',
+      rank: 1,
+      name: params.currentUserName || 'Bạn (Học giả)',
+      score: myScore,
+      scoreLabel: formatXp(myScore),
+      gamesPlayed: params.localGamesPlayed ?? 0,
+      streak: params.localStreak ?? 0,
+      avatar: '🧙',
+      isMe: true,
+      topic: 'all',
+    },
+  ];
+  return { entries: selfOnly, source: 'offline', totalCount: selfOnly.length };
+}
 
-  return { entries: raw, source: 'offline', totalCount: raw.length };
+export async function searchPlayersForFriend(query: string): Promise<FriendSearchCandidate[]> {
+  const clean = query.trim();
+  if (!supabase || clean.length < 2) return [];
+  const lower = clean.toLowerCase();
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const myId = sessionData.session?.user?.id;
+    const byId = new Map<string, FriendSearchCandidate>();
+
+    // 1. Primary: SECURITY DEFINER search RPC (bypasses strict read-own-profile RLS safely)
+    try {
+      const { data: rpcRows, error: rpcErr } = await supabase.rpc('search_players_for_friend', {
+        p_query: clean,
+        p_limit: 15,
+      });
+      if (!rpcErr && Array.isArray(rpcRows)) {
+        for (const row of rpcRows as Array<Record<string, unknown>>) {
+          const id = String(row.user_id ?? row.id ?? '');
+          if (!id || id === myId) continue;
+          byId.set(id, {
+            id,
+            displayName: String(row.display_name || 'Học giả Papyrus'),
+            avatarUrl: typeof row.avatar_url === 'string' ? row.avatar_url : null,
+            eloRating: Number(row.elo_rating ?? 1200),
+            totalScore: Number(row.total_score ?? 0),
+          });
+        }
+      }
+    } catch {
+      // Fall through to leaderboard SECURITY DEFINER RPC
+    }
+
+    // 2. Fallback: SECURITY DEFINER get_leaderboard_players RPC (already live on Supabase Cloud)
+    if (byId.size === 0) {
+      try {
+        const { data: lbRows, error: lbErr } = await supabase.rpc('get_leaderboard_players', {
+          p_timeframe: 'all',
+          p_topic: 'all',
+          p_limit: 100,
+          p_offset: 0,
+        });
+        if (!lbErr && Array.isArray(lbRows)) {
+          for (const row of lbRows as RpcRow[]) {
+            const id = String(row.user_id ?? '');
+            const name = String(row.display_name || '');
+            if (!id || id === myId) continue;
+            if (name.toLowerCase().includes(lower)) {
+              byId.set(id, {
+                id,
+                displayName: name || 'Học giả Papyrus',
+                avatarUrl: row.avatar_url ?? null,
+                eloRating: 1200,
+                totalScore: Number(row.total_score ?? 0),
+              });
+            }
+          }
+        }
+      } catch {
+        // Fall through
+      }
+    }
+
+    // 3. Direct profiles query fallback (if RLS allows broader read)
+    if (byId.size === 0) {
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id, display_name, avatar_url, elo_rating, total_score')
+          .ilike('display_name', `%${clean}%`)
+          .limit(15);
+        if (!error && Array.isArray(data)) {
+          for (const row of data as ProfileRow[]) {
+            if (row.id === myId) continue;
+            byId.set(row.id, {
+              id: row.id,
+              displayName: row.display_name || 'Học giả Papyrus',
+              avatarUrl: row.avatar_url ?? null,
+              eloRating: Number(row.elo_rating ?? 1200),
+              totalScore: Number(row.total_score ?? 0),
+            });
+          }
+        }
+      } catch {
+        // Ignore
+      }
+    }
+
+    return Array.from(byId.values()).slice(0, 15);
+  } catch {
+    return [];
+  }
+}
+
+export async function addFriendById(friendId: string): Promise<boolean> {
+  if (!supabase || !friendId) return false;
+  const { data, error } = await supabase.rpc('add_friend_by_id', { p_friend_id: friendId });
+  if (error) return false;
+  return Boolean(data);
 }
 
 export async function fetchMyBattleHistory(limit = 15): Promise<BattleHistoryItem[]> {

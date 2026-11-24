@@ -16,9 +16,10 @@ export interface StreakData {
   brokenAtDate: string | null; // Date when the streak broke
   recoveryQuestAvailable: boolean; // True if within 24h recovery window
   lastFreezeGrantDate?: string | null; // Date of last weekly freeze grant
+  historyDates?: string[]; // YYYY-MM-DD dates when user checked in or played
 }
 
-export type StreakActivityType = 'scan_ocr' | 'study_quiz' | 'battle';
+export type StreakActivityType = 'scan_ocr' | 'study_quiz' | 'battle' | 'daily_checkin';
 
 /**
  * Returns today's date formatted as YYYY-MM-DD in local timezone

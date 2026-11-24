@@ -1,6 +1,6 @@
 import { normaliseQuestions } from './question-schema.ts';
 
-type GeminiChunk = { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+type GeminiChunk = { candidates?: Array<{ content?: { parts?: Array<{ text?: string; thought?: boolean }> } }> };
 type Question = ReturnType<typeof normaliseQuestions>[number] & { position: number };
 
 /** Finds complete question objects as JSON fragments arrive in arbitrary chunks. */
@@ -78,6 +78,7 @@ export async function streamGeminiQuestions(input: {
       ].filter(Boolean).join('\n\n') }] }],
       generationConfig: {
         temperature: 0.3,
+        ...(/gemini-2\.5/i.test(input.model) ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
         response_mime_type: 'application/json',
         response_schema: {
           type: 'OBJECT', properties: { questions: { type: 'ARRAY', minItems: 1, items: {
@@ -104,6 +105,7 @@ export async function streamGeminiQuestions(input: {
     let chunk: GeminiChunk;
     try { chunk = JSON.parse(payload) as GeminiChunk; } catch { return; }
     for (const part of chunk.candidates?.[0]?.content?.parts ?? []) {
+      if (part.thought) continue;
       for (const candidate of extractor.push(part.text ?? '')) {
         let normalized: ReturnType<typeof normaliseQuestions>;
         try { normalized = normaliseQuestions({ questions: [candidate] }, 1); } catch { continue; }

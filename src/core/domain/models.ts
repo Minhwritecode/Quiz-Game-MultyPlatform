@@ -40,10 +40,14 @@ export type QuestionSet = {
   syncStatus: SyncStatus;
 };
 
+export type UserRole = 'user' | 'moderator' | 'admin' | 'superadmin';
+
 export type AppUser = {
   id: string;
   email?: string;
   displayName: string;
+  avatarUrl?: string | null;
+  role?: UserRole;
 };
 
 export type Attempt = {

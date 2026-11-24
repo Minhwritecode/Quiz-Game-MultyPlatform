@@ -3,11 +3,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Linking, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { BrandMark, Button, Card, Screen, usePalette } from '@/shared/ui';
+import { BrandMark, Button, Card, Screen, SmoothReveal, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { dependencies } from '@/composition/dependencies';
 import { useI18n } from '@/core/i18n';
 import { useAuthStore } from '@/core/state/useAuthStore';
+import { usePapyrusStore } from '@/core/state/usePapyrusStore';
+import { useStreakStore } from '@/features/streak/state/useStreakStore';
+import { AuthCosmicBackdrop } from '@/shared/visuals/AuthCosmicBackdrop';
 
 type AuthMode = 'signIn' | 'signUp' | 'forgot' | 'resetPassword';
 
@@ -27,6 +30,8 @@ export default function AuthScreen() {
   const [infoMsg, setInfoMsg] = useState<string | null>(null);
 
   const user = useAuthStore((state) => state.user);
+  const enterGuestMode = useAuthStore((state) => state.enterGuestMode);
+  const reduceMotion = usePapyrusStore((state) => state.reduceMotion);
 
   useEffect(() => {
     if (user && mode !== 'resetPassword') {
@@ -125,6 +130,7 @@ export default function AuthScreen() {
       } else if (result) {
         setErrorMsg(result);
       } else {
+        useStreakStore.getState().recordActivity('daily_checkin');
         setInfoMsg(t.auth.signUpSuccess);
         setTimeout(() => router.replace('/'), 1200);
       }
@@ -133,6 +139,7 @@ export default function AuthScreen() {
       if (error) {
         setErrorMsg(error);
       } else {
+        useStreakStore.getState().refreshStreakStatus();
         router.replace('/');
       }
     }
@@ -176,8 +183,9 @@ export default function AuthScreen() {
   };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Screen>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: '#060A24' }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <AuthCosmicBackdrop mode={mode} reduceMotion={reduceMotion} />
+      <Screen transparent>
         {/* Top Header with Language Switcher */}
         <View style={styles.topLangRow}>
           <Pressable
@@ -186,29 +194,42 @@ export default function AuthScreen() {
             accessibilityLabel="Switch language"
             style={[
               styles.langPill,
-              { backgroundColor: palette.paperRaised, borderColor: palette.paperMuted },
+              { backgroundColor: 'rgba(15, 23, 66, 0.72)', borderColor: 'rgba(165, 180, 252, 0.35)' },
             ]}
           >
             <Text style={{ fontSize: 16 }}>{language === 'vi' ? '🇻🇳' : '🇬🇧'}</Text>
-            <Text style={[typography.caption, { color: palette.indigo, fontWeight: '800' }]}>
+            <Text style={[typography.caption, { color: '#E0E7FF', fontWeight: '800' }]}>
               {language === 'vi' ? 'Tiếng Việt' : 'English'}
             </Text>
           </Pressable>
         </View>
 
         {/* Brand Header */}
-        <View style={styles.brand}>
-          <BrandMark size={64} />
-          <Text style={[typography.display, { color: palette.ink, marginTop: spacing.md }]}>
-            Papyrus
-          </Text>
-          <Text style={[typography.body, { color: palette.inkMuted, marginTop: 2 }]}>
-            From Ancient Scroll to AI Power.
-          </Text>
-        </View>
+        <SmoothReveal>
+          <View style={styles.brand}>
+            <BrandMark size={68} />
+            <Text style={[typography.display, { color: '#FFFFFF', marginTop: spacing.md }]}>
+              Papyrus
+            </Text>
+            <Text style={[typography.body, { color: '#C7D2FE', marginTop: 2 }]}>
+              From Ancient Scroll to AI Power.
+            </Text>
+          </View>
+        </SmoothReveal>
 
         {/* Main Form Card */}
-        <Card style={styles.formCard}>
+        <SmoothReveal delay={70}>
+        <Card
+          style={[
+            styles.formCard,
+            Platform.OS === 'web'
+              ? ({
+                  backdropFilter: 'blur(20px)',
+                  WebkitBackdropFilter: 'blur(20px)',
+                } as object)
+              : undefined,
+          ]}
+        >
           <Text style={[typography.heading, { color: palette.ink }]}>
             {mode === 'signUp'
               ? t.auth.signUpTitle
@@ -445,7 +466,10 @@ export default function AuthScreen() {
 
                   {/* Guest Login */}
                   <Pressable
-                    onPress={() => router.replace('/')}
+                    onPress={() => {
+                      enterGuestMode();
+                      router.replace('/');
+                    }}
                     style={styles.guest}
                     accessibilityRole="button"
                   >
@@ -459,21 +483,35 @@ export default function AuthScreen() {
             </>
           )}
         </Card>
+        </SmoothReveal>
 
         {/* Privacy Note */}
-        <Card color={palette.indigoTint} style={styles.privacy}>
-          <Ionicons name="shield-checkmark-outline" size={22} color={palette.indigo} />
-          <Text style={[typography.caption, { color: palette.indigoDeep, flex: 1 }]}>
+        <Card color="rgba(15, 23, 66, 0.78)" style={[styles.privacy, { borderColor: 'rgba(129, 140, 248, 0.32)' }]}>
+          <Ionicons name="shield-checkmark-outline" size={22} color="#A5B4FC" />
+          <Text style={[typography.caption, { color: '#E0E7FF', flex: 1 }]}>
             {t.auth.privacyNote}
           </Text>
         </Card>
 
-        {/* Back Link */}
-        <Pressable onPress={() => router.back()} style={styles.back}>
-          <Text style={[typography.caption, { color: palette.inkMuted }]}>
-            {t.auth.backToDemo}
-          </Text>
-        </Pressable>
+        {/* Admin Portal & Guest shortcut */}
+        <View style={styles.bottomLinks}>
+          <Pressable
+            onPress={() => {
+              enterGuestMode();
+              router.replace('/');
+            }}
+            style={styles.back}
+          >
+            <Text style={[typography.caption, { color: '#CBD5E1' }]}>
+              {t.auth.backToDemo}
+            </Text>
+          </Pressable>
+          <Pressable onPress={() => router.push('/admin')} style={styles.back}>
+            <Text style={[typography.caption, { color: '#FDE68A', fontWeight: '700' }]}>
+              🛡️ Quản trị viên
+            </Text>
+          </Pressable>
+        </View>
       </Screen>
     </KeyboardAvoidingView>
   );
@@ -547,5 +585,12 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     alignItems: 'flex-start',
   },
-  back: { alignSelf: 'center', padding: spacing.lg },
+  bottomLinks: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: spacing.lg,
+    flexWrap: 'wrap',
+  },
+  back: { alignSelf: 'center', padding: spacing.md },
 });

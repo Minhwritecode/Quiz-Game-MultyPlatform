@@ -1,6 +1,7 @@
 import type { QuestionSet } from '@/core/domain/models';
+import { universitySeedSets } from './universitySeedSets';
 
-export const seedQuestionSets: QuestionSet[] = [
+const coreSeedQuestionSets: QuestionSet[] = [
   {
     id: 'set-cross-platform',
     title: 'Lập trình Đa nền tảng & React Native',
@@ -433,4 +434,9 @@ export const seedQuestionSets: QuestionSet[] = [
       },
     ],
   },
+];
+
+export const seedQuestionSets: QuestionSet[] = [
+  ...coreSeedQuestionSets,
+  ...universitySeedSets,
 ];

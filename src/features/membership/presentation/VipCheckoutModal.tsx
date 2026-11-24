@@ -80,9 +80,9 @@ export function VipCheckoutModal({
         <Card style={[styles.sheet, { backgroundColor: palette.paper }]}>
           <View style={styles.header}>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={[typography.label, { color: palette.gold }]}>BILLING & ENTITLEMENTS (ADR-010)</Text>
+              <Text style={[typography.label, { color: palette.gold }]}>GÓI THÀNH VIÊN PAPYRUS PRO</Text>
               <Text style={[typography.title, { color: palette.ink, fontSize: 19 }]}>
-                👑 Nâng cấp Đại Pháp Sư & AI Token
+                Nâng cấp Đại Pháp Sư & AI Token
               </Text>
             </View>
             <Pressable onPress={onClose} style={styles.closeBtn} accessibilityRole="button" accessibilityLabel="Đóng">

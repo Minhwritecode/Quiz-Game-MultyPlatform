@@ -227,11 +227,24 @@ export default function StudyScreen() {
   };
 
   const progress = (index + 1) / Math.max(1, effectiveQuestions.length);
+  const studyActionEffect = revealed
+    ? selected === question.correctIndex
+      ? 'victory'
+      : 'hurt'
+    : 'idle';
 
   return (
-    <Screen>
-      <GameEnvironment gameMode="study">
-      <TopBar title={questionSet.title} action={<Badge tone={index > 0 || answers.length > 0 ? 'reward' : 'success'}>{index > 0 || answers.length > 0 ? t.study.resumedBadge : t.study.offlineModeBadge}</Badge>} />
+    <GameEnvironment gameMode="study" actionEffect={studyActionEffect} pulseTrigger={particleTrigger}>
+      <Screen transparent>
+      <TopBar
+        title={questionSet.title}
+        lightContent
+        action={
+          index > 0 || answers.length > 0 ? (
+            <Badge tone="reward">{t.study.resumedBadge}</Badge>
+          ) : undefined
+        }
+      />
       {saveError ? <Text accessibilityRole="alert" style={{color:palette.danger}}>{saveError}</Text> : null}
 
       {/* Study Mode Selector (Sequential / Shuffled / Timed 20s / Wrong-Only Review) */}
@@ -503,8 +516,8 @@ export default function StudyScreen() {
             : t.study.nextQuestion}
         </Button>
       </View>
-      </GameEnvironment>
-    </Screen>
+      </Screen>
+    </GameEnvironment>
   );
 }
 

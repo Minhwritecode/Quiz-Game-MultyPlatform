@@ -20,10 +20,10 @@ import { CharacterHero, CharacterAction } from '@/shared/CharacterHero';
 import { GameEnvironment } from '@/shared/GameEnvironment';
 import { MagicParticles } from '@/shared/MagicParticles';
 import { sfx } from '@/core/audio/sfx';
-import { RenderModeToggle } from '@/shared/RenderModeToggle';
 import { SoundToggle } from '@/shared/SoundToggle';
 import { useStreakStore } from '@/features/streak/state/useStreakStore';
 import { useMembershipStore } from '@/features/membership/state/useMembershipStore';
+import { seedQuestionSets } from '@/composition/preferences';
 
 // ─── 3D Flip Card Component ───────────────────────────────────────────────
 const CYAN = '#06B6D4';
@@ -149,7 +149,7 @@ const FlipCard = memo(function FlipCard({
               </Text>
               {isMatched && <Text style={{ fontSize: 14 }}>✅</Text>}
             </View>
-            <Text style={[styles.cardText, { color: palette.ink }]} numberOfLines={4}>
+            <Text style={[styles.cardText, { color: '#F8FAFC' }]} numberOfLines={4}>
               {card.text}
             </Text>
           </View>
@@ -244,14 +244,18 @@ export default function MatchGameScreen() {
   const { width } = useWindowDimensions();
   const isVip = useMembershipStore((state) => state.tier === 'archmage');
 
-  const questionSets = usePapyrusStore((s) => s.questionSets);
+  const storeQuestionSets = usePapyrusStore((s) => s.questionSets);
+  const questionSets = useMemo(
+    () => (storeQuestionSets.length > 0 ? storeQuestionSets : seedQuestionSets),
+    [storeQuestionSets]
+  );
   const [activeSetId, setActiveSetId] = useState<string | null>(setId ?? null);
   const [showSetPicker, setShowSetPicker] = useState(false);
 
   // Fallback to first available set with at least 3 questions
   const currentSet = useMemo(() => {
     if (activeSetId) {
-      const found = questionSets.find((s) => s.id === activeSetId);
+      const found = questionSets.find((s) => s.id === activeSetId && s.questions.length >= 3);
       if (found) return found;
     }
     return questionSets.find((s) => s.questions.length >= 3) ?? questionSets[0] ?? null;
@@ -486,10 +490,11 @@ export default function MatchGameScreen() {
   const cardWidth = Math.min((width - 48 - (columns - 1) * 12) / columns, 240);
 
   return (
-    <Screen scroll={true}>
-      <GameEnvironment gameMode="match">
+    <GameEnvironment gameMode="match" actionEffect={characterAction} pulseTrigger={particleTrigger}>
+      <Screen scroll={true} transparent>
       <TopBar
         title={t.match.title}
+        lightContent
         action={
           <Pressable
             onPress={() => setShowSetPicker(true)}
@@ -510,12 +515,11 @@ export default function MatchGameScreen() {
       <View style={styles.libraryHeader}>
         <View style={{ flex: 1 }}>
           <Text style={[typography.heading, { color: '#FEF3C7' }]}>🏛️ {t.match.title}</Text>
-          <Text style={[typography.body, { color: 'rgba(254,243,199,0.65)', marginTop: 4 }]}>
+          <Text style={[typography.body, { color: 'rgba(254,243,199,0.78)', marginTop: 4 }]}>
             {t.match.subtitle}
           </Text>
         </View>
         <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
-          <RenderModeToggle compact />
           <SoundToggle />
         </View>
       </View>
@@ -532,36 +536,36 @@ export default function MatchGameScreen() {
         )}
       </View>
 
-      {/* Stat Bar */}
-      <View style={[styles.statRow, { backgroundColor: 'rgba(0,0,0,0.4)', borderColor: 'rgba(6,182,212,0.3)' }]}>
+      {/* Stat Bar — high contrast dark glass */}
+      <View style={[styles.statRow, { backgroundColor: 'rgba(15,23,42,0.78)', borderColor: 'rgba(251,191,36,0.35)' }]}>
         <View style={styles.statItem}>
-          <Text style={[typography.caption, { color: palette.inkMuted }]}>{t.match.timer}</Text>
+          <Text style={[typography.caption, { color: '#CBD5E1' }]}>{t.match.timer}</Text>
           <View style={styles.statValRow}>
-            <Ionicons name="timer-outline" size={18} color={palette.indigo} />
-            <Text style={[typography.title, { color: palette.ink }]}>{formatTimer(seconds)}</Text>
+            <Ionicons name="timer-outline" size={18} color="#818CF8" />
+            <Text style={[typography.title, { color: '#F8FAFC', fontVariant: ['tabular-nums'] }]}>{formatTimer(seconds)}</Text>
           </View>
         </View>
 
         <View style={styles.statItemDivider} />
 
         <View style={styles.statItem}>
-          <Text style={[typography.caption, { color: palette.inkMuted }]}>{t.match.moves}</Text>
+          <Text style={[typography.caption, { color: '#CBD5E1' }]}>{t.match.moves}</Text>
           <View style={styles.statValRow}>
-            <Ionicons name="swap-horizontal" size={18} color={palette.gold} />
-            <Text style={[typography.title, { color: palette.ink }]}>{moves}</Text>
+            <Ionicons name="swap-horizontal" size={18} color={GOLD} />
+            <Text style={[typography.title, { color: '#F8FAFC', fontVariant: ['tabular-nums'] }]}>{moves}</Text>
           </View>
         </View>
 
         <View style={styles.statItemDivider} />
 
         <View style={styles.statItem}>
-          <Text style={[typography.caption, { color: palette.inkMuted }]}>{t.match.combo}</Text>
+          <Text style={[typography.caption, { color: '#CBD5E1' }]}>{t.match.combo}</Text>
           <View style={styles.statValRow}>
-            <Ionicons name="flame" size={18} color={combo > 1 ? palette.danger : palette.inkMuted} />
+            <Ionicons name="flame" size={18} color={combo > 1 ? '#FB7185' : '#94A3B8'} />
             <Text
               style={[
                 typography.title,
-                { color: combo > 1 ? palette.danger : palette.ink },
+                { color: combo > 1 ? '#FB7185' : '#F8FAFC', fontVariant: ['tabular-nums'] },
               ]}
             >
               x{combo}
@@ -572,10 +576,10 @@ export default function MatchGameScreen() {
         <View style={styles.statItemDivider} />
 
         <View style={styles.statItem}>
-          <Text style={[typography.caption, { color: palette.inkMuted }]}>{t.match.pairsFound}</Text>
+          <Text style={[typography.caption, { color: '#CBD5E1' }]}>{t.match.pairsFound}</Text>
           <View style={styles.statValRow}>
-            <Ionicons name="checkmark-done" size={18} color={palette.mint} />
-            <Text style={[typography.title, { color: palette.mint }]}>
+            <Ionicons name="checkmark-done" size={18} color="#34D399" />
+            <Text style={[typography.title, { color: '#34D399', fontVariant: ['tabular-nums'] }]}>
               {matchedPairs}/{totalPairs}
             </Text>
           </View>
@@ -584,7 +588,7 @@ export default function MatchGameScreen() {
 
       {/* Card Grid */}
       {(!currentSet || currentSet.questions.length < 3) ? (
-        <Card style={styles.emptySetCard}>
+        <Card color="rgba(15, 23, 42, 0.88)" style={[styles.emptySetCard, { borderColor: 'rgba(251,191,36,0.45)' }]}>
           <Ionicons name="alert-circle-outline" size={48} color={GOLD} />
           <Text style={[typography.title, { color: '#FEF3C7', marginTop: spacing.md, textAlign: 'center' }]}>
             {t.match.needMoreQuestions}
@@ -733,8 +737,8 @@ export default function MatchGameScreen() {
           </View>
         </View>
       </Modal>
-      </GameEnvironment>
-    </Screen>
+      </Screen>
+    </GameEnvironment>
   );
 }
 

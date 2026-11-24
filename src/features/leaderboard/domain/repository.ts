@@ -25,8 +25,18 @@ export interface LeaderboardEntry {
   gamesPlayed: number;
   streak: number;
   avatar: string;
+  avatarUrl?: string | null;
   isMe: boolean;
+  isFriend?: boolean;
   topic: LeaderboardTopic;
+}
+
+export interface FriendSearchCandidate {
+  id: string;
+  displayName: string;
+  avatarUrl?: string | null;
+  eloRating: number;
+  totalScore: number;
 }
 
 export interface LeaderboardFetchResult {

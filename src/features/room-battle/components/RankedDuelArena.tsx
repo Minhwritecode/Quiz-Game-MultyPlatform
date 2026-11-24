@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Badge, Button, Card, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
-import { calculateTieredSpeedScore } from '@/core/domain/models';
+import { calculateTieredSpeedScore, type QuestionSet } from '@/core/domain/models';
 import {
   DUEL_CATEGORIES,
   eloSearchBand,
@@ -12,6 +12,7 @@ import {
   type DuelCategoryId,
 } from '../domain/elo';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
+import { seedQuestionSets } from '@/composition/preferences';
 import {
   cancelLiveDuelQueue,
   enqueueLiveDuelQueue,
@@ -21,6 +22,8 @@ import {
 import { sfx } from '@/core/audio/sfx';
 import { ReportQuestionButton } from '@/shared/ReportQuestionButton';
 import { LiveReactionsBar } from './LiveReactionsBar';
+import { Model3DView, type Model3DActionEffect } from '@/shared/Model3DView';
+import { Model3DErrorBoundary } from '@/shared/Model3DErrorBoundary';
 
 interface DuelQuestion {
   prompt: string;
@@ -29,7 +32,16 @@ interface DuelQuestion {
   codeSnippet?: string;
 }
 
-const DUEL_QUESTIONS: Record<DuelCategoryId, DuelQuestion[]> = {
+const CATEGORY_SET_MATCHERS: Record<DuelCategoryId, string[]> = {
+  coding: ['it', 'dsa', 'os', 'network', 'dbms', 'cloud', 'devops', 'software', 'mobile', 'ai', 'lập trình', 'mạng', 'hệ điều hành', 'dữ liệu'],
+  science: ['sinh', 'vật lý', 'hóa', 'science', 'bio', 'phys', 'chem'],
+  history: ['lịch sử', 'history', 'việt nam', 'thế giới'],
+  math: ['toán', 'dsa', 'vật lý', 'giải thuật', 'math'],
+  english: ['english', 'văn học', 'thế giới', 'lit'],
+  general: [],
+};
+
+const FALLBACK_DUEL_QUESTIONS: Record<DuelCategoryId, DuelQuestion[]> = {
   general: [
     { prompt: 'Châu lục nào có diện tích lớn nhất Trái Đất?', options: ['Châu Phi', 'Châu Á', 'Châu Mỹ', 'Châu Âu'], correctIndex: 1 },
     { prompt: 'Nguyên tố hóa học nào có ký hiệu là Au?', options: ['Bạc', 'Đồng', 'Vàng', 'Nhôm'], correctIndex: 2 },
@@ -75,6 +87,36 @@ const DUEL_QUESTIONS: Record<DuelCategoryId, DuelQuestion[]> = {
   ],
 };
 
+function buildDuelDeck(category: DuelCategoryId, userSets: QuestionSet[]): DuelQuestion[] {
+  const keywords = CATEGORY_SET_MATCHERS[category];
+  const combinedSets = userSets.length > 0 ? userSets : seedQuestionSets;
+  const matchingSets =
+    keywords.length === 0
+      ? combinedSets
+      : combinedSets.filter((s) => {
+          const hay = `${s.title} ${s.subject} ${(s.tags ?? []).join(' ')}`.toLowerCase();
+          return keywords.some((kw) => hay.includes(kw));
+        });
+
+  const pool: DuelQuestion[] = [];
+  for (const s of matchingSets) {
+    for (const q of s.questions) {
+      if (q.options.length >= 2) {
+        pool.push({
+          prompt: q.content,
+          options: q.options,
+          correctIndex: q.correctIndex,
+          codeSnippet: q.codeSnippet,
+        });
+      }
+    }
+  }
+  const merged = [...FALLBACK_DUEL_QUESTIONS[category], ...pool];
+  // Shuffle deterministically-enough per match start and pick 6 questions
+  const shuffled = [...merged].sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, 6);
+}
+
 export function RankedDuelArena({
   playerName,
   onMatchFinished,
@@ -86,6 +128,7 @@ export function RankedDuelArena({
   const globalElo = usePapyrusStore((s) => s.eloRating);
   const categoryElos = usePapyrusStore((s) => s.categoryElos);
   const recordCategoryElo = usePapyrusStore((s) => s.recordCategoryElo);
+  const questionSets = usePapyrusStore((s) => s.questionSets);
 
   const [category, setCategory] = useState<DuelCategoryId>('coding');
   const [phase, setPhase] = useState<'lobby' | 'searching' | 'playing' | 'summary'>('lobby');
@@ -93,6 +136,9 @@ export function RankedDuelArena({
   const [waitSeconds, setWaitSeconds] = useState(0);
   const [inviteCode, setInviteCode] = useState<string | null>(null);
   const [joinInviteInput, setJoinInviteInput] = useState('');
+  const [deck, setDeck] = useState<DuelQuestion[]>(() => FALLBACK_DUEL_QUESTIONS.coding);
+  const [duelEffect, setDuelEffect] = useState<Model3DActionEffect>('idle');
+  const [effectPulse, setEffectPulse] = useState(0);
 
   const [opponent, setOpponent] = useState<{ name: string; elo: number; accuracy: number; isHuman?: boolean }>({
     name: 'Học giả Nova',
@@ -109,9 +155,43 @@ export function RankedDuelArena({
 
   const currentCatElo = categoryElos[category] ?? globalElo;
   const currentTier = getEloTier(currentCatElo);
-  const questions = DUEL_QUESTIONS[category];
-  const activeQ = questions[qIndex];
+  const activeQ = deck[qIndex];
   const finishHandledRef = useRef(false);
+  const queueReadyRef = useRef(false);
+  const searchRunIdRef = useRef(0);
+
+  // Always clear any leftover stale matchmaking ticket when mounting or leaving the arena
+  useEffect(() => {
+    void cancelLiveDuelQueue();
+    return () => {
+      queueReadyRef.current = false;
+      void cancelLiveDuelQueue();
+    };
+  }, []);
+
+  const beginMatch = useCallback(
+    (opp: { name: string; elo: number; accuracy: number; isHuman: boolean }) => {
+      queueReadyRef.current = false;
+      // Consume/delete queue ticket IMMEDIATELY so this opponent is NEVER replayed in a future match
+      void cancelLiveDuelQueue();
+      setDeck(buildDuelDeck(category, questionSets));
+      setOpponent(opp);
+      setQIndex(0);
+      setMyScore(0);
+      setOppScore(0);
+      setPicked(null);
+      setTimeLeft(12);
+      setDuelEffect('idle');
+      finishHandledRef.current = false;
+      setPhase('playing');
+    },
+    [category, questionSets]
+  );
+
+  const launchAiPractice = useCallback(() => {
+    const bot = pickTieredBot(currentCatElo);
+    beginMatch({ ...bot, isHuman: false });
+  }, [beginMatch, currentCatElo]);
 
   const handleAnswer = useCallback(
     (choiceIdx: number) => {
@@ -119,11 +199,17 @@ export function RankedDuelArena({
       setPicked(choiceIdx);
       const isCorrect = choiceIdx === activeQ.correctIndex;
       const myGain = calculateTieredSpeedScore(isCorrect, timeLeft * 1000, 12_000);
-      const botCorrect = ((qIndex + opponent.elo) % 10) / 10 < opponent.accuracy;
-      const oppGain = botCorrect ? calculateTieredSpeedScore(true, 7_500, 12_000) : 0;
+      const botCorrect = Math.random() < opponent.accuracy;
+      const oppGain = botCorrect ? calculateTieredSpeedScore(true, 6_500 + Math.random() * 2500, 12_000) : 0;
 
-      if (isCorrect) sfx.playCorrect();
-      else sfx.playWrong();
+      if (isCorrect) {
+        sfx.playCorrect();
+        setDuelEffect('attack');
+      } else {
+        sfx.playWrong();
+        setDuelEffect('hurt');
+      }
+      setEffectPulse((n) => n + 1);
 
       const nextMy = myScore + myGain;
       const nextOpp = oppScore + oppGain;
@@ -131,9 +217,10 @@ export function RankedDuelArena({
       setOppScore(nextOpp);
 
       setTimeout(() => {
-        if (qIndex + 1 >= questions.length) {
+        if (qIndex + 1 >= deck.length) {
           if (!finishHandledRef.current) {
             finishHandledRef.current = true;
+            void cancelLiveDuelQueue();
             const outcome = nextMy > nextOpp ? 1 : nextMy === nextOpp ? 0.5 : 0;
             const delta = recordCategoryElo(category, outcome, opponent.elo, rated);
             const updatedElo = usePapyrusStore.getState().categoryElos[category] ?? usePapyrusStore.getState().eloRating;
@@ -150,6 +237,7 @@ export function RankedDuelArena({
               inviteCode,
             });
             setLastDelta(delta);
+            setDuelEffect(outcome === 1 ? 'victory' : outcome === 0 ? 'hurt' : 'idle');
             onMatchFinished(nextMy, outcome === 1);
           }
           setPhase('summary');
@@ -157,64 +245,61 @@ export function RankedDuelArena({
           setQIndex((i) => i + 1);
           setPicked(null);
           setTimeLeft(12);
+          setDuelEffect('idle');
         }
       }, 950);
     },
-    [activeQ, picked, timeLeft, qIndex, opponent, myScore, oppScore, questions.length, recordCategoryElo, category, rated, onMatchFinished]
+    [activeQ, picked, timeLeft, qIndex, opponent, myScore, oppScore, deck.length, recordCategoryElo, category, rated, inviteCode, onMatchFinished]
   );
 
-  // Live 1v1 Realtime Queue -> pairs with waiting human player first, falls back to tiered bot after 5s
+  // Poll ONLY AFTER enqueueLiveDuelQueue succeeded on a fresh ticket (prevents matching stale offline players!)
   useEffect(() => {
     if (phase !== 'searching') return;
     let active = true;
 
-    const band = eloSearchBand(waitSeconds * 2);
-    void pollLiveDuelQueue(category, band).then((res) => {
-      if (!active || !res) return;
-      if (res.status === 'matched' && res.opponentName) {
-        setOpponent({
-          name: res.opponentName,
-          elo: res.opponentElo ?? currentCatElo,
-          accuracy: 0.78,
-          isHuman: true,
-        });
-        setQIndex(0);
-        setMyScore(0);
-        setOppScore(0);
-        setPicked(null);
-        setTimeLeft(12);
-        finishHandledRef.current = false;
-        setPhase('playing');
-      }
-    });
+    const timer = setInterval(() => {
+      setWaitSeconds((w) => w + 1);
+    }, 1000);
 
-    if (waitSeconds >= 5) {
-      const bot = pickTieredBot(currentCatElo);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [phase]);
+
+  useEffect(() => {
+    if (phase !== 'searching' || !queueReadyRef.current || waitSeconds === 0) return;
+    let active = true;
+
+    // Auto-offer AI scholar after 8 seconds if no real online opponent joined queue
+    if (waitSeconds >= 8) {
       const tid = setTimeout(() => {
-        if (!active) return;
-        void cancelLiveDuelQueue();
-        setOpponent({ ...bot, isHuman: false });
-        setQIndex(0);
-        setMyScore(0);
-        setOppScore(0);
-        setPicked(null);
-        setTimeLeft(12);
-        finishHandledRef.current = false;
-        setPhase('playing');
-      }, 250);
+        if (active) launchAiPractice();
+      }, 200);
       return () => {
         active = false;
         clearTimeout(tid);
       };
     }
-    const timer = setInterval(() => setWaitSeconds((w) => w + 1), 1000);
+
+    const band = eloSearchBand(waitSeconds * 2);
+    void pollLiveDuelQueue(category, band).then((res) => {
+      if (!active || !res || !queueReadyRef.current) return;
+      if (res.status === 'matched' && res.opponentName) {
+        beginMatch({
+          name: res.opponentName,
+          elo: res.opponentElo ?? currentCatElo,
+          accuracy: 0.78,
+          isHuman: true,
+        });
+      }
+    });
+
     return () => {
       active = false;
-      clearInterval(timer);
     };
-  }, [phase, waitSeconds, currentCatElo, category]);
+  }, [phase, waitSeconds, category, currentCatElo, beginMatch, launchAiPractice]);
 
-  // Countdown during active duel question
   useEffect(() => {
     if (phase !== 'playing' || picked !== null) return;
     if (timeLeft <= 0) {
@@ -225,36 +310,41 @@ export function RankedDuelArena({
     return () => clearInterval(timer);
   }, [phase, timeLeft, picked, handleAnswer]);
 
-  const startSearch = (isRated: boolean, customInvite?: string | null) => {
+  const startSearch = async (isRated: boolean, customInvite?: string | null) => {
     const activeInvite = customInvite !== undefined ? customInvite : isRated ? null : inviteCode;
+    const runId = ++searchRunIdRef.current;
+    queueReadyRef.current = false;
     setRated(isRated);
     if (isRated) setInviteCode(null);
     setWaitSeconds(0);
     setPhase('searching');
-    void enqueueLiveDuelQueue({
+
+    // CRITICAL: Always cancel any stale matched ticket FIRST before enqueuing a fresh search!
+    await cancelLiveDuelQueue();
+    if (searchRunIdRef.current !== runId) return;
+
+    const res = await enqueueLiveDuelQueue({
       categoryId: category,
       rated: isRated,
       eloRating: currentCatElo,
       displayName: playerName || 'Học giả',
       inviteCode: activeInvite,
       eloBand: 150,
-    }).then((res) => {
-      if (res?.status === 'matched' && res.opponentName) {
-        setOpponent({
-          name: res.opponentName,
-          elo: res.opponentElo ?? currentCatElo,
-          accuracy: 0.78,
-          isHuman: true,
-        });
-        setQIndex(0);
-        setMyScore(0);
-        setOppScore(0);
-        setPicked(null);
-        setTimeLeft(12);
-        finishHandledRef.current = false;
-        setPhase('playing');
-      }
     });
+    if (searchRunIdRef.current !== runId) return;
+
+    if (res?.status === 'matched' && res.opponentName) {
+      beginMatch({
+        name: res.opponentName,
+        elo: res.opponentElo ?? currentCatElo,
+        accuracy: 0.78,
+        isHuman: true,
+      });
+      return;
+    }
+
+    // Queue ticket is now guaranteed fresh and 'searching' -> enable polling
+    queueReadyRef.current = true;
   };
 
   const createFriendInvite = async () => {
@@ -262,11 +352,16 @@ export function RankedDuelArena({
     setInviteCode(code);
     setRated(false);
     await Share.share({
-      message: `⚔️ Thách đấu 1v1 giao hữu (Unrated) trên Papyrus!\nChủ đề: ${DUEL_CATEGORIES.find((c) => c.id === category)?.label}\nMã lời mời: ${code}\nLink: papyrus://battle?invite=${code}`,
+      message: `⚔️ Thách đấu 1v1 giao hữu trên Papyrus!\nChủ đề: ${DUEL_CATEGORIES.find((c) => c.id === category)?.label}\nMã lời mời: ${code}\nLink: papyrus://battle?invite=${code}`,
     }).catch(() => undefined);
   };
 
-  // ── 1. LOBBY: Category ELO Picker + Ranked Queue + Unrated Friend Invite ──
+  const selectedCatLabel = useMemo(
+    () => DUEL_CATEGORIES.find((c) => c.id === category)?.label ?? 'Tổng hợp',
+    [category]
+  );
+
+  // ── 1. LOBBY ──
   if (phase === 'lobby') {
     return (
       <View style={styles.wrap}>
@@ -280,17 +375,16 @@ export function RankedDuelArena({
             </View>
             <View style={[styles.tierPill, { backgroundColor: palette.paper, borderColor: currentTier.color }]}>
               <Text style={{ fontSize: 15 }}>{currentTier.badge}</Text>
-              <Text style={[typography.caption, { color: currentTier.color, fontWeight: '800' }]}>
+              <Text style={[typography.caption, { color: currentTier.color, fontWeight: '800', fontVariant: ['tabular-nums'] }]}>
                 {currentCatElo} ELO
               </Text>
             </View>
           </View>
 
           <Text style={[typography.caption, { color: palette.inkMuted, marginTop: spacing.xs }]}>
-            Mỗi môn học có điểm ELO riêng. Hàng chờ tự mở rộng dải tìm kiếm (±100 → ±500) và ghép đối thủ ngang trình chỉ trong vài giây.
+            Ghép đối thủ đang trực tuyến trong 25 giây gần nhất (không bao giờ ghép người chơi cũ đã thoát). Mỗi trận gồm 6 câu hỏi chuyên sâu.
           </Text>
 
-          {/* Category ELO Selector */}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.catScroll}>
             {DUEL_CATEGORIES.map((cat) => {
               const active = category === cat.id;
@@ -310,7 +404,7 @@ export function RankedDuelArena({
                   <Text style={[typography.caption, { color: active ? '#FFFFFF' : palette.ink, fontWeight: '800' }]}>
                     {cat.icon} {cat.label}
                   </Text>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: active ? '#E0E7FF' : palette.inkMuted }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: active ? '#E0E7FF' : palette.inkMuted, fontVariant: ['tabular-nums'] }}>
                     {catElo} ELO
                   </Text>
                 </Pressable>
@@ -319,11 +413,14 @@ export function RankedDuelArena({
           </ScrollView>
 
           <View style={styles.ctaStack}>
-            <Button variant="reward" icon="flash" onPress={() => startSearch(true)} fullWidth>
-              ⚔️ Tìm trận Ranked 1v1 (Tính ELO)
+            <Button variant="reward" icon="flash" onPress={() => void startSearch(true)} fullWidth>
+              ⚔️ Tìm trận Ranked 1v1 ({selectedCatLabel})
             </Button>
-            <Button variant="secondary" icon="people-outline" onPress={() => void createFriendInvite()} fullWidth>
-              🤝 Mời bạn đấu Giao hữu (Unrated)
+            <Button variant="secondary" icon="hardware-chip-outline" onPress={launchAiPractice} fullWidth>
+              🤖 Luyện đấu ngay với Bot học giả
+            </Button>
+            <Button variant="ghost" icon="people-outline" onPress={() => void createFriendInvite()} fullWidth>
+              🤝 Tạo mã mời bạn đấu Giao hữu
             </Button>
           </View>
 
@@ -333,15 +430,16 @@ export function RankedDuelArena({
                 <Text style={[typography.caption, { color: palette.indigo, fontWeight: '800' }]}>
                   MÃ THÁCH ĐẤU GIAO HỮU (KHÔNG TÍNH ELO)
                 </Text>
-                <Text style={[typography.title, { color: palette.ink, letterSpacing: 3 }]}>{inviteCode}</Text>
+                <Text selectable style={[typography.title, { color: palette.ink, letterSpacing: 3 }]}>
+                  {inviteCode}
+                </Text>
               </View>
-              <Button variant="primary" onPress={() => startSearch(false, inviteCode)}>
+              <Button variant="primary" onPress={() => void startSearch(false, inviteCode)}>
                 Vào sân ngay
               </Button>
             </View>
           ) : null}
 
-          {/* Join Friend's Invite Code Input */}
           <View style={{ flexDirection: 'row', gap: 8, marginTop: spacing.md, alignItems: 'center' }}>
             <TextInput
               value={joinInviteInput}
@@ -351,7 +449,7 @@ export function RankedDuelArena({
               maxLength={8}
               style={{
                 flex: 1,
-                minHeight: 42,
+                minHeight: 44,
                 borderWidth: 1,
                 borderColor: palette.paperMuted,
                 backgroundColor: palette.paper,
@@ -367,7 +465,7 @@ export function RankedDuelArena({
               onPress={() => {
                 const code = joinInviteInput.trim().toUpperCase();
                 setInviteCode(code);
-                startSearch(false, code);
+                void startSearch(false, code);
               }}
             >
               Vào mã
@@ -378,25 +476,34 @@ export function RankedDuelArena({
     );
   }
 
-  // ── 2. SEARCHING RADAR WITH WIDENING ELO BAND ──
+  // ── 2. SEARCHING RADAR ──
   if (phase === 'searching') {
     const band = eloSearchBand(waitSeconds * 2);
     return (
       <Card style={styles.searchCard}>
-        <Ionicons name="radio-outline" size={44} color={palette.indigo} />
-        <Text style={[typography.title, { color: palette.ink, marginTop: spacing.sm }]}>
-          Đang ghép đối thủ {rated ? 'Ranked (Realtime Queue)' : 'Giao hữu'}...
+        <View style={{ width: 130, height: 110 }}>
+          <Model3DErrorBoundary>
+            <Model3DView model="questEmblem" height={110} autoRotate interactive={false} />
+          </Model3DErrorBoundary>
+        </View>
+        <Text style={[typography.title, { color: palette.ink, marginTop: spacing.xs, textAlign: 'center' }]}>
+          Đang quét người chơi đang online...
         </Text>
         <Badge tone="primary">
-          Dải ELO hiện tại: {Math.max(100, currentCatElo - band)} – {currentCatElo + band} (±{band})
+          Dải ELO: {Math.max(100, currentCatElo - band)} – {currentCatElo + band} · {waitSeconds}s / 8s
         </Badge>
         <Text style={[typography.caption, { color: palette.inkMuted, textAlign: 'center', marginTop: spacing.xs }]}>
-          Thời gian chờ: {waitSeconds}s · Ưu tiên ghép Người chơi thật trên Supabase Queue, tự động gọi Bot học giả nếu hàng chờ vắng.
+          Chỉ ghép với người chơi thật đang hoạt động trong 25 giây qua. Tự động chuyển sang Bot học giả sau 8 giây nếu hàng chờ trống.
         </Text>
-        <View style={{ marginTop: spacing.md, width: '100%' }}>
+        <View style={{ marginTop: spacing.md, width: '100%', gap: spacing.xs }}>
+          <Button variant="reward" icon="flash" onPress={launchAiPractice} fullWidth>
+            Đấu ngay với Bot học giả
+          </Button>
           <Button
             variant="ghost"
             onPress={() => {
+              searchRunIdRef.current++;
+              queueReadyRef.current = false;
               void cancelLiveDuelQueue();
               setPhase('lobby');
             }}
@@ -413,34 +520,53 @@ export function RankedDuelArena({
   if (phase === 'playing' && activeQ) {
     return (
       <View style={styles.wrap}>
-        {/* VS Scoreboard Header */}
+        {/* Interactive 3D Duel Emblem reacting live to every answer */}
+        <View style={styles.duel3dStage}>
+          <Model3DErrorBoundary>
+            <Model3DView
+              model="questEmblem"
+              height={118}
+              autoRotate
+              interactive
+              actionEffect={duelEffect}
+              pulseTrigger={effectPulse}
+            />
+          </Model3DErrorBoundary>
+        </View>
+
         <Card style={styles.vsBar}>
           <View style={styles.vsSide}>
             <Text style={[typography.caption, { color: palette.indigo, fontWeight: '800' }]} numberOfLines={1}>
               {playerName}
             </Text>
-            <Text style={[typography.title, { color: palette.ink, fontSize: 20 }]}>{myScore}</Text>
+            <Text style={[typography.title, { color: palette.ink, fontSize: 20, fontVariant: ['tabular-nums'] }]}>
+              {myScore}
+            </Text>
           </View>
           <View style={styles.vsCenter}>
             <Badge tone={timeLeft <= 4 ? 'danger' : 'reward'}>{timeLeft}s</Badge>
-            <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
-              Câu {qIndex + 1}/{questions.length}
+            <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2, fontVariant: ['tabular-nums'] }]}>
+              Câu {qIndex + 1}/{deck.length}
             </Text>
           </View>
           <View style={[styles.vsSide, { alignItems: 'flex-end' }]}>
             <Text style={[typography.caption, { color: palette.gold, fontWeight: '800' }]} numberOfLines={1}>
               {opponent.isHuman ? '👤 ' : '🤖 '}{opponent.name} ({opponent.elo})
             </Text>
-            <Text style={[typography.title, { color: palette.ink, fontSize: 20 }]}>{oppScore}</Text>
+            <Text style={[typography.title, { color: palette.ink, fontSize: 20, fontVariant: ['tabular-nums'] }]}>
+              {oppScore}
+            </Text>
           </View>
         </Card>
 
         <Card style={styles.qCard}>
           <View style={styles.qHeader}>
-            <Badge tone={rated ? 'primary' : 'neutral'}>{rated ? 'RANKED ELO' : 'UNRATED'}</Badge>
+            <Badge tone={rated ? 'primary' : 'neutral'}>
+              {rated ? 'RANKED ELO' : 'UNRATED'} · {opponent.isHuman ? 'ONLINE' : 'BOT'}
+            </Badge>
             <ReportQuestionButton questionKey={`duel-${category}-${qIndex}`} questionContent={activeQ.prompt} />
           </View>
-          <Text style={[typography.heading, { color: palette.ink, fontSize: 19, marginVertical: spacing.md }]}>
+          <Text style={[typography.heading, { color: palette.ink, fontSize: 18, lineHeight: 26, marginVertical: spacing.md }]}>
             {activeQ.prompt}
           </Text>
           {activeQ.codeSnippet ? (
@@ -467,7 +593,7 @@ export function RankedDuelArena({
     );
   }
 
-  // ── 4. MATCH SUMMARY + ELO DELTA ──
+  // ── 4. SUMMARY ──
   const won = myScore > oppScore;
   const draw = myScore === oppScore;
   return (
@@ -477,18 +603,21 @@ export function RankedDuelArena({
         <Text style={[typography.heading, { color: palette.ink, marginTop: spacing.xs }]}>
           {won ? 'Chiến thắng 1v1!' : draw ? 'Hòa nhau kịch tính!' : 'Thất bại sát nút!'}
         </Text>
-        <Text style={[typography.title, { color: palette.indigo, marginTop: 4 }]}>
+        <Text style={[typography.title, { color: palette.indigo, marginTop: 4, fontVariant: ['tabular-nums'] }]}>
           {myScore.toLocaleString('vi-VN')} — {oppScore.toLocaleString('vi-VN')}
+        </Text>
+        <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 4 }]}>
+          Đối thủ: {opponent.isHuman ? 'Người chơi thật' : 'Bot học giả'} {opponent.name} ({opponent.elo} ELO)
         </Text>
         <View style={{ marginTop: spacing.sm }}>
           <Badge tone={!rated ? 'neutral' : lastDelta >= 0 ? 'success' : 'danger'}>
             {!rated
               ? 'Trận giao hữu · ELO không đổi'
-              : `${lastDelta >= 0 ? '+' : ''}${lastDelta} ELO (${DUEL_CATEGORIES.find((c) => c.id === category)?.label})`}
+              : `${lastDelta >= 0 ? '+' : ''}${lastDelta} ELO (${selectedCatLabel})`}
           </Badge>
         </View>
         <View style={[styles.ctaStack, { width: '100%', marginTop: spacing.lg }]}>
-          <Button variant="reward" icon="refresh" onPress={() => startSearch(rated)} fullWidth>
+          <Button variant="reward" icon="refresh" onPress={() => void startSearch(rated)} fullWidth>
             Đấu tiếp trận mới
           </Button>
           <Button variant="ghost" onPress={() => setPhase('lobby')} fullWidth>
@@ -496,7 +625,7 @@ export function RankedDuelArena({
           </Button>
         </View>
       </Card>
-      <LiveReactionsBar label="Gửi lời chào đối thủ 🔥" />
+      <LiveReactionsBar label="Gửi cảm xúc sau trận 🔥" />
     </View>
   );
 }
@@ -511,6 +640,7 @@ const styles = StyleSheet.create({
   ctaStack: { gap: spacing.sm },
   inviteBox: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm, padding: spacing.md, borderRadius: radii.md, borderWidth: 1.5, marginTop: spacing.md },
   searchCard: { padding: spacing.xl, borderRadius: radii.lg, alignItems: 'center', gap: spacing.sm },
+  duel3dStage: { width: '100%', borderRadius: radii.md, overflow: 'hidden' },
   vsBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: spacing.md, borderRadius: radii.md },
   vsSide: { flex: 1, minWidth: 0 },
   vsCenter: { alignItems: 'center', paddingHorizontal: spacing.sm },

@@ -1,5 +1,5 @@
-/* Papyrus PWA Service Worker — offline shell + immutable asset caching */
-const CACHE_NAME = 'papyrus-pwa-v1';
+/* Papyrus PWA Service Worker — offline shell + instant developer update detection */
+const CACHE_NAME = 'papyrus-pwa-v2';
 const SHELL_ASSETS = [
   './',
   './manifest.webmanifest',
@@ -15,8 +15,13 @@ self.addEventListener('install', (event) => {
       .open(CACHE_NAME)
       .then((cache) => cache.addAll(SHELL_ASSETS))
       .catch(() => undefined)
-      .then(() => self.skipWaiting())
   );
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('activate', (event) => {
@@ -37,8 +42,14 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
+  // Never cache version.json so developer updates are detected immediately
+  if (url.pathname.endsWith('/version.json') || url.pathname === '/version.json') {
+    event.respondWith(fetch(request, { cache: 'no-store' }));
+    return;
+  }
+
   // Navigation requests: network-first so new deployments appear immediately,
-  // with cached shell fallback when the user is offline.
+  // with cached shell fallback when offline.
   if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request)

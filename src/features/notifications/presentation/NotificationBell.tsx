@@ -1,0 +1,355 @@
+import { useEffect, useMemo, useState } from 'react';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import { Badge, Button, Card, usePalette } from '@/shared/ui';
+import { radii, spacing, typography } from '@/core/theme/tokens';
+import { useAuthStore } from '@/core/state/useAuthStore';
+import { usePapyrusStore } from '@/core/state/usePapyrusStore';
+import { useMembershipStore } from '@/features/membership/state/useMembershipStore';
+import { useStreakStore } from '@/features/streak/state/useStreakStore';
+import { useNotificationStore, type AdminGiftItem } from '../state/useNotificationStore';
+import {
+  getExternalNotificationPermission,
+  requestExternalNotificationPermission,
+  type ExternalPermissionState,
+} from '@/composition/platform';
+import { dependencies } from '@/composition/dependencies';
+import { saveQuestionSet } from '@/features/question-sets/domain/saveQuestionSet';
+import { sfx } from '@/core/audio/sfx';
+
+export function NotificationBell() {
+  const palette = usePalette();
+  const router = useRouter();
+  const user = useAuthStore((s) => s.user);
+  const viewerId = user?.id ?? 'guest';
+
+  const notifications = useNotificationStore((s) => s.notifications);
+  const gifts = useNotificationStore((s) => s.gifts);
+  const markRead = useNotificationStore((s) => s.markRead);
+  const markAllRead = useNotificationStore((s) => s.markAllRead);
+  const claimGift = useNotificationStore((s) => s.claimGift);
+  const syncCloudGifts = useNotificationStore((s) => s.syncCloudGifts);
+
+  const [open, setOpen] = useState(false);
+  const [permState, setPermState] = useState<ExternalPermissionState>('default');
+  const [statusNotice, setStatusNotice] = useState('');
+
+  useEffect(() => {
+    void getExternalNotificationPermission().then(setPermState);
+  }, []);
+
+  useEffect(() => {
+    if (user?.id) {
+      void syncCloudGifts(user.id);
+    }
+  }, [user?.id, syncCloudGifts]);
+
+  const userId = user?.id ?? null;
+  const myNotifications = useMemo(
+    () =>
+      notifications.filter(
+        (n) => n.recipientId === 'all' || (userId !== null && n.recipientId === userId)
+      ),
+    [notifications, userId]
+  );
+
+  const myUnclaimedGifts = useMemo(
+    () =>
+      gifts.filter(
+        (g) =>
+          (g.recipientId === 'all' || (userId !== null && g.recipientId === userId)) &&
+          !g.claimedByIds.includes(viewerId)
+      ),
+    [gifts, userId, viewerId]
+  );
+
+  const unreadCount =
+    myNotifications.filter((n) => !n.read).length + myUnclaimedGifts.length;
+
+  const handleEnableExternal = async () => {
+    const next = await requestExternalNotificationPermission();
+    setPermState(next);
+    setStatusNotice(
+      next === 'granted'
+        ? '✅ Đã bật thông báo đẩy! Bạn sẽ nhận tin quan trọng ngay cả khi rời ứng dụng.'
+        : 'Trình duyệt/thiết bị chưa cấp quyền thông báo. Bạn vẫn nhận đủ thông báo trong ứng dụng.'
+    );
+  };
+
+  const handleClaimGift = async (gift: AdminGiftItem) => {
+    const claimed = claimGift(gift.id, viewerId);
+    if (!claimed) return;
+    if (claimed.giftType === 'question_set' && claimed.questionSet) {
+      const giftedSet = {
+        ...claimed.questionSet,
+        id: `gift-${claimed.id}`,
+        title: `🎁 ${claimed.questionSet.title}`,
+        updatedAt: new Date().toISOString(),
+        syncStatus: 'pending' as const,
+      };
+      await saveQuestionSet(dependencies.questionSets, giftedSet).catch(() => undefined);
+      usePapyrusStore.getState().saveQuestionSet(giftedSet);
+      setStatusNotice(`🎉 Đã nhận bộ câu hỏi "${claimed.title}" vào Thư viện!`);
+    } else if (claimed.giftType === 'study_document' && claimed.documentText) {
+      usePapyrusStore.getState().saveSourceDocument({
+        id: `gift-doc-${claimed.id}`,
+        title: `🎁 ${claimed.title}`,
+        text: claimed.documentText,
+        createdAt: new Date().toISOString(),
+      });
+      setStatusNotice(`📄 Đã nhận tài liệu "${claimed.title}"! Sẵn sàng tạo Quiz AI.`);
+    } else if (claimed.giftType === 'vip_days') {
+      useMembershipStore.getState().upgradeToVip();
+      setStatusNotice(`👑 Đã kích hoạt đặc quyền VIP Archmage từ Admin!`);
+    } else if (claimed.giftType === 'streak_freeze') {
+      useStreakStore.getState().addStreakFreeze(2);
+      setStatusNotice(`❄️ Đã cộng +2 Bùa Đóng Băng Chuỗi!`);
+    }
+    sfx.playLevelUp();
+  };
+
+  return (
+    <>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Thông báo"
+        onPress={() => {
+          setStatusNotice('');
+          setOpen(true);
+        }}
+        hitSlop={6}
+        style={({ pressed }) => [
+          styles.bellBtn,
+          {
+            backgroundColor: palette.paperRaised,
+            borderColor: palette.paperMuted,
+            opacity: pressed ? 0.78 : 1,
+            transform: pressed ? [{ scale: 0.94 }] : undefined,
+          },
+        ]}
+      >
+        <Ionicons
+          name={unreadCount > 0 ? 'notifications' : 'notifications-outline'}
+          size={19}
+          color={unreadCount > 0 ? palette.indigo : palette.inkMuted}
+        />
+        {unreadCount > 0 ? (
+          <View style={styles.badgeDot}>
+            <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+          </View>
+        ) : null}
+      </Pressable>
+
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <Pressable style={styles.backdrop} onPress={() => setOpen(false)}>
+          <Pressable style={styles.sheetWrap} onPress={() => undefined}>
+            <Card style={[styles.sheetCard, { backgroundColor: palette.paper }]}>
+              <View style={styles.header}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                  <Ionicons name="notifications" size={20} color={palette.indigo} />
+                  <Text style={[typography.title, { color: palette.ink }]}>Trung tâm Thông báo</Text>
+                </View>
+                {unreadCount > 0 ? (
+                  <Pressable onPress={() => markAllRead(user?.id)} hitSlop={8}>
+                    <Text style={[typography.caption, { color: palette.indigo, fontWeight: '800' }]}>
+                      Đọc tất cả
+                    </Text>
+                  </Pressable>
+                ) : null}
+                <Pressable onPress={() => setOpen(false)} hitSlop={8}>
+                  <Ionicons name="close" size={22} color={palette.inkMuted} />
+                </Pressable>
+              </View>
+
+              {/* Outside-app push notification permission banner */}
+              {permState !== 'granted' && permState !== 'unsupported' ? (
+                <View style={[styles.pushBanner, { backgroundColor: palette.indigoTint, borderColor: palette.indigoBorder }]}>
+                  <Ionicons name="radio-outline" size={18} color={palette.indigo} />
+                  <Text style={[typography.caption, { color: palette.indigoDeep, flex: 1 }]}>
+                    Bật thông báo đẩy để nhận quà Admin, lời mời đấu 1v1 và nhắc giữ chuỗi ngay cả khi ở ngoài app.
+                  </Text>
+                  <Pressable onPress={() => void handleEnableExternal()} style={[styles.enableBtn, { backgroundColor: palette.indigo }]}>
+                    <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '800' }}>Bật ngay</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+
+              {!!statusNotice && (
+                <Text style={[typography.caption, { color: palette.mint, fontWeight: '700', marginBottom: spacing.sm }]}>
+                  {statusNotice}
+                </Text>
+              )}
+
+              <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
+                {/* Unclaimed Admin Gifts */}
+                {myUnclaimedGifts.length > 0 && (
+                  <View style={{ marginBottom: spacing.md, gap: spacing.xs }}>
+                    <Text style={[typography.label, { color: palette.gold }]}>
+                      🎁 QUÀ TẶNG CHỜ NHẬN ({myUnclaimedGifts.length})
+                    </Text>
+                    {myUnclaimedGifts.map((gift) => (
+                      <View
+                        key={gift.id}
+                        style={[styles.giftRow, { backgroundColor: palette.goldTint, borderColor: palette.gold }]}
+                      >
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text style={[typography.body, { color: palette.ink, fontWeight: '800' }]}>
+                            {gift.title}
+                          </Text>
+                          {!!gift.message && (
+                            <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
+                              {gift.message}
+                            </Text>
+                          )}
+                        </View>
+                        <Button variant="reward" onPress={() => void handleClaimGift(gift)}>
+                          Nhận quà
+                        </Button>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Notifications List */}
+                {myNotifications.length === 0 ? (
+                  <View style={{ alignItems: 'center', paddingVertical: spacing.xl }}>
+                    <Ionicons name="checkmark-done-circle-outline" size={36} color={palette.inkMuted} />
+                    <Text style={[typography.caption, { color: palette.inkMuted, marginTop: spacing.xs }]}>
+                      Bạn đã xem hết mọi thông báo quan trọng.
+                    </Text>
+                  </View>
+                ) : (
+                  myNotifications.map((item) => {
+                    const iconName =
+                      item.kind === 'gift'
+                        ? 'gift'
+                        : item.kind === 'duel'
+                        ? 'flash'
+                        : item.kind === 'streak'
+                        ? 'flame'
+                        : item.kind === 'update'
+                        ? 'rocket'
+                        : 'sparkles';
+                    return (
+                      <Pressable
+                        key={item.id}
+                        onPress={() => {
+                          markRead(item.id);
+                          if (item.actionRoute) {
+                            setOpen(false);
+                            router.push(item.actionRoute as '/');
+                          }
+                        }}
+                        style={[
+                          styles.notifRow,
+                          {
+                            backgroundColor: item.read ? palette.paperRaised : palette.indigoTint,
+                            borderColor: item.read ? palette.paperMuted : palette.indigoBorder,
+                          },
+                        ]}
+                      >
+                        <View style={[styles.notifIcon, { backgroundColor: palette.paper }]}>
+                          <Ionicons name={iconName} size={17} color={palette.indigo} />
+                        </View>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Text style={[typography.caption, { color: palette.ink, fontWeight: '800', flex: 1 }]} numberOfLines={1}>
+                              {item.title}
+                            </Text>
+                            {!item.read && <Badge tone="primary">Mới</Badge>}
+                          </View>
+                          <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]} numberOfLines={3}>
+                            {item.body}
+                          </Text>
+                        </View>
+                      </Pressable>
+                    );
+                  })
+                )}
+              </ScrollView>
+            </Card>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </>
+  );
+}
+
+const styles = StyleSheet.create({
+  bellBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  badgeDot: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 17,
+    height: 17,
+    borderRadius: 9,
+    backgroundColor: '#EF4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  badgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '800' },
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(6, 10, 36, 0.68)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.md,
+  },
+  sheetWrap: { width: '100%', maxWidth: 460 },
+  sheetCard: { borderRadius: 22, padding: spacing.lg },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  pushBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    marginBottom: spacing.md,
+  },
+  enableBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radii.pill,
+  },
+  giftRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: radii.sm,
+    borderWidth: 1.5,
+  },
+  notifRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    marginBottom: spacing.xs,
+  },
+  notifIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});

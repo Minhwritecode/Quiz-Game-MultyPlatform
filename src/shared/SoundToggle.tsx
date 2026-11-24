@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text } from 'react-native';
 import { sfx } from '@/core/audio/sfx';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
@@ -27,16 +28,30 @@ export function SoundToggle() {
       onPress={handleToggle}
       accessibilityRole="button"
       accessibilityLabel={isMuted ? 'Bật âm thanh và nhạc nền' : 'Tắt âm thanh'}
-      style={[
+      style={({ pressed }) => [
         styles.pill,
         {
-          backgroundColor: !isMuted ? 'rgba(16, 185, 129, 0.15)' : palette.paperRaised,
-          borderColor: !isMuted ? '#10B981' : palette.paperMuted,
+          backgroundColor: !isMuted ? palette.mintTint : palette.paperRaised,
+          borderColor: !isMuted ? palette.mint : palette.paperMuted,
+          opacity: pressed ? 0.8 : 1,
         },
       ]}
     >
-      <Text style={[typography.caption, { fontWeight: '700' }]}>
-        {!isMuted ? '🔊 BGM' : '🔇 Mute'}
+      <Ionicons
+        name={!isMuted ? 'volume-high-outline' : 'volume-mute-outline'}
+        size={14}
+        color={!isMuted ? palette.mint : palette.inkMuted}
+      />
+      <Text
+        style={[
+          typography.caption,
+          {
+            fontWeight: '800',
+            color: !isMuted ? palette.mint : palette.inkMuted,
+          },
+        ]}
+      >
+        {!isMuted ? 'BGM' : 'Mute'}
       </Text>
     </Pressable>
   );
@@ -46,8 +61,9 @@ const styles = StyleSheet.create({
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 5,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 5,
+    paddingVertical: 6,
     borderRadius: radii.pill,
     borderWidth: 1,
   },

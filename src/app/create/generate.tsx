@@ -4,7 +4,7 @@ import { errorMessage } from '@/core/domain/failure';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Button, Card, PageHeader, Screen, TopBar, usePalette } from '@/shared/ui';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { dependencies } from '@/composition/dependencies';
@@ -313,21 +313,30 @@ function GenerationEditor() {
 
   const queuedJobs = jobs.filter(job => ['queued','running','failed'].includes(job.status));
   return <Screen>
-    <TopBar title={existingSet ? t.home.editSet : manualMode ? t.home.manualTitle : 'Shape your quiz'} />
-    <PageHeader eyebrow={manualMode ? t.home.manualEyebrow : 'STEP 2 OF 3 · SHAPE'} title={existingSet ? t.home.editSet : manualMode ? t.home.manualTitle : 'Make the generation yours'} subtitle={manualMode ? t.home.manualSubtitle : 'Choose the output, review every answer and save only what you trust.'} />
+    <TopBar title={existingSet ? t.home.editSet : manualMode ? t.home.manualTitle : (language === 'vi' ? 'Tạo & chỉnh sửa bộ đề' : 'Shape your quiz')} />
+    <PageHeader
+      eyebrow={manualMode ? t.home.manualEyebrow : (language === 'vi' ? 'BƯỚC 2 / 3 · TẠO BỘ ĐỀ AI' : 'STEP 2 OF 3 · SHAPE')}
+      title={existingSet ? t.home.editSet : manualMode ? t.home.manualTitle : (language === 'vi' ? 'Thiết lập & tạo câu hỏi' : 'Make the generation yours')}
+      subtitle={manualMode ? t.home.manualSubtitle : (language === 'vi' ? 'Chọn số câu và độ khó, kiểm tra đáp án rồi lưu bộ đề vào thư viện.' : 'Choose the output, review every answer and save only what you trust.')}
+    />
     <Card style={styles.controls}>
-      {!manualMode && <Text style={[typography.body,{color:palette.ink}]}>AI sends the text you reviewed to our generation provider. Images stay on this device. Check the answers before saving.</Text>}
-      <TextInput testID="set-title" editable={!busy} accessibilityLabel="Question set title" placeholder={language === 'vi' ? 'Tên bộ câu hỏi' : 'Question set title'} value={title} onChangeText={setTitle} maxLength={160} style={[styles.questionInput,{color:palette.ink,borderColor:palette.paperMuted}]} />
-      <TextInput testID="set-subject" editable={!busy} accessibilityLabel={t.home.subjectLabel} placeholder={t.home.subjectPlaceholder} value={subject} onChangeText={setSubject} maxLength={100} style={[styles.questionInput,{color:palette.ink,borderColor:palette.paperMuted}]} />
-      <TextInput testID="set-tags" editable={!busy} accessibilityLabel={language === 'vi' ? 'Thẻ của bộ đề, cách nhau bằng dấu phẩy' : 'Question set tags, comma separated'} placeholder={language === 'vi' ? 'Thẻ: đại số, chương 2, ôn thi' : 'Tags: algebra, chapter 2, exam'} value={tagText} onChangeText={setTagText} maxLength={400} style={[styles.questionInput,{color:palette.ink,borderColor:palette.paperMuted}]} />
-      {!manualMode && <Text style={[typography.caption,{color:palette.inkMuted}]}>{language === 'vi' ? 'Nguồn: ' : 'Source: '}{sourceTitle || (questions.length ? 'Restored from saved generation job' : 'No source attached')}</Text>}
-      {message ? <Text accessibilityRole="alert" style={{color:palette.danger}}>{message}</Text> : null}
+      {!manualMode && <Text style={[typography.caption,{color:palette.inkMuted}]}>{language === 'vi' ? 'AI sẽ sinh câu hỏi bám sát nội dung bạn đã duyệt. Bạn có thể sửa lại bất kỳ câu hỏi nào trước khi lưu.' : 'AI generates questions grounded in your reviewed text. You can edit any question before saving.'}</Text>}
+      <TextInput testID="set-title" editable={!busy} accessibilityLabel="Question set title" placeholder={language === 'vi' ? 'Tên bộ câu hỏi (ví dụ: Lịch sử Chương 3)' : 'Question set title'} placeholderTextColor={palette.inkMuted} value={title} onChangeText={setTitle} maxLength={160} style={[styles.questionInput,{color:palette.ink,borderColor:palette.paperMuted}]} />
+      <TextInput testID="set-subject" editable={!busy} accessibilityLabel={t.home.subjectLabel} placeholder={t.home.subjectPlaceholder} placeholderTextColor={palette.inkMuted} value={subject} onChangeText={setSubject} maxLength={100} style={[styles.questionInput,{color:palette.ink,borderColor:palette.paperMuted}]} />
+      <TextInput testID="set-tags" editable={!busy} accessibilityLabel={language === 'vi' ? 'Thẻ của bộ đề, cách nhau bằng dấu phẩy' : 'Question set tags, comma separated'} placeholder={language === 'vi' ? 'Thẻ: đại số, chương 2, ôn thi' : 'Tags: algebra, chapter 2, exam'} placeholderTextColor={palette.inkMuted} value={tagText} onChangeText={setTagText} maxLength={400} style={[styles.questionInput,{color:palette.ink,borderColor:palette.paperMuted}]} />
+      {!manualMode && <Text style={[typography.caption,{color:palette.inkMuted}]}>{language === 'vi' ? 'Nguồn: ' : 'Source: '}{sourceTitle || (questions.length ? (language === 'vi' ? 'Khôi phục từ phiên trước' : 'Restored from saved job') : (language === 'vi' ? 'Chưa có tài liệu nguồn' : 'No source attached'))}</Text>}
+      {message ? <Text accessibilityRole="alert" style={{color:palette.danger, fontWeight:'600'}}>{message}</Text> : null}
       {!manualMode && <>
-        <Text style={[typography.title, { color: palette.ink }]}>Question count</Text>
+        <Text style={[typography.title, { color: palette.ink }]}>{language === 'vi' ? 'Số lượng câu hỏi' : 'Question count'}</Text>
         <View style={styles.choiceRow}>{[5, 10, 15].map((value) => <Button key={value} variant={count === value ? 'primary' : 'secondary'} onPress={() => setCount(value)} disabled={busy}>{String(value)}</Button>)}</View>
-        <Text style={[typography.title, { color: palette.ink, marginTop: spacing.xl }]}>Difficulty</Text>
-        <View style={styles.choiceRow}>{(['Easy', 'Balanced', 'Challenge'] as const).map((value) => <Button key={value} variant={difficulty === value ? 'primary' : 'secondary'} onPress={() => setDifficulty(value)} disabled={busy}>{value}</Button>)}</View>
-        <Text style={[typography.caption, { color: palette.inkMuted, marginTop: spacing.lg }]}>{questions.length} / {count} ready · {difficulty} · {language === 'vi' ? 'Tiếng Việt' : 'English'}</Text>
+        <Text style={[typography.title, { color: palette.ink, marginTop: spacing.md }]}>{language === 'vi' ? 'Độ khó' : 'Difficulty'}</Text>
+        <View style={styles.choiceRow}>{(['Easy', 'Balanced', 'Challenge'] as const).map((value) => <Button key={value} variant={difficulty === value ? 'primary' : 'secondary'} onPress={() => setDifficulty(value)} disabled={busy}>{language === 'vi' ? (value === 'Easy' ? 'Dễ' : value === 'Balanced' ? 'Trung bình' : 'Thử thách') : value}</Button>)}</View>
+        <Text style={[typography.caption, { color: palette.inkMuted, marginTop: spacing.xs }]}>{questions.length} / {count} {language === 'vi' ? 'câu sẵn sàng' : 'ready'} · {language === 'vi' ? 'Tiếng Việt' : 'English'}</Text>
+        <View style={{ marginTop: spacing.sm }}>
+          <Button icon="sparkles" variant="primary" disabled={busy || !sourceText.trim()} onPress={() => void generate()} fullWidth>
+            {busy ? (language === 'vi' ? 'AI đang tạo câu hỏi…' : 'Generating…') : (language === 'vi' ? 'Tạo Quiz bằng AI ngay' : 'Generate AI Quiz Now')}
+          </Button>
+        </View>
       </>}
     </Card>
 
@@ -349,7 +358,33 @@ function GenerationEditor() {
     <Button variant="secondary" disabled={busy || questions.length >= 30} onPress={() => setQuestions(current => [...current, { id: createLocalId(), content: '', options: ['', '', '', ''], correctIndex: 0, explanation: '', position: current.length }])}>{t.home.addQuestion}</Button>
     {questions.map((question, index) => <Card key={question.id || `question-${index}`} style={styles.question}>
       <View style={styles.questionHeader}>
-        <Text style={[typography.label, { color: palette.indigo }]}>{t.home.questionLabel.toLocaleUpperCase()} {index + 1}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Text style={[typography.label, { color: palette.indigo }]}>{t.home.questionLabel.toLocaleUpperCase()} {index + 1}</Text>
+          <View
+            style={{
+              paddingHorizontal: 8,
+              paddingVertical: 3,
+              borderRadius: 999,
+              backgroundColor: isValidQuestion(question) ? palette.mintTint : palette.goldTint,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 10.5,
+                fontWeight: '800',
+                color: isValidQuestion(question) ? palette.mint : palette.gold,
+              }}
+            >
+              {isValidQuestion(question)
+                ? language === 'vi'
+                  ? 'Hợp lệ'
+                  : 'Ready'
+                : language === 'vi'
+                ? 'Cần điền đủ'
+                : 'Incomplete'}
+            </Text>
+          </View>
+        </View>
         <View style={styles.questionActions}>
           {!manualMode && (
             <Pressable
@@ -373,7 +408,7 @@ function GenerationEditor() {
           </Pressable>
         </View>
       </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.typeScroll}>
+      <View style={styles.typeWrap}>
         {(
           [
             { id: 'multiple_choice', label: '4 lựa chọn' },
@@ -415,13 +450,13 @@ function GenerationEditor() {
                 },
               ]}
             >
-              <Text style={{ fontSize: 11, fontWeight: '700', color: active ? '#FFFFFF' : palette.inkMuted }}>
+              <Text style={{ fontSize: 11.5, fontWeight: '700', color: active ? '#FFFFFF' : palette.inkMuted }}>
                 {item.label}
               </Text>
             </Pressable>
           );
         })}
-      </ScrollView>
+      </View>
       {(question.questionType ?? 'multiple_choice') === 'multiple_choice' && (
         <Pressable
           disabled={busy}
@@ -575,8 +610,8 @@ const styles = StyleSheet.create({
   jobRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
   questionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: spacing.xs },
   questionActions: { flexDirection: 'row' },
-  typeScroll: { gap: 6, paddingVertical: 2 },
-  typeChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1 },
+  typeWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingVertical: 2 },
+  typeChip: { paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999, borderWidth: 1 },
   questionInput: { minHeight: 62, borderWidth: 1, borderRadius: 12, padding: spacing.md, fontSize: 16, lineHeight: 22 },
   optionRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   answerMark: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
