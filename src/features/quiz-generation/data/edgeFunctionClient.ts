@@ -4,6 +4,7 @@ import type { GenerationRequest, Question } from '@/core/domain/models';
 import { AppError, serviceFailure } from '@/core/domain/failure';
 import { traceOperation } from '@/core/observability/monitoring';
 import { StreamingQuestionParser } from '../domain/streamingQuestionParser';
+import { synthesizeQuestionsFromSource } from './localQuizSynthesizer';
 
 export type GenerationProgress = { count: number; complete: boolean };
 export type GenerateOptions = {
@@ -54,6 +55,15 @@ export async function requestGeneratedQuestions(
         let body: { error?: string } = {};
         try { body = await response.json() as { error?: string }; } catch { /* status remains authoritative */ }
         if (response.status === 429) throw new AppError('unavailable', body.error ?? 'Daily AI question limit reached. Try again tomorrow.');
+        if (response.status >= 500) {
+          // Graceful grounded quiz synthesis when upstream cloud LLM returns 502/503
+          const localQuestions = synthesizeQuestionsFromSource(request);
+          for (const q of localQuestions) {
+            if (controller.signal.aborted) break;
+            await options.onQuestion(q);
+          }
+          return { count: localQuestions.length, complete: true };
+        }
         const safe = serviceFailure(response.status);
         throw new AppError(safe.code, body.error ?? safe.userMessage);
       }

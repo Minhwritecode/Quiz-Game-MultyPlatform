@@ -4,6 +4,7 @@ import { createAnswerParser } from './stream';
 import type { PdfAttachment } from './pdf';
 import { supabase } from '@/core/network/supabase';
 import type { ChatMessage } from '../domain/repository';
+import { answerLocally } from './localTutor';
 export type { ChatMessage } from '../domain/repository';
 
 export async function askPapybot(
@@ -14,7 +15,11 @@ export async function askPapybot(
   onText?: (text: string) => void,
   pdf?: PdfAttachment
 ): Promise<string> {
-  if (!supabase) throw new AppError('unavailable', 'Papybot chưa được cấu hình.');
+  if (!supabase) {
+    const local = answerLocally(messages, context, document);
+    onText?.(local);
+    return local;
+  }
   const client = supabase;
   const { data } = await client.auth.getSession();
   if (!data.session) throw new AppError('unavailable', 'Đăng nhập để trò chuyện với Papybot.');
@@ -23,10 +28,16 @@ export async function askPapybot(
   const cancel = () => controller.abort();
   signal.addEventListener('abort', cancel);
   if (signal.aborted) cancel();
-  const timer = setTimeout(cancel, 45000);
+  const timer = setTimeout(cancel, 25000);
 
   const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
   const key = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+
+  const fallbackLocal = (): string => {
+    const reply = answerLocally(messages, context, document);
+    onText?.(reply);
+    return reply;
+  };
 
   const invokeNonStream = async (): Promise<string> => {
     const body = pdf
@@ -36,9 +47,16 @@ export async function askPapybot(
       body,
       signal: controller.signal,
     });
-    if (result.error) throw serviceFailure(result.error.context?.status);
+    if (result.error) {
+      const status = result.error.context?.status;
+      if (status === 429 || status === 401 || status === 400) {
+        throw serviceFailure(status);
+      }
+      // Graceful local academic tutor fallback when cloud AI key/provider returns 502/503
+      return fallbackLocal();
+    }
     if (typeof result.data?.answer !== 'string' || !result.data.answer.trim()) {
-      throw new AppError('unavailable', 'Phản hồi AI không hợp lệ.');
+      return fallbackLocal();
     }
     onText?.(result.data.answer);
     return result.data.answer;
@@ -46,7 +64,7 @@ export async function askPapybot(
 
   try {
     if (onText) {
-      if (!url || !key) throw new AppError('unavailable', 'Papybot chưa được cấu hình.');
+      if (!url || !key) return fallbackLocal();
       const response = await fetch(`${url}/functions/v1/papybot`, {
         method: 'POST',
         headers: {
@@ -57,7 +75,12 @@ export async function askPapybot(
         signal: controller.signal,
         body: JSON.stringify({ messages, context, document, pdf: pdf?.data, stream: true }),
       });
-      if (!response.ok) throw serviceFailure(response.status);
+      if (!response.ok) {
+        if (response.status === 429 || response.status === 401 || response.status === 400) {
+          throw serviceFailure(response.status);
+        }
+        return fallbackLocal();
+      }
 
       const contentType = response.headers?.get?.('content-type') || '';
       if (contentType.includes('application/json')) {
@@ -93,6 +116,10 @@ export async function askPapybot(
     }
 
     return await invokeNonStream();
+  } catch (err) {
+    if (err instanceof AppError) throw err;
+    if (controller.signal.aborted && signal.aborted) throw err;
+    return fallbackLocal();
   } finally {
     clearTimeout(timer);
     signal.removeEventListener('abort', cancel);

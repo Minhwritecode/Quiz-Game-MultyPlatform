@@ -2,8 +2,10 @@ import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { useAssistantUiStore } from '@/core/state/useAssistantUiStore';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, usePathname } from 'expo-router';
-import { memo, useMemo, type PropsWithChildren, type ReactNode } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type PropsWithChildren, type ReactNode } from 'react';
 import {
+  Animated,
+  Easing,
   Platform,
   Pressable,
   ScrollView,
@@ -15,8 +17,10 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
 import { colors, palettes, radii, shadows, spacing, typography } from '@/core/theme/tokens';
 import { useI18n } from '@/core/i18n';
+import { NotificationBell } from '@/features/notifications/presentation/NotificationBell';
 
 export type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -26,29 +30,154 @@ export function usePalette() {
   return palettes[(theme === 'system' ? system : theme) === 'dark' ? 'dark' : 'light'];
 }
 
+/**
+ * Minimal, clean green/red connectivity indicator dot (replaces noisy Offline/Online pills).
+ */
+export const OnlineStatusDot = memo(function OnlineStatusDot({ size = 9 }: { size?: number }) {
+  const [online, setOnline] = useState(() =>
+    typeof navigator !== 'undefined' && typeof navigator.onLine === 'boolean' ? navigator.onLine : true
+  );
+  const pulse = useRef(new Animated.Value(0.35)).current;
+  const reduceMotion = usePapyrusStore((s) => s.reduceMotion);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const onUp = () => setOnline(true);
+    const onDown = () => setOnline(false);
+    window.addEventListener('online', onUp);
+    window.addEventListener('offline', onDown);
+    return () => {
+      window.removeEventListener('online', onUp);
+      window.removeEventListener('offline', onDown);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (reduceMotion || !online) {
+      pulse.setValue(0);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1, duration: 1200, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0.25, duration: 1200, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [online, pulse, reduceMotion]);
+
+  const dotColor = online ? '#10B981' : '#EF4444';
+  return (
+    <View
+      accessibilityLabel={online ? 'Đang kết nối mạng' : 'Mất kết nối mạng'}
+      style={{
+        width: size + 8,
+        height: size + 8,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <Animated.View
+        style={{
+          position: 'absolute',
+          width: size + 6,
+          height: size + 6,
+          borderRadius: (size + 6) / 2,
+          backgroundColor: dotColor,
+          opacity: online ? pulse.interpolate({ inputRange: [0.25, 1], outputRange: [0.18, 0.45] }) : 0.25,
+        }}
+      />
+      <View
+        style={{
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor: dotColor,
+        }}
+      />
+    </View>
+  );
+});
+
+/**
+ * Lightweight GPU-only smooth entrance animation (transform + opacity only, honors reduceMotion).
+ */
+export const SmoothReveal = memo(function SmoothReveal({
+  children,
+  delay = 0,
+  style,
+}: PropsWithChildren<{ delay?: number; style?: ViewStyle | ViewStyle[] }>) {
+  const reduceMotion = usePapyrusStore((s) => s.reduceMotion);
+  const progress = useRef(new Animated.Value(reduceMotion ? 1 : 0)).current;
+
+  useEffect(() => {
+    if (reduceMotion) {
+      progress.setValue(1);
+      return;
+    }
+    const anim = Animated.timing(progress, {
+      toValue: 1,
+      duration: 280,
+      delay,
+      easing: Easing.bezier(0.23, 1, 0.32, 1),
+      useNativeDriver: true,
+    });
+    anim.start();
+    return () => anim.stop();
+  }, [delay, progress, reduceMotion]);
+
+  return (
+    <Animated.View
+      style={[
+        style,
+        {
+          opacity: progress,
+          transform: [
+            {
+              translateY: progress.interpolate({
+                inputRange: [0, 1],
+                outputRange: [12, 0],
+              }),
+            },
+          ],
+        },
+      ]}
+    >
+      {children}
+    </Animated.View>
+  );
+});
+
 export function Screen({
   children,
   scroll = true,
   bottomNav = false,
+  transparent = false,
   contentStyle,
-}: PropsWithChildren<{ scroll?: boolean; bottomNav?: boolean; contentStyle?: object }>) {
+}: PropsWithChildren<{ scroll?: boolean; bottomNav?: boolean; transparent?: boolean; contentStyle?: object }>) {
   const palette = usePalette();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const desktopWeb = Platform.OS === 'web' && width >= 900;
   const maxWidth = width >= 900 ? 1160 : 760;
-  const bottomBarHeight = 64 + Math.max(8, insets.bottom);
+  const bottomBarHeight = 62 + Math.max(6, insets.bottom);
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: palette.paper }]} edges={['top', 'left', 'right']}>
+    <SafeAreaView
+      style={[styles.safe, { backgroundColor: transparent ? 'transparent' : palette.paper }]}
+      edges={['top', 'left', 'right']}
+    >
       {bottomNav && desktopWeb && <DesktopNav />}
       {scroll ? (
         <ScrollView
+          contentInsetAdjustmentBehavior="automatic"
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
+          scrollEventThrottle={16}
           contentContainerStyle={[
             styles.scroll,
-            { paddingBottom: bottomNav && !desktopWeb ? bottomBarHeight + spacing.lg : spacing.xxxl },
+            { paddingBottom: bottomNav && !desktopWeb ? bottomBarHeight + spacing.xl : spacing.xxxl },
           ]}
           showsVerticalScrollIndicator={false}
         >
@@ -79,31 +208,35 @@ export const TopBar = memo(function TopBar({
   title,
   onBack,
   action,
+  lightContent = false,
 }: {
   title: string;
   onBack?: () => void;
   action?: ReactNode;
+  lightContent?: boolean;
 }) {
   const palette = usePalette();
   const router = useRouter();
+  const fg = lightContent ? '#F8FAFC' : palette.ink;
+  const borderCol = lightContent ? 'rgba(255,255,255,0.14)' : palette.paperMuted;
   return (
-    <View style={[styles.topBar, { borderBottomColor: palette.paperMuted }]}>
+    <View style={[styles.topBar, { borderBottomColor: borderCol }]}>
       <Pressable
-        hitSlop={8}
+        hitSlop={10}
         accessibilityRole="button"
         accessibilityLabel="Go back"
         onPress={onBack ?? (() => router.back())}
         style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
           styles.iconButton,
           {
-            backgroundColor: hovered || pressed ? palette.indigoTint : 'transparent',
+            backgroundColor: hovered || pressed ? (lightContent ? 'rgba(255,255,255,0.12)' : palette.indigoTint) : 'transparent',
             transform: pressed ? [{ scale: 0.94 }] : undefined,
           },
         ]}
       >
-        <Ionicons name="arrow-back" size={22} color={palette.ink} />
+        <Ionicons name="arrow-back" size={22} color={fg} />
       </Pressable>
-      <Text style={[typography.title, { color: palette.ink, flex: 1 }]} numberOfLines={1}>
+      <Text style={[typography.title, { color: fg, flex: 1 }]} numberOfLines={1}>
         {title}
       </Text>
       <View style={styles.topAction}>{action}</View>
@@ -389,7 +522,9 @@ export const StatCard = memo(function StatCard({
   return (
     <Card style={styles.statCard}>
       <Ionicons name={icon} size={22} color={toneColor} />
-      <Text style={[typography.heading, { color: palette.ink, marginTop: spacing.sm }]}>{value}</Text>
+      <Text style={[typography.heading, { color: palette.ink, marginTop: spacing.sm, fontVariant: ['tabular-nums'] }]}>
+        {value}
+      </Text>
       <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]} numberOfLines={1}>
         {label}
       </Text>
@@ -439,11 +574,19 @@ export const BottomNav = memo(function BottomNav() {
     [t.nav.home, t.nav.library, t.nav.battle, t.nav.rank, t.nav.settings]
   );
 
-  const webBlurStyle =
+  const hapticsEnabled = usePapyrusStore((s) => s.haptics);
+
+  const webDockStyle =
     Platform.OS === 'web'
       ? ({
-          backdropFilter: 'blur(16px)',
-          WebkitBackdropFilter: 'blur(16px)',
+          position: 'fixed',
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 80,
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          paddingBottom: 'max(4px, env(safe-area-inset-bottom))',
         } as unknown as ViewStyle)
       : undefined;
 
@@ -451,12 +594,12 @@ export const BottomNav = memo(function BottomNav() {
     <View
       style={[
         styles.bottomNav,
-        webBlurStyle,
         {
           backgroundColor: palette.paperRaised,
           borderTopColor: palette.paperMuted,
-          paddingBottom: Math.max(8, insets.bottom),
+          paddingBottom: Platform.OS === 'web' ? 4 : Math.max(4, insets.bottom),
         },
+        webDockStyle,
       ]}
     >
       {items.map((item) => {
@@ -467,16 +610,22 @@ export const BottomNav = memo(function BottomNav() {
             accessibilityRole="tab"
             accessibilityLabel={item.label}
             accessibilityState={{ selected: active }}
-            onPress={() => router.replace(item.route)}
+            onPress={() => {
+              if (hapticsEnabled && Platform.OS !== 'web') {
+                void Haptics.selectionAsync().catch(() => undefined);
+              }
+              router.replace(item.route);
+            }}
             style={({ pressed }) => [
               styles.navItem,
               active ? { backgroundColor: palette.indigoTint } : undefined,
-              pressed ? { opacity: 0.78, transform: [{ scale: 0.95 }] } : undefined,
+              pressed ? { opacity: 0.78, transform: [{ scale: 0.96 }] } : undefined,
             ]}
           >
+            {active ? <View style={[styles.navActiveBar, { backgroundColor: palette.indigo }]} /> : null}
             <Ionicons
               name={active ? (item.icon.replace('-outline', '') as IconName) : item.icon}
-              size={22}
+              size={21}
               color={active ? palette.indigo : palette.inkMuted}
             />
             <Text
@@ -564,6 +713,8 @@ export const DesktopNav = memo(function DesktopNav() {
         </View>
 
         <View style={styles.desktopNavActions}>
+          <OnlineStatusDot />
+          <NotificationBell />
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Papybot AI"
@@ -651,6 +802,11 @@ const AppFooter = memo(function AppFooter() {
             {language === 'vi' ? 'Cài đặt' : 'Settings'}
           </Text>
         </Pressable>
+        <Pressable accessibilityRole="link" onPress={() => router.push('/admin')}>
+          <Text style={[typography.caption, { color: palette.inkMuted }]}>
+            Admin
+          </Text>
+        </Pressable>
       </View>
     </View>
   );
@@ -703,10 +859,11 @@ const styles = StyleSheet.create({
   topAction: { marginLeft: 'auto', minWidth: 36, alignItems: 'flex-end' },
   iconButton: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
   brandMark: { alignItems: 'center', justifyContent: 'center' },
-  card: { borderRadius: radii.md, borderWidth: 1, padding: spacing.lg },
+  card: { borderRadius: radii.md, borderCurve: 'continuous', borderWidth: 1, padding: spacing.lg },
   button: {
     minHeight: 48,
     borderRadius: radii.sm,
+    borderCurve: 'continuous',
     borderWidth: 1,
     paddingHorizontal: spacing.lg,
     flexDirection: 'row',
@@ -729,13 +886,20 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    minHeight: 64,
+    minHeight: 58,
     borderTopWidth: 1,
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
-    paddingTop: 6,
+    paddingTop: 5,
     paddingHorizontal: spacing.xs,
+  },
+  navActiveBar: {
+    position: 'absolute',
+    top: 0,
+    width: 24,
+    height: 3,
+    borderRadius: 2,
   },
   desktopNavShell: { width: '100%', alignItems: 'center', borderBottomWidth: 1 },
   desktopNav: {

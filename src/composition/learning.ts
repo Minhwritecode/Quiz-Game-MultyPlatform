@@ -22,7 +22,13 @@ let refreshVersion = 0;
 async function refresh() {
   const account = owner(), version = ++refreshVersion;
   const sets = await accountRepositories.questionSets.list();
-  if (owner() === account && version === refreshVersion) usePapyrusStore.getState().replaceQuestionSets(sets);
+  const deleted = usePapyrusStore.getState().deletedSetIds;
+  const existingIds = new Set(sets.map((item) => item.id));
+  const merged = [
+    ...sets,
+    ...seedQuestionSets.filter((seed) => !existingIds.has(seed.id) && !deleted.includes(seed.id)),
+  ];
+  if (owner() === account && version === refreshVersion) usePapyrusStore.getState().replaceQuestionSets(merged);
 }
 async function syncNow() {
   if (running) return running;

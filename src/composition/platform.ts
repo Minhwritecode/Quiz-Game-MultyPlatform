@@ -19,3 +19,14 @@ export {
   exportStudyPdfReport,
 } from '@/features/study/data/sessionPdf';
 export { pickRichSourceDocument } from '@/features/scan-ocr/data/documentSource';
+export { checkWebAppVersionUpdate } from '@/features/release/data/webVersionCheck';
+export {
+  dispatchExternalNotification,
+  fetchCloudGiftsForCurrentUser,
+  getExternalNotificationPermission,
+  listAllUsersForAdmin,
+  requestExternalNotificationPermission,
+  sendAdminGiftToCloud,
+  type AdminUserSummary,
+  type ExternalPermissionState,
+} from '@/features/notifications/data/pushNotifier';

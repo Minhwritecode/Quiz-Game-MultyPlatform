@@ -4,7 +4,7 @@ import { errorMessage } from '@/core/domain/failure';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Button, Card, PageHeader, Screen, TopBar, usePalette } from '@/shared/ui';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { dependencies } from '@/composition/dependencies';
@@ -358,7 +358,33 @@ function GenerationEditor() {
     <Button variant="secondary" disabled={busy || questions.length >= 30} onPress={() => setQuestions(current => [...current, { id: createLocalId(), content: '', options: ['', '', '', ''], correctIndex: 0, explanation: '', position: current.length }])}>{t.home.addQuestion}</Button>
     {questions.map((question, index) => <Card key={question.id || `question-${index}`} style={styles.question}>
       <View style={styles.questionHeader}>
-        <Text style={[typography.label, { color: palette.indigo }]}>{t.home.questionLabel.toLocaleUpperCase()} {index + 1}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Text style={[typography.label, { color: palette.indigo }]}>{t.home.questionLabel.toLocaleUpperCase()} {index + 1}</Text>
+          <View
+            style={{
+              paddingHorizontal: 8,
+              paddingVertical: 3,
+              borderRadius: 999,
+              backgroundColor: isValidQuestion(question) ? palette.mintTint : palette.goldTint,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 10.5,
+                fontWeight: '800',
+                color: isValidQuestion(question) ? palette.mint : palette.gold,
+              }}
+            >
+              {isValidQuestion(question)
+                ? language === 'vi'
+                  ? 'Hợp lệ'
+                  : 'Ready'
+                : language === 'vi'
+                ? 'Cần điền đủ'
+                : 'Incomplete'}
+            </Text>
+          </View>
+        </View>
         <View style={styles.questionActions}>
           {!manualMode && (
             <Pressable
@@ -382,7 +408,7 @@ function GenerationEditor() {
           </Pressable>
         </View>
       </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.typeScroll}>
+      <View style={styles.typeWrap}>
         {(
           [
             { id: 'multiple_choice', label: '4 lựa chọn' },
@@ -424,13 +450,13 @@ function GenerationEditor() {
                 },
               ]}
             >
-              <Text style={{ fontSize: 11, fontWeight: '700', color: active ? '#FFFFFF' : palette.inkMuted }}>
+              <Text style={{ fontSize: 11.5, fontWeight: '700', color: active ? '#FFFFFF' : palette.inkMuted }}>
                 {item.label}
               </Text>
             </Pressable>
           );
         })}
-      </ScrollView>
+      </View>
       {(question.questionType ?? 'multiple_choice') === 'multiple_choice' && (
         <Pressable
           disabled={busy}
@@ -584,8 +610,8 @@ const styles = StyleSheet.create({
   jobRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
   questionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: spacing.xs },
   questionActions: { flexDirection: 'row' },
-  typeScroll: { gap: 6, paddingVertical: 2 },
-  typeChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1 },
+  typeWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingVertical: 2 },
+  typeChip: { paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999, borderWidth: 1 },
   questionInput: { minHeight: 62, borderWidth: 1, borderRadius: 12, padding: spacing.md, fontSize: 16, lineHeight: 22 },
   optionRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   answerMark: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },

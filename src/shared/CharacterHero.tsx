@@ -30,6 +30,7 @@ interface CharacterHeroProps {
   maxHp?: number;
   name?: string;
   showHealthBar?: boolean;
+  lightContent?: boolean;
   mode?: '2d' | '3d';
 }
 
@@ -40,6 +41,7 @@ export function CharacterHero({
   maxHp = 3,
   name = 'Papyrus Scholar',
   showHealthBar = false,
+  lightContent = false,
   mode,
 }: CharacterHeroProps) {
   const palette = usePalette();
@@ -103,10 +105,10 @@ export function CharacterHero({
       {/* Name and Health Bar */}
       {showHealthBar && (
         <View style={styles.header}>
-          <Text style={[typography.caption, { color: palette.ink, fontWeight: '700' }]}>
+          <Text style={[typography.caption, { color: lightContent ? '#F8FAFC' : palette.ink, fontWeight: '800' }]}>
             {isVip ? `👑 ${name}` : name}
           </Text>
-          <View style={[styles.hpTrack, { backgroundColor: palette.paperMuted }]}>
+          <View style={[styles.hpTrack, { backgroundColor: lightContent ? 'rgba(255,255,255,0.2)' : palette.paperMuted }]}>
             <View
               style={[
                 styles.hpFill,
@@ -122,7 +124,7 @@ export function CharacterHero({
 
       {/* Render Mode: 3D Rigged WebGL or 2D Sprite */}
       {activeMode === '3d' ? (
-        <View style={{ width: dim * 1.5, height: height3D, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: dim * 1.35, height: height3D, alignItems: 'center', justifyContent: 'center' }}>
           {isVip && (
             <View style={{ position: 'absolute', top: 4, zIndex: 10, backgroundColor: '#FEF3C7', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12, borderWidth: 1, borderColor: '#F59E0B' }}>
               <Text style={{ fontSize: 10, fontWeight: '700', color: '#B45309' }}>👑 VIP ARCHMAGE</Text>
@@ -133,6 +135,7 @@ export function CharacterHero({
               model="character"
               height={height3D}
               animationName={ACTION_TO_3D_ANIMATION[action]}
+              actionEffect={action}
               autoRotate={false}
               interactive={true}
               cameraOrbit="0deg 82deg 3.6m"

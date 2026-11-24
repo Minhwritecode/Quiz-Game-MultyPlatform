@@ -1,0 +1,160 @@
+import { useEffect, useRef, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { radii, spacing, typography } from '@/core/theme/tokens';
+import { checkWebAppVersionUpdate } from '@/composition/platform';
+
+const LOCAL_BUILD_ID = '20261124-2000';
+
+/**
+ * Web/PWA live developer update detector:
+ * 1) Listens to Service Worker `updatefound` / `waiting` worker events.
+ * 2) Polls `/version.json` every 60s and when tab regains focus so new Vercel deployments
+ *    immediately prompt the user with a clean reload banner.
+ */
+export function AppUpdateBanner() {
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  const waitingWorkerRef = useRef<ServiceWorker | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let active = true;
+
+    const triggerUpdate = (worker?: ServiceWorker | null) => {
+      if (!active) return;
+      if (worker) waitingWorkerRef.current = worker;
+      setUpdateAvailable(true);
+      setDismissed(false);
+    };
+
+    // 1. Service Worker registration & update lifecycle listener
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker
+        .getRegistration()
+        .then((reg) => {
+          if (!reg || !active) return;
+          if (reg.waiting) triggerUpdate(reg.waiting);
+          reg.addEventListener('updatefound', () => {
+            const installing = reg.installing;
+            if (!installing) return;
+            installing.addEventListener('statechange', () => {
+              if (installing.state === 'installed' && navigator.serviceWorker.controller) {
+                triggerUpdate(installing);
+              }
+            });
+          });
+          void reg.update().catch(() => undefined);
+        })
+        .catch(() => undefined);
+    }
+
+    // 2. Version manifest polling (detects Vercel deploys even without SW)
+    const pollVersion = () => {
+      void checkWebAppVersionUpdate(LOCAL_BUILD_ID).then((hasNewer) => {
+        if (hasNewer && active) triggerUpdate(null);
+      });
+    };
+
+    const timer = window.setInterval(pollVersion, 60_000);
+    const onVis = () => {
+      if (document.visibilityState === 'visible') pollVersion();
+    };
+    document.addEventListener('visibilitychange', onVis);
+
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, []);
+
+  if (!updateAvailable || dismissed) return null;
+
+  const handleReload = () => {
+    if (waitingWorkerRef.current) {
+      waitingWorkerRef.current.postMessage({ type: 'SKIP_WAITING' });
+    }
+    if (typeof window !== 'undefined') {
+      window.location.reload();
+    }
+  };
+
+  return (
+    <View style={styles.wrap}>
+      <View style={styles.card}>
+        <View style={styles.iconPill}>
+          <Ionicons name="rocket" size={16} color="#FDE68A" />
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={[typography.caption, styles.title]} numberOfLines={1}>
+            Nhà phát triển vừa có cập nhật mới!
+          </Text>
+          <Text style={styles.sub} numberOfLines={2}>
+            Xin hãy tải lại ứng dụng để nhận tính năng và bản sửa lỗi mới nhất.
+          </Text>
+        </View>
+        <Pressable accessibilityRole="button" onPress={handleReload} style={styles.reloadBtn}>
+          <Ionicons name="refresh" size={13} color="#0F172A" />
+          <Text style={styles.reloadText}>Tải lại</Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Đóng thông báo cập nhật"
+          hitSlop={8}
+          onPress={() => setDismissed(true)}
+          style={styles.closeBtn}
+        >
+          <Ionicons name="close" size={16} color="#CBD5E1" />
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  wrap: {
+    position: 'fixed' as unknown as 'absolute',
+    top: 12,
+    left: spacing.md,
+    right: spacing.md,
+    zIndex: 9999,
+    alignItems: 'center',
+    pointerEvents: 'box-none',
+  },
+  card: {
+    width: '100%',
+    maxWidth: 540,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: 'rgba(15, 23, 66, 0.96)',
+    borderWidth: 1.5,
+    borderColor: '#6366F1',
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    boxShadow: '0 10px 30px rgba(6, 10, 36, 0.55)',
+  } as object,
+  iconPill: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: 'rgba(245, 158, 11, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
+  sub: { color: '#CBD5E1', fontSize: 11.5, marginTop: 1 },
+  reloadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#F59E0B',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radii.pill,
+  },
+  reloadText: { color: '#0F172A', fontSize: 12, fontWeight: '800' },
+  closeBtn: { padding: 4 },
+});

@@ -16,7 +16,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import { Badge, Button, Card, Screen, usePalette } from '@/shared/ui';
+import { Badge, Button, Card, OnlineStatusDot, Screen, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { useAuthStore } from '@/core/state/useAuthStore';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
@@ -148,7 +148,6 @@ export default function LeaderboardScreen() {
   const [page, setPage] = useState(0);
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [battleHistory, setBattleHistory] = useState<BattleHistoryItem[]>([]);
-  const [source, setSource] = useState<'live' | 'offline'>('offline');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState('');
@@ -191,7 +190,6 @@ export default function LeaderboardScreen() {
         dependencies.leaderboard.fetchBattleHistory(8),
       ]);
       setEntries(res.entries);
-      setSource(res.source);
       setBattleHistory(hist);
     } catch {
       setLoadError('Không thể tải bảng xếp hạng lúc này. Nhấn Thử lại để đồng bộ.');
@@ -206,7 +204,6 @@ export default function LeaderboardScreen() {
       .then(([res, hist]) => {
         if (!active) return;
         setEntries(res.entries);
-        setSource(res.source);
         setBattleHistory(hist);
         setLoadError('');
       })
@@ -322,13 +319,11 @@ export default function LeaderboardScreen() {
         renderItem={renderItem}
         ListHeaderComponent={
           <>
-            {/* Header + Live/Offline Indicator */}
+            {/* Clean Header with Minimal Green/Red Status Dot */}
             <View style={styles.header}>
               <View style={styles.headerTopRow}>
                 <Text style={[typography.label, { color: palette.indigo }]}>{t.leaderboard.badge}</Text>
-                <Badge tone={source === 'live' ? 'success' : 'neutral'}>
-                  {source === 'live' ? 'Trực tuyến' : 'Ngoại tuyến'}
-                </Badge>
+                <OnlineStatusDot />
               </View>
               <Text style={[typography.heading, { color: palette.ink, marginTop: spacing.xs }]}>
                 {t.leaderboard.title}

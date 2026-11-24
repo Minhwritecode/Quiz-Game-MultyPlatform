@@ -28,13 +28,26 @@ import { sfx } from '@/core/audio/sfx';
 
 const { pickSourceImages, captureSourceImage, recognizeLocalImage } = dependencies.intake;
 
+const OCR_LANGUAGES: Array<{ code: string; label: string }> = [
+  { code: 'vie+eng', label: '🇻🇳🇬🇧 Việt + Anh' },
+  { code: 'vie', label: '🇻🇳 Tiếng Việt' },
+  { code: 'eng', label: '🇬🇧 English' },
+  { code: 'jpn+eng', label: '🇯🇵 日本語' },
+  { code: 'kor+eng', label: '🇰🇷 한국어' },
+  { code: 'chi_sim+eng', label: '🇨🇳 中文' },
+  { code: 'fra+deu+spa+eng', label: '🇪🇺 FR/DE/ES' },
+  { code: 'rus+eng', label: '🇷🇺 Русский' },
+  { code: 'ara+eng', label: '🇸🇦 العربية' },
+];
+
 export default function ScanScreen() {
   const router = useRouter();
   const palette = usePalette();
   const saveSourceDocument = usePapyrusStore((state) => state.saveSourceDocument);
   const [text, setText] = useState('');
   const [pages, setPages] = useState<ScanPage[]>([]);
-  const [scanProgress, setScanProgress] = useState<{ current: number; total: number } | null>(null);
+  const [ocrLanguage, setOcrLanguage] = useState('vie+eng');
+  const [scanProgress, setScanProgress] = useState<{ current: number; total: number; ratio: number; stage: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
   const syncManualFromPages = (nextPages: ScanPage[]) => {
@@ -63,15 +76,22 @@ export default function ScanScreen() {
 
       const newlyScanned: ScanPage[] = [];
       for (let i = 0; i < images.length; i++) {
-        setScanProgress({ current: i + 1, total: images.length });
+        setScanProgress({ current: i + 1, total: images.length, ratio: 0.08, stage: 'Đang chuẩn bị ảnh...' });
         const uri = images[i]!;
-        const rawText = (await recognizeLocalImage(uri)).trim();
+        const rawText = (
+          await recognizeLocalImage(uri, {
+            language: ocrLanguage,
+            onProgress: (ratio, stage) => {
+              setScanProgress({ current: i + 1, total: images.length, ratio, stage });
+            },
+          })
+        ).trim();
         newlyScanned.push(
           createScanPage({
             id: replacePageId ?? `page-${Date.now()}-${i}`,
             uri,
             title: replacePageId ? 'Trang chụp lại' : `Trang ${pages.length + i + 1}`,
-            text: rawText || '(Chưa nhận diện được chữ — chạm để sửa thủ công)',
+            text: rawText || '(Chưa nhận diện được chữ — chạm để sửa hoặc chọn lại ngôn ngữ OCR phù hợp)',
             needsReview: rawText.length < 24,
             status: rawText ? 'done' : 'error',
           })
@@ -180,6 +200,38 @@ export default function ScanScreen() {
         </View>
       </View>
 
+      {/* Multilingual OCR Language Selector */}
+      <View style={styles.langSection}>
+        <Text style={[typography.label, { color: palette.indigo, marginBottom: spacing.xs }]}>
+          NGÔN NGỮ NHẬN DIỆN OCR ĐA QUỐC GIA
+        </Text>
+        <View style={styles.langWrap}>
+          {OCR_LANGUAGES.map((item) => {
+            const active = ocrLanguage === item.code;
+            return (
+              <Pressable
+                key={item.code}
+                disabled={busy}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: active }}
+                onPress={() => setOcrLanguage(item.code)}
+                style={[
+                  styles.langChip,
+                  {
+                    backgroundColor: active ? palette.indigo : palette.paperRaised,
+                    borderColor: active ? palette.indigo : palette.paperMuted,
+                  },
+                ]}
+              >
+                <Text style={{ fontSize: 12, fontWeight: '700', color: active ? '#FFFFFF' : palette.ink }}>
+                  {item.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
       {/* Capture / Pick Cards */}
       <View style={styles.captureRow}>
         <Card onPress={() => void chooseImage(true)} style={styles.captureCard}>
@@ -200,10 +252,15 @@ export default function ScanScreen() {
 
       {scanProgress && (
         <Card style={{ marginTop: spacing.md }}>
-          <Text style={[typography.caption, { color: palette.indigo, fontWeight: '800', marginBottom: 6 }]}>
-            🔍 Đang xử lý OCR trang {scanProgress.current} / {scanProgress.total}...
-          </Text>
-          <ProgressBar progress={scanProgress.current / Math.max(1, scanProgress.total)} tone="primary" />
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <Text style={[typography.caption, { color: palette.indigo, fontWeight: '800', flex: 1 }]} numberOfLines={1}>
+              🔍 Trang {scanProgress.current}/{scanProgress.total} · {scanProgress.stage}
+            </Text>
+            <Text style={[typography.caption, { color: palette.indigo, fontWeight: '800', fontVariant: ['tabular-nums'] }]}>
+              {Math.round(scanProgress.ratio * 100)}%
+            </Text>
+          </View>
+          <ProgressBar progress={scanProgress.ratio} tone="primary" />
         </Card>
       )}
 
@@ -322,6 +379,9 @@ export default function ScanScreen() {
 
 const styles = StyleSheet.create({
   steps: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.lg },
+  langSection: { marginBottom: spacing.md },
+  langWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  langChip: { paddingHorizontal: 10, paddingVertical: 7, borderRadius: radii.pill, borderWidth: 1 },
   step: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
   stepLine: { flex: 1, height: 1, marginHorizontal: spacing.sm },
   captureRow: { flexDirection: 'row', gap: spacing.sm },

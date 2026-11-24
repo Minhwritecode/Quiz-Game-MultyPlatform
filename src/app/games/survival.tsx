@@ -23,6 +23,7 @@ import { sfx } from '@/core/audio/sfx';
 import { SoundToggle } from '@/shared/SoundToggle';
 import { useStreakStore } from '@/features/streak/state/useStreakStore';
 import { useMembershipStore } from '@/features/membership/state/useMembershipStore';
+import { seedQuestionSets } from '@/composition/preferences';
 
 // ─── Color palette ────────────────────────────────────────────────────────
 const INDIGO = '#4F46E5';
@@ -228,13 +229,17 @@ export default function SurvivalGameScreen() {
   const { t, language } = useI18n();
   const { width } = useWindowDimensions();
 
-  const questionSets = usePapyrusStore((s) => s.questionSets);
+  const storeQuestionSets = usePapyrusStore((s) => s.questionSets);
+  const questionSets = useMemo(
+    () => (storeQuestionSets.length > 0 ? storeQuestionSets : seedQuestionSets),
+    [storeQuestionSets]
+  );
   const [activeSetId, setActiveSetId] = useState<string | null>(setId ?? null);
   const [showSetPicker, setShowSetPicker] = useState(false);
 
   const currentSet = useMemo(() => {
     if (activeSetId) {
-      const found = questionSets.find((s) => s.id === activeSetId);
+      const found = questionSets.find((s) => s.id === activeSetId && s.questions.length >= 1);
       if (found) return found;
     }
     return questionSets.find((s) => s.questions.length >= 3) ?? questionSets[0] ?? null;
@@ -482,10 +487,11 @@ export default function SurvivalGameScreen() {
   const timerColor = secondsLeft <= 3 ? '#EF4444' : secondsLeft <= 6 ? '#F59E0B' : CYAN;
 
   return (
-    <GameEnvironment gameMode="survival">
-      <Screen scroll={true}>
+    <GameEnvironment gameMode="survival" actionEffect={characterAction} pulseTrigger={particleTrigger}>
+      <Screen scroll={true} transparent>
         <TopBar
           title={t.survival.title}
+          lightContent
           action={
             <Pressable
               onPress={() => setShowSetPicker(true)}
@@ -609,6 +615,7 @@ export default function SurvivalGameScreen() {
               size="md"
               name={userPlayer?.name ?? 'Papyrus Scholar'}
               showHealthBar
+              lightContent
             />
           </View>
 

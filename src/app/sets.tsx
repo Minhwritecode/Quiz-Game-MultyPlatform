@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Alert, Modal, Platform, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Badge, Button, Card, EmptyState, IconTile, Screen, usePalette } from '@/shared/ui';
+import { Badge, Button, Card, EmptyState, IconTile, OnlineStatusDot, Screen, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { useI18n } from '@/core/i18n';
@@ -236,9 +236,9 @@ export default function LibraryScreen() {
       {/* Meta Bar */}
       <View style={styles.meta}>
         <Text style={[typography.caption, { color: palette.inkMuted }]}>
-          {t.library.displayMeta} {filtered.length} / {sets.length} {t.library.questionsCount}
+          {t.library.displayMeta} {filtered.length} / {sets.length} bộ câu hỏi
         </Text>
-        <Badge tone="success">{t.library.offlineFirst}</Badge>
+        <OnlineStatusDot />
       </View>
 
       {/* Sets List */}

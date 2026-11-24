@@ -316,24 +316,91 @@ export async function fetchFriendsLeaderboard(params: {
 export async function searchPlayersForFriend(query: string): Promise<FriendSearchCandidate[]> {
   const clean = query.trim();
   if (!supabase || clean.length < 2) return [];
+  const lower = clean.toLowerCase();
   try {
     const { data: sessionData } = await supabase.auth.getSession();
     const myId = sessionData.session?.user?.id;
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id, display_name, avatar_url, elo_rating, total_score')
-      .ilike('display_name', `%${clean}%`)
-      .limit(12);
-    if (error || !Array.isArray(data)) return [];
-    return (data as ProfileRow[])
-      .filter((row) => row.id !== myId)
-      .map((row) => ({
-        id: row.id,
-        displayName: row.display_name || 'Học giả Papyrus',
-        avatarUrl: row.avatar_url ?? null,
-        eloRating: Number(row.elo_rating ?? 1200),
-        totalScore: Number(row.total_score ?? 0),
-      }));
+    const byId = new Map<string, FriendSearchCandidate>();
+
+    // 1. Primary: SECURITY DEFINER search RPC (bypasses strict read-own-profile RLS safely)
+    try {
+      const { data: rpcRows, error: rpcErr } = await supabase.rpc('search_players_for_friend', {
+        p_query: clean,
+        p_limit: 15,
+      });
+      if (!rpcErr && Array.isArray(rpcRows)) {
+        for (const row of rpcRows as Array<Record<string, unknown>>) {
+          const id = String(row.user_id ?? row.id ?? '');
+          if (!id || id === myId) continue;
+          byId.set(id, {
+            id,
+            displayName: String(row.display_name || 'Học giả Papyrus'),
+            avatarUrl: typeof row.avatar_url === 'string' ? row.avatar_url : null,
+            eloRating: Number(row.elo_rating ?? 1200),
+            totalScore: Number(row.total_score ?? 0),
+          });
+        }
+      }
+    } catch {
+      // Fall through to leaderboard SECURITY DEFINER RPC
+    }
+
+    // 2. Fallback: SECURITY DEFINER get_leaderboard_players RPC (already live on Supabase Cloud)
+    if (byId.size === 0) {
+      try {
+        const { data: lbRows, error: lbErr } = await supabase.rpc('get_leaderboard_players', {
+          p_timeframe: 'all',
+          p_topic: 'all',
+          p_limit: 100,
+          p_offset: 0,
+        });
+        if (!lbErr && Array.isArray(lbRows)) {
+          for (const row of lbRows as RpcRow[]) {
+            const id = String(row.user_id ?? '');
+            const name = String(row.display_name || '');
+            if (!id || id === myId) continue;
+            if (name.toLowerCase().includes(lower)) {
+              byId.set(id, {
+                id,
+                displayName: name || 'Học giả Papyrus',
+                avatarUrl: row.avatar_url ?? null,
+                eloRating: 1200,
+                totalScore: Number(row.total_score ?? 0),
+              });
+            }
+          }
+        }
+      } catch {
+        // Fall through
+      }
+    }
+
+    // 3. Direct profiles query fallback (if RLS allows broader read)
+    if (byId.size === 0) {
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id, display_name, avatar_url, elo_rating, total_score')
+          .ilike('display_name', `%${clean}%`)
+          .limit(15);
+        if (!error && Array.isArray(data)) {
+          for (const row of data as ProfileRow[]) {
+            if (row.id === myId) continue;
+            byId.set(row.id, {
+              id: row.id,
+              displayName: row.display_name || 'Học giả Papyrus',
+              avatarUrl: row.avatar_url ?? null,
+              eloRating: Number(row.elo_rating ?? 1200),
+              totalScore: Number(row.total_score ?? 0),
+            });
+          }
+        }
+      } catch {
+        // Ignore
+      }
+    }
+
+    return Array.from(byId.values()).slice(0, 15);
   } catch {
     return [];
   }

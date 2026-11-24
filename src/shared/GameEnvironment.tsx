@@ -2,7 +2,7 @@ import React, { ReactNode, memo, useEffect, useRef, useState } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
-import { Model3DView } from './Model3DView';
+import { Model3DView, type Model3DActionEffect } from './Model3DView';
 import { Model3DErrorBoundary } from './Model3DErrorBoundary';
 
 export type GameMode = 'survival' | 'battle' | 'match' | 'study';
@@ -12,6 +12,8 @@ interface GameEnvironmentProps {
   children: ReactNode;
   show3DByDefault?: boolean;
   enable3DToggle?: boolean;
+  actionEffect?: Model3DActionEffect;
+  pulseTrigger?: number;
 }
 
 // ─── Shared Animated Helpers ───────────────────────────────────────────────
@@ -418,6 +420,8 @@ export function GameEnvironment({
   children,
   show3DByDefault = true,
   enable3DToggle = true,
+  actionEffect = 'idle',
+  pulseTrigger = 0,
 }: GameEnvironmentProps) {
   const reduceMotion = usePapyrusStore((s) => s.reduceMotion);
   const [show3D, setShow3D] = useState(() => show3DByDefault && !reduceMotion);
@@ -453,14 +457,16 @@ export function GameEnvironment({
               <Model3DErrorBoundary>
                 <Model3DView
                   model={gameMode}
-                  height={176}
+                  height={186}
                   autoRotate={true}
                   interactive={true}
+                  actionEffect={actionEffect}
+                  pulseTrigger={pulseTrigger}
                 />
               </Model3DErrorBoundary>
               <View style={styles.stageFooterRow}>
                 <Text style={styles.stage3DHint}>
-                  Kéo để xoay đấu trường 3D
+                  Kéo xoay 3D · Chạm hoặc trả lời để tung hiệu ứng
                 </Text>
                 <Pressable
                   onPress={() => setShow3D(false)}
