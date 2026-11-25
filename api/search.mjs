@@ -4,21 +4,28 @@ const UNSAFE_PATTERNS =
 function decodeEntities(str = '') {
   return String(str)
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
-    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;|&#160;/gi, ' ')
     .replace(/&quot;/g, '"')
     .replace(/&#39;|&apos;/g, "'")
-    .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
     .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(Number(dec)))
+    .replace(/<[^>]+>/g, ' ')
     .replace(/\s{2,}/g, ' ')
     .trim();
 }
 
-function ensureCompleteSummary(raw, title = '') {
-  const clean = decodeEntities(raw).replace(/\s+-\s+[^-]{2,45}$/, '').trim();
-  if (!clean || clean.length < 18) {
-    return `Tin tức & tài liệu cập nhật mới nhất về "${title}" được tổng hợp trực tiếp theo thời gian thực.`;
+function ensureCompleteSummary(raw, title = '', publisher = 'Báo chí') {
+  let clean = decodeEntities(raw)
+    .replace(/\s+-\s+[^-]{2,45}$/, '')
+    .trim();
+  if (publisher && clean.endsWith(publisher)) {
+    clean = clean.slice(0, clean.length - publisher.length).trim();
+  }
+  if (!clean || clean.length < 22 || clean.toLowerCase() === title.toLowerCase()) {
+    const cleanTitle = title.replace(/[.!?…]+$/, '');
+    return `Điểm tin cập nhật mới nhất từ ${publisher}: "${cleanTitle}". Bạn có thể chuyển hóa ngay nội dung này thành bộ câu hỏi trắc nghiệm AI hoặc chia sẻ lên Story & Cộng đồng.`;
   }
   const sentences = clean
     .split(/(?<=[.!?…])\s+/)
@@ -67,7 +74,7 @@ function parseRssItems(xmlText, defaultCategory = 'Tin mới nhất', maxItems =
       source: 'Google News',
       category: `${publisher} · ${defaultCategory}`,
       title,
-      summary: ensureCompleteSummary(desc, title),
+      summary: ensureCompleteSummary(desc, title, publisher),
       url: link,
       thumbnailUrl: null,
       publishedLabel: formatRelativeVi(pubDate),
