@@ -25,19 +25,23 @@ import { useNotificationStore, type AdminGiftItem } from '@/features/notificatio
 import { useCommunityStore } from '@/features/community/state/useCommunityStore';
 import { CreateStoryCard916, StoryCard916 } from '@/features/community/presentation/StoryCard916';
 import { StoryComposerModal, StoryViewerModal } from '@/features/community/presentation/StoryModalViewer';
-import { ThreadPostCard } from '@/features/community/presentation/ThreadPostCard';
 import { FriendsDiscoveryHub } from '@/features/community/presentation/FriendsDiscoveryHub';
 import type { ScholarStory } from '@/features/community/domain/models';
+import { useSocialStore } from '@/features/social/state/useSocialStore';
+import type { AdminManagedDocument, SocialPostItem } from '@/features/social/domain/models';
+import { isFollowingAccepted, projectSafePostForViewer } from '@/features/social/domain/rankingAndPermissions';
+import { MetaThreadsPostCard } from '@/features/social/presentation/MetaThreadsPostCard';
+import { AdvancedThreadComposerModal } from '@/features/social/presentation/AdvancedThreadComposerModal';
 import { getScholarRankInfo, XP_PER_SCHOLAR_LEVEL } from '@/core/domain/scholarRank';
 import { getLocalDateString } from '@/features/streak/domain/models';
 import { dependencies } from '@/composition/dependencies';
 import {
   fetchCloudProfileSnapshot,
   preferenceStorage,
+  seedQuestionSets,
   syncUserProgressToCloud,
 } from '@/composition/preferences';
 import {
-  formatScholarCode,
   pickAvatarImageDataUrl,
   pickCoverImageDataUrl,
 } from '@/composition/platform';
@@ -45,7 +49,7 @@ import { saveQuestionSet } from '@/features/question-sets/domain/saveQuestionSet
 import { DUEL_CATEGORIES, getEloTier } from '@/features/room-battle/domain/elo';
 import { sfx } from '@/core/audio/sfx';
 
-type ProfileTab = 'timeline' | 'about' | 'friends' | 'vault';
+type ProfileTab = 'timeline' | 'saved' | 'vault' | 'insights' | 'friends' | 'about';
 
 const PROFILE_META_KEY = 'papyrus.profile.meta.v2';
 const DAY_LABELS = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
@@ -75,12 +79,13 @@ function createPresetAvatarDataUri(bg: string, letter: string): string {
 export default function ProfileScreen() {
   const user = useAuthStore((s) => s.user);
   const viewerId = user?.id ?? 'guest';
-  const viewerName = user?.displayName ?? 'Người học khách';
+  const viewerName = user?.displayName?.trim() || 'Thành viên Papyrus';
+  const viewerAvatar = user?.avatarUrl ?? null;
   const palette = usePalette();
   const router = useRouter();
   const params = useLocalSearchParams<{ composeStory?: string; tab?: string }>();
   const { width } = useWindowDimensions();
-  const maxW = Math.min(width - spacing.lg * 2, 740);
+  const maxW = Math.min(width - spacing.lg * 2, 760);
 
   const gamesPlayed = usePapyrusStore((s) => s.gamesPlayed);
   const totalScore = usePapyrusStore((s) => s.totalScore);
@@ -107,26 +112,80 @@ export default function ProfileScreen() {
   const syncCloudGifts = useNotificationStore((s) => s.syncCloudGifts);
 
   const stories = useCommunityStore((s) => s.stories);
-  const posts = useCommunityStore((s) => s.posts);
-  const followingAuthorIds = useCommunityStore((s) => s.followingAuthorIds);
   const addStory = useCommunityStore((s) => s.addStory);
   const markStoryViewed = useCommunityStore((s) => s.markStoryViewed);
   const reactToStory = useCommunityStore((s) => s.reactToStory);
-  const addPost = useCommunityStore((s) => s.addPost);
-  const togglePostReaction = useCommunityStore((s) => s.togglePostReaction);
-  const votePostPoll = useCommunityStore((s) => s.votePostPoll);
-  const toggleBookmarkPost = useCommunityStore((s) => s.toggleBookmarkPost);
-  const toggleRepost = useCommunityStore((s) => s.toggleRepost);
-  const addComment = useCommunityStore((s) => s.addComment);
-  const toggleFollowAuthor = useCommunityStore((s) => s.toggleFollowAuthor);
+
+  // Unified Social Media & Threads State
+  const profilesById = useSocialStore((s) => s.profilesById);
+  const follows = useSocialStore((s) => s.follows);
+  const friendRequests = useSocialStore((s) => s.friendRequests);
+  const relations = useSocialStore((s) => s.relations);
+  const socialPosts = useSocialStore((s) => s.posts);
+  const communities = useSocialStore((s) => s.communities);
+  const conversations = useSocialStore((s) => s.conversations);
+  const moderationCases = useSocialStore((s) => s.moderationCases);
+  const adminDocuments = useSocialStore((s) => s.adminDocuments);
+  const userSlices = useSocialStore((s) => s.userSlices);
+
+  const ensureUserProfile = useSocialStore((s) => s.ensureUserProfile);
+  const propagateIdentityUpdate = useSocialStore((s) => s.propagateIdentityUpdate);
+  const respondFollowRequest = useSocialStore((s) => s.respondFollowRequest);
+  const saveComposerDraft = useSocialStore((s) => s.saveComposerDraft);
+  const createSocialPost = useSocialStore((s) => s.createSocialPost);
+  const editSocialPost = useSocialStore((s) => s.editSocialPost);
+  const deleteOrArchivePost = useSocialStore((s) => s.deleteOrArchivePost);
+  const togglePinPost = useSocialStore((s) => s.togglePinPost);
+  const summarizePostWithAi = useSocialStore((s) => s.summarizePostWithAi);
+  const voteDebateSide = useSocialStore((s) => s.voteDebateSide);
+  const addDebateArgument = useSocialStore((s) => s.addDebateArgument);
+  const togglePostEmojiReaction = useSocialStore((s) => s.togglePostEmojiReaction);
+  const addThreadedReply = useSocialStore((s) => s.addThreadedReply);
+  const editOrDeleteComment = useSocialStore((s) => s.editOrDeleteComment);
+  const toggleCommentReaction = useSocialStore((s) => s.toggleCommentReaction);
+  const togglePinComment = useSocialStore((s) => s.togglePinComment);
+  const togglePureRepost = useSocialStore((s) => s.togglePureRepost);
+  const toggleSaveBookmark = useSocialStore((s) => s.toggleSaveBookmark);
+  const toggleFavouritePost = useSocialStore((s) => s.toggleFavouritePost);
+  const voteUnifiedPoll = useSocialStore((s) => s.voteUnifiedPoll);
+  const addUnifiedPollOption = useSocialStore((s) => s.addUnifiedPollOption);
+  const toggleCloseUnifiedPoll = useSocialStore((s) => s.toggleCloseUnifiedPoll);
+  const toggleFollowUser = useSocialStore((s) => s.toggleFollowUser);
+  const toggleUserRelation = useSocialStore((s) => s.toggleUserRelation);
+  const sharePostToDestination = useSocialStore((s) => s.sharePostToDestination);
+  const submitModerationReport = useSocialStore((s) => s.submitModerationReport);
+  const submitUserAppeal = useSocialStore((s) => s.submitUserAppeal);
+  const recordDocumentDownload = useSocialStore((s) => s.recordDocumentDownload);
+
+  const mySocialProfile = profilesById[viewerId];
+  const mySlice = userSlices[viewerId] ?? userSlices.guest;
+  const graph = useMemo(
+    () => ({ follows, friendRequests, relations, communities }),
+    [communities, follows, friendRequests, relations]
+  );
 
   const [activeTab, setActiveTab] = useState<ProfileTab>(() =>
-    params.tab === 'friends' ? 'friends' : params.tab === 'vault' ? 'vault' : params.tab === 'about' ? 'about' : 'timeline'
+    params.tab === 'friends'
+      ? 'friends'
+      : params.tab === 'vault'
+      ? 'vault'
+      : params.tab === 'insights'
+      ? 'insights'
+      : params.tab === 'saved'
+      ? 'saved'
+      : params.tab === 'about'
+      ? 'about'
+      : 'timeline'
   );
   const [name, setName] = useState(user?.displayName ?? '');
   const [university, setUniversity] = useState('');
   const [major, setMajor] = useState('');
+  const [locationArea, setLocationArea] = useState('');
+  const [interestsText, setInterestsText] = useState('CNTT, AI, ÔnThi');
   const [bio, setBio] = useState('');
+  const [isPrivateAccount, setIsPrivateAccount] = useState(false);
+  const [showOnlineStatus, setShowOnlineStatus] = useState(true);
+
   const [coverPresetId, setCoverPresetId] = useState('royal');
   const [customCoverUrl, setCustomCoverUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -136,16 +195,28 @@ export default function ProfileScreen() {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [storyComposerOpen, setStoryComposerOpen] = useState(() => params.composeStory === '1');
   const [viewingStory, setViewingStory] = useState<ScholarStory | null>(null);
-  const [quickPostDraft, setQuickPostDraft] = useState('');
+  const [threadComposerOpen, setThreadComposerOpen] = useState(false);
+  const [quotedPost, setQuotedPost] = useState<SocialPostItem | null>(null);
+  const [readingAdminDoc, setReadingAdminDoc] = useState<AdminManagedDocument | null>(null);
+  const [appealDrafts, setAppealDrafts] = useState<Record<string, string>>({});
+  const [insightsPeriod, setInsightsPeriod] = useState<'7d' | '30d'>('7d');
   const [message, setMessage] = useState('');
 
-  // Guard so async mount hydration never overwrites a cover photo just chosen by the user
   const userEditedCoverRef = useRef(false);
   const currentUserId = user?.id ?? null;
 
   useEffect(() => {
     userEditedCoverRef.current = false;
     let active = true;
+
+    if (user?.id) {
+      ensureUserProfile({
+        id: user.id,
+        displayName: user.displayName,
+        avatarUrl: user.avatarUrl ?? null,
+        role: user.role === 'admin' ? 'admin' : 'user',
+      });
+    }
 
     void preferenceStorage.getItem(`${PROFILE_META_KEY}.${viewerId}`).then((raw) => {
       if (!active) return;
@@ -155,19 +226,27 @@ export default function ProfileScreen() {
           const parsed = JSON.parse(raw) as {
             university?: string;
             major?: string;
+            locationArea?: string;
+            interestsText?: string;
             bio?: string;
+            isPrivateAccount?: boolean;
+            showOnlineStatus?: boolean;
             coverPresetId?: string;
             customCoverUrl?: string | null;
           };
           setUniversity(parsed.university ?? '');
           setMajor(parsed.major ?? '');
+          setLocationArea(parsed.locationArea ?? '');
+          if (parsed.interestsText) setInterestsText(parsed.interestsText);
           setBio(parsed.bio ?? '');
+          setIsPrivateAccount(Boolean(parsed.isPrivateAccount));
+          setShowOnlineStatus(parsed.showOnlineStatus !== false);
           if (parsed.coverPresetId) setCoverPresetId(parsed.coverPresetId);
           if (!userEditedCoverRef.current && parsed.customCoverUrl !== undefined) {
             setCustomCoverUrl(parsed.customCoverUrl ?? null);
           }
         } catch {
-          // Ignore
+          // Ignore malformed JSON
         }
       }
     });
@@ -196,9 +275,47 @@ export default function ProfileScreen() {
     [stories, viewerId]
   );
 
-  const myPosts = useMemo(
-    () => posts.filter((p) => p.authorId === viewerId || p.bookmarkedByIds.includes(viewerId)),
-    [posts, viewerId]
+  const myAuthoredPosts = useMemo(
+    () =>
+      socialPosts
+        .filter(
+          (p) =>
+            (p.internalAuthorId || p.authorId) === viewerId &&
+            p.lifecycleStatus !== 'removed'
+        )
+        .sort((a, b) =>
+          a.isPinnedProfile !== b.isPinnedProfile
+            ? a.isPinnedProfile
+              ? -1
+              : 1
+            : Date.parse(b.createdAt) - Date.parse(a.createdAt)
+        ),
+    [socialPosts, viewerId]
+  );
+
+  const myBookmarkedPosts = useMemo(
+    () => socialPosts.filter((p) => mySlice?.bookmarkedPostIds.includes(p.id)),
+    [mySlice?.bookmarkedPostIds, socialPosts]
+  );
+
+  const myFollowersCount = useMemo(
+    () => follows.filter((f) => f.followingId === viewerId && f.status === 'accepted').length,
+    [follows, viewerId]
+  );
+  const myFollowingCount = useMemo(
+    () => follows.filter((f) => f.followerId === viewerId && f.status === 'accepted').length,
+    [follows, viewerId]
+  );
+  const myFriendsCount = useMemo(
+    () =>
+      friendRequests.filter(
+        (r) => r.status === 'accepted' && (r.senderId === viewerId || r.receiverId === viewerId)
+      ).length,
+    [friendRequests, viewerId]
+  );
+  const pendingFollowRequestsToMe = useMemo(
+    () => follows.filter((f) => f.followingId === viewerId && f.status === 'pending'),
+    [follows, viewerId]
   );
 
   const myGifts = useMemo(
@@ -208,6 +325,60 @@ export default function ProfileScreen() {
         : [],
     [gifts, currentUserId]
   );
+
+  const [mountNowMs] = useState(() => Date.now());
+
+  // Gifted Admin Documents accessible to this user (Section 14.8!)
+  const myAccessibleAdminDocs = useMemo(() => {
+    const myCommIds = communities
+      .filter((c) => c.members.some((m) => m.userId === viewerId && m.role !== 'pending' && m.role !== 'banned'))
+      .map((c) => c.id);
+
+    return adminDocuments.filter((doc) => {
+      if (doc.status !== 'published') return false;
+      if (doc.expiresAt && Date.parse(doc.expiresAt) <= mountNowMs) return false;
+      return (
+        doc.recipientUserIds.includes('all') ||
+        doc.recipientUserIds.includes(viewerId) ||
+        doc.recipientCommunityIds.some((cid) => myCommIds.includes(cid))
+      );
+    });
+  }, [adminDocuments, communities, mountNowMs, viewerId]);
+
+  const myModerationCases = useMemo(
+    () => moderationCases.filter((c) => c.targetOwnerId === viewerId),
+    [moderationCases, viewerId]
+  );
+
+  // Creator Insights Computations (Section 12)
+  const creatorStats = useMemo(() => {
+    const totalImpressions = myAuthoredPosts.reduce((s, p) => s + p.impressionsCount, 0);
+    const totalViews = myAuthoredPosts.reduce((s, p) => s + p.viewsCount, 0);
+    const totalReactions = myAuthoredPosts.reduce(
+      (s, p) =>
+        s +
+        Object.values(p.reactions).reduce((acc, arr) => acc + (arr?.length ?? 0), 0),
+      0
+    );
+    const totalComments = myAuthoredPosts.reduce((s, p) => s + p.comments.length, 0);
+    const totalReposts = myAuthoredPosts.reduce(
+      (s, p) => s + p.repostedByIds.length + p.quoteCount,
+      0
+    );
+    const engagementRate =
+      totalImpressions > 0
+        ? (((totalReactions + totalComments + totalReposts) / totalImpressions) * 100).toFixed(1)
+        : '0.0';
+    return {
+      totalImpressions,
+      totalViews,
+      totalReactions,
+      totalComments,
+      totalReposts,
+      engagementRate,
+      profileViews: mySocialProfile?.profileViewsCount ?? 0,
+    };
+  }, [myAuthoredPosts, mySocialProfile?.profileViewsCount]);
 
   const last7Days = useMemo(() => {
     const activeSet = new Set(historyDates ?? []);
@@ -236,11 +407,16 @@ export default function ProfileScreen() {
       JSON.stringify({
         university: university.trim(),
         major: major.trim(),
+        locationArea: locationArea.trim(),
+        interestsText,
         bio: bio.trim(),
+        isPrivateAccount,
+        showOnlineStatus,
         coverPresetId: nextPresetId,
         customCoverUrl: nextCoverUrl,
       })
     );
+    propagateIdentityUpdate(viewerId, { coverUrl: nextCoverUrl });
     if (user) {
       void syncUserProgressToCloud({ coverUrl: nextCoverUrl });
     }
@@ -269,14 +445,25 @@ export default function ProfileScreen() {
       if (!dataUrl) return;
       const updated = await dependencies.updateUserAvatar(dataUrl);
       useAuthStore.getState().setUser(updated);
+      propagateIdentityUpdate(user.id, {
+        displayName: updated.displayName,
+        avatarUrl: updated.avatarUrl ?? dataUrl,
+      });
       setAvatarModalOpen(false);
-      setMessage('✅ Đã cập nhật ảnh đại diện mới!');
+      setMessage('✅ Đã cập nhật ảnh đại diện và đồng bộ trên toàn bộ bài viết & tin nhắn!');
     } catch (error) {
       setMessage(errorMessage(error, 'Không thể tải ảnh đại diện.'));
     } finally {
       setAvatarBusy(false);
     }
   }
+
+  const initials = viewerName
+    .split(' ')
+    .map((w) => w[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
 
   async function handleSelectPresetAvatar(bg: string) {
     if (!user || avatarBusy) return;
@@ -285,8 +472,12 @@ export default function ProfileScreen() {
       const dataUri = createPresetAvatarDataUri(bg, initials);
       const updated = await dependencies.updateUserAvatar(dataUri);
       useAuthStore.getState().setUser(updated);
+      propagateIdentityUpdate(user.id, {
+        displayName: updated.displayName,
+        avatarUrl: updated.avatarUrl ?? dataUri,
+      });
       setAvatarModalOpen(false);
-      setMessage('✅ Đã đổi biểu tượng đại diện!');
+      setMessage('✅ Đã đổi biểu tượng đại diện trên toàn hệ thống!');
     } catch (error) {
       setMessage(errorMessage(error, 'Không thể lưu ảnh đại diện.'));
     } finally {
@@ -304,15 +495,21 @@ export default function ProfileScreen() {
         JSON.stringify({
           university: university.trim(),
           major: major.trim(),
+          locationArea: locationArea.trim(),
+          interestsText,
           bio: bio.trim(),
+          isPrivateAccount,
+          showOnlineStatus,
           coverPresetId,
           customCoverUrl,
         })
       );
+      let finalDisplayName = viewerName;
       if (user) {
         if (name.trim().length >= 2 && name.trim() !== user.displayName) {
-          const updated = await dependencies.updateDisplayName(name);
+          const updated = await dependencies.updateDisplayName(name.trim());
           useAuthStore.getState().setUser(updated);
+          finalDisplayName = updated.displayName;
         }
         await syncUserProgressToCloud({
           bio: bio.trim(),
@@ -321,8 +518,25 @@ export default function ProfileScreen() {
           coverUrl: customCoverUrl,
         });
       }
+      // Propagate Main Profile Name, Bio, Privacy & Interests everywhere across Social Modules!
+      propagateIdentityUpdate(viewerId, {
+        displayName: finalDisplayName,
+        bio: bio.trim(),
+        university: university.trim(),
+        major: major.trim(),
+        locationArea: locationArea.trim(),
+        interests: interestsText
+          .split(',')
+          .map((t) => t.trim())
+          .filter(Boolean),
+        coverUrl: customCoverUrl,
+        privacy: {
+          isPrivateAccount,
+          showOnlineStatus,
+        },
+      });
       setEditModalOpen(false);
-      setMessage('✅ Đã lưu và đồng bộ trang cá nhân lên đám mây!');
+      setMessage('✅ Đã lưu Hồ sơ và đồng bộ Tên chính thức trên toàn bộ Bài viết, Bình luận, Nhóm & Tin nhắn!');
     } catch (error) {
       setMessage(errorMessage(error, 'Không lưu được hồ sơ.'));
     } finally {
@@ -362,54 +576,57 @@ export default function ProfileScreen() {
     sfx.playLevelUp();
   }
 
-  const handlePublishTimelinePost = () => {
-    const clean = quickPostDraft.trim();
-    if (!clean) return;
-    addPost({
-      authorId: viewerId,
-      authorName: viewerName,
-      authorHandle: `@${((user?.email ? user.email.split('@')[0] : viewerName) || 'scholar').toLowerCase().replace(/[^a-z0-9._]/g, '') || 'scholar'}`,
-      authorAvatar: user?.avatarUrl ?? null,
-      authorLevel: rankInfo.level,
-      authorRoleBadge: `${rankInfo.badge} ${rankInfo.titleVi}`,
-      threadParts: [clean],
-      tags: ['TrangCáNhân', 'StudyWithMe'],
-    });
-    setQuickPostDraft('');
-    addBonusXp(30);
-    sfx.playLevelUp();
-    setMessage('✨ Đã đăng bài viết lên Trang Cá Nhân & Bảng tin Cộng đồng (+30 XP)!');
+  const handleDownloadAdminDocument = (doc: AdminManagedDocument) => {
+    if (!doc.allowDownload) return;
+    recordDocumentDownload(doc.id);
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      const blob = new Blob([doc.richContent], { type: 'text/markdown;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = doc.fileName || `${doc.title.replace(/\s+/g, '-')}.md`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+    setMessage(`📥 Đã tải xuống tài liệu «${doc.title}»!`);
   };
-
-  const initials = viewerName
-    .split(' ')
-    .map((w) => w[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
 
   const activeCoverPreset = COVER_PRESETS.find((c) => c.id === coverPresetId) ?? COVER_PRESETS[0]!;
   const winRate = gamesPlayed > 0 ? `${Math.round((wins / gamesPlayed) * 100)}%` : '—';
+  const allSets = questionSets.length > 0 ? questionSets : seedQuestionSets;
 
   return (
     <Screen scroll={false}>
-      <TopBar title="Trang cá nhân" />
+      <TopBar
+        title="Trang cá nhân"
+        right={
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Mở Trung tâm Tin nhắn"
+            onPress={() => router.push('/messages')}
+            style={[styles.msgBtn, { backgroundColor: palette.paperRaised, borderColor: palette.indigoBorder }]}
+          >
+            <Ionicons name="chatbubble-ellipses-outline" size={16} color={palette.indigo} />
+            <Text style={{ fontSize: 12, fontWeight: '800', color: palette.ink }}>Tin nhắn</Text>
+          </Pressable>
+        }
+      />
+
       <ScrollView
         contentContainerStyle={[styles.container, { paddingHorizontal: spacing.lg }]}
         showsVerticalScrollIndicator={false}
       >
         <View style={{ maxWidth: maxW, alignSelf: 'center', width: '100%' }}>
-          {/* ── FACEBOOK-STYLE COVER PHOTO + OVERLAPPING AVATAR + IDENTITY HEADER ── */}
+          {/* ── COVER PHOTO + OVERLAPPING AVATAR + MAIN PROFILE NAME HEADER ── */}
           <SmoothReveal>
             <Card style={styles.fbHeaderCard}>
-              {/* Cover Banner */}
               <View
                 style={[
                   styles.coverBanner,
                   Platform.OS === 'web' && !customCoverUrl
                     ? ({
-                      backgroundImage: `linear-gradient(135deg, ${activeCoverPreset.c1} 0%, ${activeCoverPreset.c2} 100%)`,
-                    } as object)
+                        backgroundImage: `linear-gradient(135deg, ${activeCoverPreset.c1} 0%, ${activeCoverPreset.c2} 100%)`,
+                      } as object)
                     : { backgroundColor: activeCoverPreset.c1 },
                 ]}
               >
@@ -417,7 +634,6 @@ export default function ProfileScreen() {
                   <Image source={{ uri: customCoverUrl }} style={StyleSheet.absoluteFill} resizeMode="cover" />
                 ) : null}
 
-                {/* Cover Switcher & Upload Controls */}
                 <View style={styles.coverTopControls}>
                   {COVER_PRESETS.map((cp) => (
                     <Pressable
@@ -448,7 +664,6 @@ export default function ProfileScreen() {
                 </View>
               </View>
 
-              {/* Overlapping Avatar + Non-Overflowing Identity & Badges */}
               <View style={styles.fbIdentityBody}>
                 <View style={styles.avatarRow}>
                   <Pressable
@@ -457,97 +672,136 @@ export default function ProfileScreen() {
                     onPress={() => setAvatarModalOpen(true)}
                     style={styles.overlappingAvatarWrap}
                   >
-                    {user?.avatarUrl ? (
-                      <Image source={{ uri: user.avatarUrl }} style={styles.fbAvatarImg} />
+                    {viewerAvatar ? (
+                      <Image source={{ uri: viewerAvatar }} style={styles.fbAvatarImg} />
                     ) : (
-                      <View style={[styles.fbAvatarImg, { backgroundColor: palette.indigo, alignItems: 'center', justifyContent: 'center' }]}>
+                      <View
+                        style={[
+                          styles.fbAvatarImg,
+                          { backgroundColor: palette.indigo, alignItems: 'center', justifyContent: 'center' },
+                        ]}
+                      >
                         <Text style={{ fontSize: 34, fontWeight: '900', color: '#FFFFFF' }}>{initials}</Text>
                       </View>
                     )}
                     {user ? (
-                      <View style={[styles.avatarCamBadge, { backgroundColor: palette.paperRaised, borderColor: palette.paperMuted }]}>
+                      <View
+                        style={[
+                          styles.avatarCamBadge,
+                          { backgroundColor: palette.paperRaised, borderColor: palette.paperMuted },
+                        ]}
+                      >
                         <Ionicons name="camera" size={15} color={palette.ink} />
                       </View>
                     ) : null}
                   </Pressable>
                 </View>
 
-                {/* Clean Wrapping Badges Row (Zero Right-Edge Clipping!) */}
                 <View style={styles.badgesWrapRow}>
                   <Badge tone="primary">
                     {rankInfo.badge} Cấp {rankInfo.level} · {rankInfo.titleVi}
                   </Badge>
+                  {isPrivateAccount && <Badge tone="neutral">🔒 Hồ sơ Riêng tư</Badge>}
                   {membershipTier === 'archmage' && <Badge tone="reward">👑 VIP ARCHMAGE</Badge>}
                 </View>
 
-                <Text style={[typography.heading, { color: palette.ink, marginTop: 6 }]}>{viewerName}</Text>
+                {/* Main Profile Name ONLY — Zero PAPY-XXXXXX Scholar Code! */}
+                <Text style={[typography.heading, { color: palette.ink, marginTop: 6 }]}>
+                  {viewerName}
+                </Text>
                 <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
-                  {user ? `Mã Học Giả: ${formatScholarCode(user.id)}` : 'Chế độ Khách (Đăng nhập để đồng bộ đa thiết bị)'}
-                  {major || university ? ` · ${[major, university].filter(Boolean).join(' tại ')}` : ''}
+                  {[
+                    [major, university].filter(Boolean).join(' · '),
+                    locationArea ? `📍 ${locationArea}` : '',
+                    !user ? 'Chế độ Khách (Đăng nhập để đồng bộ đa thiết bị)' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' · ') || 'Thành viên Mạng xã hội Học tập Papyrus'}
                 </Text>
 
                 {bio ? (
                   <Text style={[typography.body, { color: palette.ink, marginTop: 6 }]}>{bio}</Text>
                 ) : null}
 
-                {/* Transparent Scholar Level & XP Bar */}
-                <View style={[styles.levelBox, { backgroundColor: palette.paper, borderColor: palette.paperMuted }]}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
-                    <Text style={{ fontSize: 12, fontWeight: '800', color: palette.indigo }}>
-                      {rankInfo.badge} Cấp {rankInfo.level} ({rankInfo.titleVi}) → Cấp {rankInfo.level + 1}
+                {/* Social Graph Counters */}
+                <View style={styles.socialMetricsRow}>
+                  <Pressable onPress={() => setActiveTab('friends')} style={styles.metricPill}>
+                    <Text style={{ fontSize: 15, fontWeight: '900', color: palette.ink }}>
+                      {myFollowersCount}
                     </Text>
-                    <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.inkMuted, fontVariant: ['tabular-nums'] }}>
-                      {rankInfo.currentLevelXp} / {XP_PER_SCHOLAR_LEVEL} XP (Tổng {totalScore.toLocaleString('vi-VN')} XP)
+                    <Text style={{ fontSize: 11, color: palette.inkMuted }}>Người theo dõi</Text>
+                  </Pressable>
+                  <Pressable onPress={() => setActiveTab('friends')} style={styles.metricPill}>
+                    <Text style={{ fontSize: 15, fontWeight: '900', color: palette.ink }}>
+                      {myFollowingCount}
                     </Text>
-                  </View>
-                  <ProgressBar progress={rankInfo.progress} tone="primary" />
-                  <Text style={{ fontSize: 11, color: palette.inkMuted }}>
-                    💡 Quy tắc minh bạch: Mỗi 500 XP = +1 Cấp (Điểm danh +50 XP, Đăng bài +30 XP, Câu đố ngày +25 XP, Đấu trường +Điểm trận).
-                  </Text>
+                    <Text style={{ fontSize: 11, color: palette.inkMuted }}>Đang theo dõi</Text>
+                  </Pressable>
+                  <Pressable onPress={() => setActiveTab('friends')} style={styles.metricPill}>
+                    <Text style={{ fontSize: 15, fontWeight: '900', color: palette.ink }}>
+                      {myFriendsCount}
+                    </Text>
+                    <Text style={{ fontSize: 11, color: palette.inkMuted }}>Bạn bè 2 chiều</Text>
+                  </Pressable>
+                  <Pressable onPress={() => setActiveTab('insights')} style={styles.metricPill}>
+                    <Text style={{ fontSize: 15, fontWeight: '900', color: palette.indigo }}>
+                      {creatorStats.totalImpressions}
+                    </Text>
+                    <Text style={{ fontSize: 11, color: palette.inkMuted }}>Lượt tiếp cận</Text>
+                  </Pressable>
                 </View>
 
-                {/* Clean Balanced Facebook Action Buttons Row */}
+                {/* Action Buttons */}
                 <View style={styles.fbActionRow}>
-                  <View style={{ flex: 1, minWidth: 125 }}>
-                    <Button icon="add-circle" onPress={() => setStoryComposerOpen(true)} fullWidth>
-                      Thêm vào Tin
+                  <View style={{ flex: 1, minWidth: 120 }}>
+                    <Button icon="create-outline" onPress={() => setThreadComposerOpen(true)} fullWidth>
+                      Đăng Thread
                     </Button>
                   </View>
-                  <View style={{ flex: 1, minWidth: 125 }}>
+                  <View style={{ flex: 1, minWidth: 120 }}>
                     <Button
                       variant="secondary"
-                      icon="create-outline"
+                      icon="settings-outline"
                       onPress={() => {
                         setName(user?.displayName ?? '');
                         setEditModalOpen(true);
                       }}
                       fullWidth
                     >
-                      Sửa hồ sơ
+                      Sửa hồ sơ & Quyền riêng tư
                     </Button>
                   </View>
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel="Chia sẻ hồ sơ"
+                    accessibilityLabel="Chia sẻ liên kết hồ sơ"
                     onPress={async () => {
                       if (!user) return;
-                      const url = `https://papyrus-lyart-five.vercel.app/friends?addFriend=${user.id}`;
-                      await Share.share({ message: `Kết bạn với ${viewerName} trên Papyrus: ${url}` }).catch(() => undefined);
+                      const url = `https://papyrus-lyart-five.vercel.app/user/${user.id}`;
+                      await Share.share({
+                        message: `Xem trang cá nhân của ${viewerName} trên Papyrus: ${url}`,
+                      }).catch(() => undefined);
                     }}
-                    style={[styles.moreSquareBtn, { backgroundColor: palette.paper, borderColor: palette.paperMuted }]}
+                    style={[
+                      styles.moreSquareBtn,
+                      { backgroundColor: palette.paper, borderColor: palette.paperMuted },
+                    ]}
                   >
                     <Ionicons name="share-social-outline" size={18} color={palette.ink} />
                   </Pressable>
                 </View>
 
-                {/* Facebook 9:16 Vertical Photo & Video Stories Strip on Profile */}
+                {/* 9:16 Stories Strip */}
                 <View style={{ marginTop: spacing.md }}>
                   <Text style={[typography.label, { color: palette.inkMuted, marginBottom: 8 }]}>
-                    TIN 24H & TIN NỔI BẬT (ẢNH / VIDEO)
+                    TIN 24H & TIN NỔI BẬT (ẢNH / VIDEO BÌA TÙY CHỈNH)
                   </Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{ gap: 10 }}
+                  >
                     <CreateStoryCard916
-                      avatarUrl={user?.avatarUrl}
+                      avatarUrl={viewerAvatar}
                       displayName={viewerName}
                       onPress={() => setStoryComposerOpen(true)}
                     />
@@ -565,14 +819,31 @@ export default function ProfileScreen() {
                   </ScrollView>
                 </View>
 
-                {/* Facebook Navigation Tabs */}
-                <View style={[styles.fbTabsBar, { borderTopColor: palette.paperMuted }]}>
+                {/* Profile Navigation Tabs */}
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={[styles.fbTabsBar, { borderTopColor: palette.paperMuted }]}
+                  contentContainerStyle={{ gap: 4 }}
+                >
                   {(
                     [
-                      { id: 'timeline', label: 'Bài viết' },
-                      { id: 'about', label: 'Giới thiệu & Cấp' },
-                      { id: 'friends', label: `Bạn bè (${followingAuthorIds.length})` },
-                      { id: 'vault', label: `Kho quà (${myGifts.length})` },
+                      { id: 'timeline', label: `🧵 Bài viết (${myAuthoredPosts.length})` },
+                      { id: 'saved', label: `🔖 Đã lưu (${myBookmarkedPosts.length})` },
+                      {
+                        id: 'vault',
+                        label: `🎁 Học liệu & Quà (${myAccessibleAdminDocs.length + myGifts.length})`,
+                      },
+                      { id: 'insights', label: '📈 Creator Insights' },
+                      {
+                        id: 'friends',
+                        label: `🤝 Bạn bè${
+                          pendingFollowRequestsToMe.length > 0
+                            ? ` (+${pendingFollowRequestsToMe.length})`
+                            : ''
+                        }`,
+                      },
+                      { id: 'about', label: '🎓 Cấp & Streak' },
                     ] as const
                   ).map((tb) => {
                     const active = activeTab === tb.id;
@@ -587,7 +858,7 @@ export default function ProfileScreen() {
                       >
                         <Text
                           style={{
-                            fontSize: 13,
+                            fontSize: 12.5,
                             fontWeight: active ? '900' : '700',
                             color: active ? palette.indigo : palette.inkMuted,
                           }}
@@ -597,155 +868,504 @@ export default function ProfileScreen() {
                       </Pressable>
                     );
                   })}
-                </View>
+                </ScrollView>
               </View>
             </Card>
           </SmoothReveal>
 
           {message ? (
             <Card style={{ marginTop: spacing.sm, padding: spacing.sm, borderColor: palette.indigo }}>
-              <Text style={[typography.caption, { color: palette.indigo, fontWeight: '800', textAlign: 'center' }]}>
+              <Text
+                style={[
+                  typography.caption,
+                  { color: palette.indigo, fontWeight: '800', textAlign: 'center' },
+                ]}
+              >
                 {message}
               </Text>
             </Card>
           ) : null}
 
-          {/* ── TAB 1: FACEBOOK TIMELINE ── */}
+          {/* ── TAB 1: THREADS TIMELINE & PINNED POSTS ── */}
           {activeTab === 'timeline' && (
             <View style={{ marginTop: spacing.md, gap: spacing.sm }}>
-              <Card style={{ gap: 6 }}>
-                <Text style={[typography.title, { color: palette.ink, fontSize: 16 }]}>Chi tiết học thuật</Text>
-                <View style={styles.introLine}>
-                  <Ionicons name="flame" size={17} color="#F59E0B" />
-                  <Text style={[typography.caption, { color: palette.ink, flexShrink: 1 }]}>
-                    Chuỗi học tập riêng của tài khoản: <Text style={{ fontWeight: '800' }}>{currentStreak} ngày</Text> (Kỷ lục {longestStreak} ngày)
+              {myAuthoredPosts.length === 0 ? (
+                <Card style={{ alignItems: 'center', gap: 10, paddingVertical: spacing.xl }}>
+                  <Ionicons name="sparkles-outline" size={32} color={palette.indigo} />
+                  <Text style={[typography.title, { color: palette.ink }]}>
+                    Chưa có bài viết trên Dòng thời gian
                   </Text>
-                  {!todayCompleted && (
-                    <Pressable
-                      onPress={() => {
-                        const r = checkInToday();
-                        if (r.streakUpdated) {
-                          addBonusXp(50);
-                          sfx.playLevelUp();
-                          setMessage(`🔥 Điểm danh thành công (+50 XP)! Chuỗi đạt ${r.newStreak} ngày.`);
-                        }
-                      }}
-                      style={[styles.inlineCheckInBtn, { backgroundColor: '#F59E0B' }]}
-                    >
-                      <Text style={{ fontSize: 11, fontWeight: '900', color: '#0F172A' }}>Điểm danh</Text>
-                    </Pressable>
-                  )}
-                </View>
-                <View style={styles.introLine}>
-                  <Ionicons name="trophy-outline" size={17} color={palette.indigo} />
-                  <Text style={[typography.caption, { color: palette.ink, flexShrink: 1 }]}>
-                    Hạng Đấu Trường: <Text style={{ fontWeight: '800' }}>{eloTier.labelVi} ({eloRating} ELO)</Text> · Tỉ lệ thắng {winRate}
+                  <Text
+                    style={[typography.caption, { color: palette.inkMuted, textAlign: 'center' }]}
+                  >
+                    Chia sẻ kiến thức, tạo chuỗi Thread nhiều phần, đính kèm Video/Ảnh hoặc tạo Bình chọn Zalo ngay!
                   </Text>
-                </View>
-                {(university || major) && (
-                  <View style={styles.introLine}>
-                    <Ionicons name="school-outline" size={17} color={palette.mint} />
-                    <Text style={[typography.caption, { color: palette.ink, flexShrink: 1 }]}>
-                      Học chuyên ngành {[major, university].filter(Boolean).join(' tại ')}
-                    </Text>
-                  </View>
-                )}
-              </Card>
-
-              <Card style={{ gap: 10 }}>
-                <Text style={[typography.label, { color: palette.indigo }]}>ĐĂNG BÀI LÊN DÒNG THỜI GIAN CÁ NHÂN</Text>
-                <TextInput
-                  value={quickPostDraft}
-                  onChangeText={setQuickPostDraft}
-                  multiline
-                  placeholder={`${viewerName} ơi, bạn vừa học được điều gì tâm đắc hôm nay?`}
-                  placeholderTextColor={palette.inkMuted}
-                  style={[
-                    styles.timelineInput,
-                    { color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paper },
-                  ]}
-                />
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                  <View style={{ flex: 1, minWidth: 140 }}>
-                    <Button
-                      icon="send"
-                      disabled={!quickPostDraft.trim()}
-                      onPress={handlePublishTimelinePost}
-                      fullWidth
-                    >
-                      Đăng bài (+30 XP)
-                    </Button>
-                  </View>
-                  <Button variant="secondary" icon="layers-outline" onPress={() => router.push('/community')}>
-                    Soạn Chuỗi Thread Mẫu
-                  </Button>
-                </View>
-              </Card>
-
-              <Text style={[typography.title, { color: palette.ink, marginTop: spacing.xs }]}>
-                Bài viết của bạn & Bài đã lưu ({myPosts.length})
-              </Text>
-              {myPosts.length === 0 ? (
-                <Card style={{ alignItems: 'center', paddingVertical: spacing.xl }}>
-                  <Ionicons name="newspaper-outline" size={32} color={palette.inkMuted} />
-                  <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 6 }]}>
-                    Bạn chưa đăng bài viết nào. Hãy viết suy nghĩ đầu tiên ở ô phía trên nhé!
-                  </Text>
+                  <Button onPress={() => setThreadComposerOpen(true)}>+ Tạo chuỗi Thread đầu tiên</Button>
                 </Card>
               ) : (
-                myPosts.map((p) => (
-                  <ThreadPostCard
-                    key={p.id}
-                    post={p}
-                    viewerId={viewerId}
-                    isFollowing={followingAuthorIds.includes(p.authorId)}
-                    onToggleFollow={toggleFollowAuthor}
-                    onReact={(pid, key) => togglePostReaction(pid, key, viewerId)}
-                    onVotePoll={(pid, oid) => votePostPoll(pid, oid, viewerId)}
-                    onToggleBookmark={(pid) => toggleBookmarkPost(pid, viewerId)}
-                    onToggleRepost={(pid) => toggleRepost(pid, viewerId)}
-                    onComment={(pid, txt) =>
-                      addComment(pid, { id: viewerId, name: viewerName, avatar: user?.avatarUrl ?? null }, txt)
-                    }
-                    onOpenQuiz={(setId) => router.push({ pathname: '/study/[setId]', params: { setId } })}
-                  />
-                ))
+                myAuthoredPosts.map((rawPost) => {
+                  const safePost = projectSafePostForViewer(rawPost, viewerId, false);
+                  return (
+                    <MetaThreadsPostCard
+                      key={rawPost.id}
+                      post={safePost}
+                      viewerId={viewerId}
+                      viewerName={viewerName}
+                      viewerAvatar={viewerAvatar}
+                      isSavedBookmark={Boolean(mySlice?.bookmarkedPostIds.includes(rawPost.id))}
+                      isFavourited={Boolean(mySlice?.favouritePostIds.includes(rawPost.id))}
+                      isFollowingAuthor={false}
+                      profilesById={profilesById}
+                      graph={graph}
+                      collections={(mySlice?.collections ?? []).map((c) => ({
+                        id: c.id,
+                        name: c.name,
+                        coverEmoji: c.coverEmoji,
+                      }))}
+                      conversations={conversations.map((c) => ({
+                        id: c.id,
+                        title: c.title,
+                        kind: c.kind,
+                      }))}
+                      communities={communities.map((c) => ({ id: c.id, name: c.name }))}
+                      onToggleFollow={(tid) => toggleFollowUser(viewerId, tid)}
+                      onReactPost={(pid, r) => togglePostEmojiReaction(pid, r, viewerId)}
+                      onTogglePureRepost={(pid) => togglePureRepost(pid, viewerId)}
+                      onOpenQuoteComposer={(target) => {
+                        setQuotedPost(target);
+                        setThreadComposerOpen(true);
+                      }}
+                      onToggleBookmark={(pid, colId) => toggleSaveBookmark(viewerId, pid, colId)}
+                      onToggleFavourite={(pid) => toggleFavouritePost(viewerId, pid)}
+                      onTogglePin={(pid, sc) => togglePinPost(pid, sc)}
+                      onEditPost={(pid, parts, lf) => editSocialPost(pid, viewerId, parts, lf)}
+                      onDeleteOrArchive={(pid, mode) => deleteOrArchivePost(pid, viewerId, mode)}
+                      onSummarizeAi={(pid) => summarizePostWithAi(pid)}
+                      onVotePoll={(pid, oid) => voteUnifiedPoll('post', pid, oid, viewerId)}
+                      onAddPollOption={(pid, txt) =>
+                        addUnifiedPollOption('post', pid, txt, { id: viewerId, name: viewerName })
+                      }
+                      onToggleClosePoll={(pid) => toggleCloseUnifiedPoll('post', pid, viewerId)}
+                      onVoteDebate={(pid, side) => voteDebateSide(pid, side, viewerId)}
+                      onAddDebateArgument={(pid, side, content) =>
+                        addDebateArgument(
+                          pid,
+                          side,
+                          { id: viewerId, name: viewerName, avatar: viewerAvatar },
+                          content
+                        )
+                      }
+                      onAddReply={(input) =>
+                        addThreadedReply({
+                          ...input,
+                          authorId: viewerId,
+                          authorName: viewerName,
+                          authorAvatar: viewerAvatar,
+                        })
+                      }
+                      onEditOrDeleteComment={(pid, cid, nextTxt) =>
+                        editOrDeleteComment(pid, cid, viewerId, nextTxt)
+                      }
+                      onReactComment={(pid, cid, r) =>
+                        toggleCommentReaction(pid, cid, r, viewerId)
+                      }
+                      onPinComment={(pid, cid) => togglePinComment(pid, cid)}
+                      onShareToTarget={(p, dest, note) =>
+                        sharePostToDestination(
+                          p,
+                          { id: viewerId, name: viewerName, avatar: viewerAvatar },
+                          dest,
+                          note
+                        )
+                      }
+                      onAlgoFeedback={() => undefined}
+                      onBlockOrMuteAuthor={(aid, kind) => toggleUserRelation(viewerId, aid, kind)}
+                      onReportTarget={(tType, tid, prev, oid) =>
+                        submitModerationReport({
+                          reporterId: viewerId,
+                          reporterName: viewerName,
+                          targetType: tType,
+                          targetId: tid,
+                          targetPreview: prev,
+                          targetOwnerId: oid,
+                          reason: 'Báo cáo nội dung',
+                          details: '',
+                        })
+                      }
+                    />
+                  );
+                })
               )}
             </View>
           )}
 
-          {/* ── TAB 2: ABOUT, LEVEL SYSTEM EXPLANATION, STREAK & ELO ── */}
-          {activeTab === 'about' && (
+          {/* ── TAB 2: PRIVATE SAVED BOOKMARKS, SMART COLLECTIONS & FAVOURITES ── */}
+          {activeTab === 'saved' && (
             <View style={{ marginTop: spacing.md, gap: spacing.md }}>
               <Card style={{ gap: 8 }}>
                 <Text style={[typography.label, { color: palette.indigo }]}>
-                  🎓 HỆ THỐNG CẤP BẬC HỌC GIẢ LÀ GÌ?
+                  🔖 BỘ SƯU TẬP BOOKMARK THÔNG MINH (CHỈ MÌNH BẠN XEM)
                 </Text>
-                <Text style={[typography.caption, { color: palette.ink, lineHeight: 20 }]}>
-                  Mỗi tài khoản sở hữu lộ trình tích lũy XP độc lập và đồng bộ đám mây (cứ <Text style={{ fontWeight: '800' }}>500 XP = tăng 1 Cấp</Text>):
-                </Text>
-                {[
-                  { lv: 'Cấp 1 – 2', name: '🌱 Tân Học Giả', xp: '0 – 999 XP' },
-                  { lv: 'Cấp 3 – 5', name: '📜 Học Giả Tinh Thông', xp: '1.000 – 2.499 XP' },
-                  { lv: 'Cấp 6 – 9', name: '⚔️ Hiệp Sĩ Tri Thức', xp: '2.500 – 4.499 XP' },
-                  { lv: 'Cấp 10 – 14', name: '🔮 Pháp Sư Hàn Lâm', xp: '4.500 – 6.999 XP' },
-                  { lv: 'Cấp 15 – 24', name: '👑 Đại Học Sĩ Hoàng Gia', xp: '7.000 – 11.999 XP' },
-                  { lv: 'Cấp 25+', name: '🌟 Huyền Thoại Papyrus', xp: 'Từ 12.000 XP trở lên' },
-                ].map((row) => (
-                  <View
-                    key={row.lv}
-                    style={[styles.rankLadderRow, { backgroundColor: palette.paper, borderColor: palette.paperMuted }]}
-                  >
-                    <Text style={{ fontSize: 12, fontWeight: '800', color: palette.indigo, width: 88 }}>{row.lv}</Text>
-                    <Text style={{ fontSize: 12.5, fontWeight: '700', color: palette.ink, flex: 1 }}>{row.name}</Text>
-                    <Text style={{ fontSize: 11, color: palette.inkMuted }}>{row.xp}</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  {(mySlice?.collections ?? []).map((col) => (
+                    <View
+                      key={col.id}
+                      style={[
+                        styles.catEloChip,
+                        { backgroundColor: palette.paper, borderColor: palette.paperMuted, borderWidth: 1 },
+                      ]}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: '800', color: palette.ink }}>
+                        {col.coverEmoji} {col.name}
+                      </Text>
+                      <Badge tone="primary">{col.postIds.length} bài</Badge>
+                    </View>
+                  ))}
+                </View>
+              </Card>
+
+              {myBookmarkedPosts.map((bp) => (
+                <Pressable
+                  key={bp.id}
+                  onPress={() => router.push({ pathname: '/post/[postId]', params: { postId: bp.id } })}
+                  style={[
+                    styles.friendRow,
+                    { backgroundColor: palette.paper, borderColor: palette.paperMuted },
+                  ]}
+                >
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ fontSize: 13.5, fontWeight: '800', color: palette.ink }}>
+                      {bp.authorName}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: palette.inkMuted }} numberOfLines={2}>
+                      {bp.threadParts[0]}
+                    </Text>
                   </View>
-                ))}
+                  <Ionicons name="open-outline" size={20} color={palette.indigo} />
+                </Pressable>
+              ))}
+            </View>
+          )}
+
+          {/* ── TAB 3: GIFTED ADMIN DOCUMENTS & VAULT (SECTION 14.8) ── */}
+          {activeTab === 'vault' && (
+            <View style={{ marginTop: spacing.md, gap: spacing.md }}>
+              <Card style={{ gap: 10 }}>
+                <Text style={[typography.label, { color: palette.indigo }]}>
+                  📑 KHO TÀI LIỆU & GIÁO TRÌNH ĐƯỢC ADMIN TRAO TẶNG ({myAccessibleAdminDocs.length})
+                </Text>
+                {myAccessibleAdminDocs.length === 0 ? (
+                  <Text style={[typography.caption, { color: palette.inkMuted }]}>
+                    Chưa có tài liệu chuyên ngành nào được gửi tặng riêng cho bạn.
+                  </Text>
+                ) : (
+                  myAccessibleAdminDocs.map((doc) => (
+                    <View
+                      key={doc.id}
+                      style={[
+                        styles.friendRow,
+                        {
+                          backgroundColor: palette.paper,
+                          borderColor: palette.indigoBorder,
+                          flexWrap: 'wrap',
+                        },
+                      ]}
+                    >
+                      <View style={{ flex: 1, minWidth: 200 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <Badge tone="primary">{doc.fileFormat.toUpperCase()}</Badge>
+                          <Badge tone="neutral">{doc.category}</Badge>
+                        </View>
+                        <Text style={{ fontSize: 14, fontWeight: '900', color: palette.ink, marginTop: 4 }}>
+                          {doc.title}
+                        </Text>
+                        <Text style={{ fontSize: 12, color: palette.inkMuted, marginTop: 2 }}>
+                          {doc.description}
+                        </Text>
+                        {doc.expiresAt ? (
+                          <Text style={{ fontSize: 11, color: palette.gold, marginTop: 2 }}>
+                            ⏳ Hạn truy cập: {new Date(doc.expiresAt).toLocaleDateString('vi-VN')}
+                          </Text>
+                        ) : null}
+                      </View>
+                      <View style={{ flexDirection: 'row', gap: 6 }}>
+                        <Button size="sm" onPress={() => setReadingAdminDoc(doc)}>
+                          Đọc tài liệu
+                        </Button>
+                        {doc.allowDownload ? (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onPress={() => handleDownloadAdminDocument(doc)}
+                          >
+                            Tải về
+                          </Button>
+                        ) : null}
+                      </View>
+                    </View>
+                  ))
+                )}
+              </Card>
+
+              <Card style={{ gap: 8 }}>
+                <Text style={[typography.label, { color: palette.gold }]}>
+                  🎁 HỘP QUÀ BỘ ĐỀ & ĐẶC QUYỀN TỪ ADMIN ({myGifts.length})
+                </Text>
+                {myGifts.length === 0 ? (
+                  <Text style={[typography.caption, { color: palette.inkMuted }]}>
+                    {user
+                      ? 'Chưa có quà tặng mới nào gửi tới tài khoản của bạn.'
+                      : 'Đăng nhập để nhận quà tặng và học liệu từ Admin.'}
+                  </Text>
+                ) : (
+                  myGifts.map((gift) => {
+                    const isClaimed = gift.claimedByIds.includes(viewerId);
+                    return (
+                      <View
+                        key={gift.id}
+                        style={[
+                          styles.friendRow,
+                          { backgroundColor: palette.paper, borderColor: palette.paperMuted },
+                        ]}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text style={[typography.body, { color: palette.ink, fontWeight: '800' }]}>
+                            {gift.title}
+                          </Text>
+                          {!!gift.message && (
+                            <Text style={[typography.caption, { color: palette.inkMuted }]}>
+                              {gift.message}
+                            </Text>
+                          )}
+                        </View>
+                        {isClaimed ? (
+                          <Badge tone="success">✓ Đã nhận</Badge>
+                        ) : (
+                          <Button variant="reward" onPress={() => void handleClaimGift(gift)}>
+                            Nhận ngay
+                          </Button>
+                        )}
+                      </View>
+                    );
+                  })
+                )}
+              </Card>
+            </View>
+          )}
+
+          {/* ── TAB 4: CREATOR INSIGHTS DASHBOARD & MODERATION APPEALS (SECTIONS 12 & 13) ── */}
+          {activeTab === 'insights' && (
+            <View style={{ marginTop: spacing.md, gap: spacing.md }}>
+              <Card style={{ gap: 10 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={[typography.title, { color: palette.ink }]}>
+                    📈 Creator Insights & Hiệu Suất Nội Dung
+                  </Text>
+                  <View style={{ flexDirection: 'row', gap: 6 }}>
+                    {(['7d', '30d'] as const).map((p) => (
+                      <Pressable
+                        key={p}
+                        onPress={() => setInsightsPeriod(p)}
+                        style={[
+                          styles.editMiniBtn,
+                          {
+                            backgroundColor:
+                              insightsPeriod === p ? palette.indigo : palette.paperRaised,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 11.5,
+                            fontWeight: '800',
+                            color: insightsPeriod === p ? '#FFF' : palette.ink,
+                          }}
+                        >
+                          {p === '7d' ? '7 ngày' : '30 ngày'}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+
+                <View style={styles.catEloGrid}>
+                  <View style={[styles.catEloChip, { backgroundColor: palette.paper }]}>
+                    <Text style={{ fontSize: 12, color: palette.inkMuted }}>Lượt hiển thị</Text>
+                    <Text style={{ fontSize: 16, fontWeight: '900', color: palette.indigo }}>
+                      {creatorStats.totalImpressions}
+                    </Text>
+                  </View>
+                  <View style={[styles.catEloChip, { backgroundColor: palette.paper }]}>
+                    <Text style={{ fontSize: 12, color: palette.inkMuted }}>Lượt đọc chi tiết</Text>
+                    <Text style={{ fontSize: 16, fontWeight: '900', color: palette.mint }}>
+                      {creatorStats.totalViews}
+                    </Text>
+                  </View>
+                  <View style={[styles.catEloChip, { backgroundColor: palette.paper }]}>
+                    <Text style={{ fontSize: 12, color: palette.inkMuted }}>Tỷ lệ tương tác</Text>
+                    <Text style={{ fontSize: 16, fontWeight: '900', color: palette.gold }}>
+                      {creatorStats.engagementRate}%
+                    </Text>
+                  </View>
+                  <View style={[styles.catEloChip, { backgroundColor: palette.paper }]}>
+                    <Text style={{ fontSize: 12, color: palette.inkMuted }}>Ghế thăm Hồ sơ</Text>
+                    <Text style={{ fontSize: 16, fontWeight: '900', color: palette.ink }}>
+                      {creatorStats.profileViews}
+                    </Text>
+                  </View>
+                </View>
+              </Card>
+
+              {/* Moderation Status & User Appeal Submission (Section 13.4) */}
+              <Card style={{ gap: 8 }}>
+                <Text style={[typography.title, { color: palette.ink }]}>
+                  🛡️ Trạng Thái Kiểm Duyệt & Khiếu Nại (Appeals)
+                </Text>
+                {myModerationCases.length === 0 ? (
+                  <Text style={[typography.caption, { color: palette.mint, fontWeight: '700' }]}>
+                    ✓ Tài khoản của bạn tuân thủ tốt Tiêu chuẩn Cộng đồng — không có vi phạm nào.
+                  </Text>
+                ) : (
+                  myModerationCases.map((mc) => (
+                    <View
+                      key={mc.id}
+                      style={[
+                        styles.friendRow,
+                        {
+                          backgroundColor: palette.paper,
+                          borderColor: palette.paperMuted,
+                          flexDirection: 'column',
+                          alignItems: 'stretch',
+                        },
+                      ]}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: '800', color: palette.ink }}>
+                        Trạng thái: {mc.workflowStatus} · Lý do: {mc.reason}
+                      </Text>
+                      <Text style={{ fontSize: 12, color: palette.inkMuted }}>{mc.targetPreview}</Text>
+                      {mc.workflowStatus === 'action_applied' ? (
+                        <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
+                          <TextInput
+                            value={appealDrafts[mc.id] ?? ''}
+                            onChangeText={(txt) =>
+                              setAppealDrafts((prev) => ({ ...prev, [mc.id]: txt }))
+                            }
+                            placeholder="Nhập lý do khiếu nại xem xét lại..."
+                            placeholderTextColor={palette.inkMuted}
+                            style={[
+                              styles.input,
+                              { flex: 1, minHeight: 38, backgroundColor: palette.paperRaised, color: palette.ink, borderColor: palette.paperMuted },
+                            ]}
+                          />
+                          <Button
+                            size="sm"
+                            onPress={() => {
+                              const reason = (appealDrafts[mc.id] ?? '').trim();
+                              if (!reason) return;
+                              submitUserAppeal(mc.id, viewerId, reason);
+                              setMessage('📨 Đã gửi đơn khiếu nại tới Hội đồng Kiểm duyệt!');
+                            }}
+                          >
+                            Gửi khiếu nại
+                          </Button>
+                        </View>
+                      ) : null}
+                    </View>
+                  ))
+                )}
+              </Card>
+            </View>
+          )}
+
+          {/* ── TAB 5: FOLLOW REQUESTS (PRIVATE ACCOUNT) & FRIENDS DISCOVERY ── */}
+          {activeTab === 'friends' && (
+            <View style={{ marginTop: spacing.md, gap: spacing.md }}>
+              {pendingFollowRequestsToMe.length > 0 ? (
+                <Card style={{ gap: 8 }}>
+                  <Text style={[typography.label, { color: palette.indigo }]}>
+                    🔒 YÊU CẦU THEO DÕI HỒ SƠ RIÊNG TƯ ({pendingFollowRequestsToMe.length})
+                  </Text>
+                  {pendingFollowRequestsToMe.map((req) => {
+                    const followerProf = profilesById[req.followerId];
+                    return (
+                      <View
+                        key={req.followerId}
+                        style={[
+                          styles.friendRow,
+                          { backgroundColor: palette.paper, borderColor: palette.paperMuted },
+                        ]}
+                      >
+                        <Text style={{ fontSize: 13.5, fontWeight: '800', color: palette.ink, flex: 1 }}>
+                          {followerProf?.displayName || 'Thành viên Papyrus'}
+                        </Text>
+                        <Button
+                          size="sm"
+                          onPress={() => respondFollowRequest(viewerId, req.followerId, true)}
+                        >
+                          Chấp nhận
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onPress={() => respondFollowRequest(viewerId, req.followerId, false)}
+                        >
+                          Từ chối
+                        </Button>
+                      </View>
+                    );
+                  })}
+                </Card>
+              ) : null}
+
+              <FriendsDiscoveryHub
+                onOpenDirectChat={(scholar) =>
+                  router.push({
+                    pathname: '/messages',
+                    params: { peerId: scholar.id, peerName: scholar.name },
+                  })
+                }
+              />
+            </View>
+          )}
+
+          {/* ── TAB 6: SCHOLAR RANK, STREAK & CATEGORY ELO ── */}
+          {activeTab === 'about' && (
+            <View style={{ marginTop: spacing.md, gap: spacing.md }}>
+              <Card style={{ gap: 8 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: palette.indigo }}>
+                    {rankInfo.badge} Cấp {rankInfo.level} ({rankInfo.titleVi}) → Cấp {rankInfo.level + 1}
+                  </Text>
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: palette.inkMuted }}>
+                    {rankInfo.currentLevelXp} / {XP_PER_SCHOLAR_LEVEL} XP (Tổng {totalScore.toLocaleString('vi-VN')} XP)
+                  </Text>
+                </View>
+                <ProgressBar progress={rankInfo.progress} tone="primary" />
+                {!todayCompleted ? (
+                  <Button
+                    variant="reward"
+                    icon="flame"
+                    onPress={() => {
+                      const r = checkInToday();
+                      if (r.streakUpdated) {
+                        addBonusXp(50);
+                        sfx.playLevelUp();
+                        setMessage(`🔥 Điểm danh thành công (+50 XP)! Chuỗi đạt ${r.newStreak} ngày.`);
+                      }
+                    }}
+                  >
+                    Điểm danh giữ chuỗi hôm nay ({currentStreak} ngày · Kỷ lục {longestStreak} ngày)
+                  </Button>
+                ) : (
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: palette.mint }}>
+                    ✓ Đã hoàn thành điểm danh hôm nay · Chuỗi {currentStreak} ngày!
+                  </Text>
+                )}
               </Card>
 
               <Card>
                 <Text style={[typography.label, { color: palette.gold }]}>
-                  🔥 LỊCH SỬ ĐIỂM DANH 7 NGÀY GẦN NHẤT (RIÊNG TÀI KHOẢN NÀY)
+                  🔥 LỊCH SỬ ĐIỂM DANH 7 NGÀY GẦN NHẤT
                 </Text>
                 <View style={styles.weekRow}>
                   {last7Days.map((d) => (
@@ -759,7 +1379,13 @@ export default function ProfileScreen() {
                           },
                         ]}
                       />
-                      <Text style={{ fontSize: 10.5, fontWeight: '700', color: d.isToday ? palette.indigo : palette.inkMuted }}>
+                      <Text
+                        style={{
+                          fontSize: 10.5,
+                          fontWeight: '700',
+                          color: d.isToday ? palette.indigo : palette.inkMuted,
+                        }}
+                      >
                         {d.label}
                       </Text>
                     </View>
@@ -769,7 +1395,7 @@ export default function ProfileScreen() {
 
               <Card>
                 <Text style={[typography.label, { color: palette.indigo, marginBottom: spacing.sm }]}>
-                  ⚔️ ELO ĐỐI KHÁNG 1V1 THEO CHUYÊN NGÀNH (ĐỈNH {eloPeak} ELO · KỶ LỤC {bestScore} ĐIỂM)
+                  ⚔️ ELO ĐỐI KHÁNG 1V1 ({eloTier.labelVi} · ĐỈNH {eloPeak} ELO · KỶ LỤC {bestScore}Đ · THẮNG {winRate})
                 </Text>
                 <View style={styles.catEloGrid}>
                   {DUEL_CATEGORIES.map((cat) => (
@@ -787,78 +1413,6 @@ export default function ProfileScreen() {
             </View>
           )}
 
-          {/* ── TAB 3: SOCIAL NETWORK FRIENDS DISCOVERY & DIRECT MESSENGER ── */}
-          {activeTab === 'friends' && (
-            <View style={{ marginTop: spacing.md }}>
-              <FriendsDiscoveryHub />
-            </View>
-          )}
-
-          {/* ── TAB 4: ADMIN GIFTS & USER QUESTION SETS ── */}
-          {activeTab === 'vault' && (
-            <View style={{ marginTop: spacing.md, gap: spacing.md }}>
-              <Card style={{ gap: 8 }}>
-                <Text style={[typography.label, { color: palette.gold }]}>
-                  🎁 HỘP QUÀ & HỌC LIỆU TỪ QUẢN TRỊ VIÊN ({myGifts.length})
-                </Text>
-                {myGifts.length === 0 ? (
-                  <Text style={[typography.caption, { color: palette.inkMuted }]}>
-                    {user
-                      ? 'Chưa có quà tặng mới nào gửi tới tài khoản của bạn.'
-                      : 'Đăng nhập để nhận quà tặng và học liệu từ Admin.'}
-                  </Text>
-                ) : (
-                  myGifts.map((gift) => {
-                    const isClaimed = gift.claimedByIds.includes(viewerId);
-                    return (
-                      <View
-                        key={gift.id}
-                        style={[styles.friendRow, { backgroundColor: palette.paper, borderColor: palette.paperMuted }]}
-                      >
-                        <View style={{ flex: 1 }}>
-                          <Text style={[typography.body, { color: palette.ink, fontWeight: '800' }]}>{gift.title}</Text>
-                          {!!gift.message && (
-                            <Text style={[typography.caption, { color: palette.inkMuted }]}>{gift.message}</Text>
-                          )}
-                        </View>
-                        {isClaimed ? (
-                          <Badge tone="success">✓ Đã nhận</Badge>
-                        ) : (
-                          <Button variant="reward" onPress={() => void handleClaimGift(gift)}>
-                            Nhận ngay
-                          </Button>
-                        )}
-                      </View>
-                    );
-                  })
-                )}
-              </Card>
-
-              <Card style={{ gap: 8 }}>
-                <Text style={[typography.label, { color: palette.indigo }]}>
-                  📚 KHO BỘ ĐỀ HỌC TẬP ({questionSets.length})
-                </Text>
-                {questionSets.slice(0, 6).map((s) => (
-                  <Pressable
-                    key={s.id}
-                    onPress={() => router.push({ pathname: '/study/[setId]', params: { setId: s.id } })}
-                    style={[styles.friendRow, { backgroundColor: palette.paper, borderColor: palette.paperMuted }]}
-                  >
-                    <View style={{ flex: 1 }}>
-                      <Text style={[typography.caption, { color: palette.ink, fontWeight: '800' }]} numberOfLines={1}>
-                        {s.title}
-                      </Text>
-                      <Text style={{ fontSize: 11, color: palette.inkMuted }}>
-                        {s.subject} · {s.questions.length} câu hỏi
-                      </Text>
-                    </View>
-                    <Ionicons name="play-circle" size={24} color={palette.indigo} />
-                  </Pressable>
-                ))}
-              </Card>
-            </View>
-          )}
-
           {!user && (
             <View style={{ marginTop: spacing.lg }}>
               <Button icon="log-in-outline" onPress={() => router.push('/auth')} fullWidth>
@@ -871,143 +1425,130 @@ export default function ProfileScreen() {
         </View>
       </ScrollView>
 
-      {/* ── FULL EDIT PROFILE MODAL (INCLUDES AVATAR + COVER PHOTO + PERSONAL DETAILS!) ── */}
-      <Modal visible={editModalOpen} transparent animationType="fade" onRequestClose={() => setEditModalOpen(false)}>
+      {/* ── EDIT PROFILE & PRIVACY SETTINGS MODAL ── */}
+      <Modal
+        visible={editModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEditModalOpen(false)}
+      >
         <View style={styles.modalBackdrop}>
-          <Card style={{ width: '100%', maxWidth: 480, maxHeight: '90%', gap: 12, backgroundColor: palette.paper }}>
+          <Card
+            style={{
+              width: '100%',
+              maxWidth: 480,
+              maxHeight: '90%',
+              gap: 12,
+              backgroundColor: palette.paper,
+            }}
+          >
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text style={[typography.title, { color: palette.ink }]}>✏️ Chỉnh sửa Trang Cá Nhân</Text>
+              <Text style={[typography.title, { color: palette.ink }]}>
+                ✏️ Chỉnh Sửa Hồ Sơ & Quyền Riêng Tư
+              </Text>
               <Pressable onPress={() => setEditModalOpen(false)} hitSlop={8}>
                 <Ionicons name="close" size={22} color={palette.inkMuted} />
               </Pressable>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
-              {/* 1. Edit Cover Photo right inside Edit Profile */}
-              <View style={{ gap: 6 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Text style={[typography.label, { color: palette.indigo }]}>🖼️ ẢNH BÌA TRANG CÁ NHÂN</Text>
-                  <Pressable
-                    disabled={coverBusy}
-                    onPress={() => void handlePickCoverPhoto()}
-                    style={[styles.editMiniBtn, { backgroundColor: palette.indigoTint }]}
-                  >
-                    <Ionicons name="image-outline" size={14} color={palette.indigo} />
-                    <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.indigo }}>
-                      {coverBusy ? 'Đang tải…' : 'Tải ảnh bìa từ máy'}
-                    </Text>
-                  </Pressable>
-                </View>
-
-                <View
-                  style={[
-                    styles.editCoverPreview,
-                    Platform.OS === 'web' && !customCoverUrl
-                      ? ({
-                          backgroundImage: `linear-gradient(135deg, ${activeCoverPreset.c1} 0%, ${activeCoverPreset.c2} 100%)`,
-                        } as object)
-                      : { backgroundColor: activeCoverPreset.c1 },
-                  ]}
-                >
-                  {customCoverUrl ? (
-                    <Image source={{ uri: customCoverUrl }} style={StyleSheet.absoluteFill} resizeMode="cover" />
-                  ) : null}
-                  <View style={styles.editCoverPresetBar}>
-                    {COVER_PRESETS.map((cp) => (
-                      <Pressable
-                        key={cp.id}
-                        onPress={() => void persistCoverSelection(null, cp.id)}
-                        style={[
-                          styles.coverPresetPill,
-                          {
-                            backgroundColor: cp.c2,
-                            borderColor: coverPresetId === cp.id && !customCoverUrl ? '#FFFFFF' : 'transparent',
-                          },
-                        ]}
-                      >
-                        <Text style={{ color: '#FFFFFF', fontSize: 10.5, fontWeight: '800' }}>{cp.label}</Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                </View>
-              </View>
-
-              {/* 2. Edit Avatar Photo right inside Edit Profile */}
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
               {user && (
-                <View style={{ gap: 8 }}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Text style={[typography.label, { color: palette.indigo }]}>👤 ẢNH ĐẠI DIỆN</Text>
-                    <Pressable
-                      disabled={avatarBusy}
-                      onPress={() => void handlePickPhotoAvatar()}
-                      style={[styles.editMiniBtn, { backgroundColor: palette.indigoTint }]}
-                    >
-                      <Ionicons name="camera-outline" size={14} color={palette.indigo} />
-                      <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.indigo }}>
-                        {avatarBusy ? 'Đang tải…' : 'Tải ảnh đại diện'}
-                      </Text>
-                    </Pressable>
-                  </View>
-
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                    {user.avatarUrl ? (
-                      <Image source={{ uri: user.avatarUrl }} style={styles.editAvatarPreview} />
-                    ) : (
-                      <View style={[styles.editAvatarPreview, { backgroundColor: palette.indigo, alignItems: 'center', justifyContent: 'center' }]}>
-                        <Text style={{ color: '#FFFFFF', fontSize: 20, fontWeight: '900' }}>{initials}</Text>
-                      </View>
-                    )}
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-                      {AVATAR_PRESETS.map((preset) => (
-                        <Pressable
-                          key={preset.id}
-                          disabled={avatarBusy}
-                          onPress={() => void handleSelectPresetAvatar(preset.bg)}
-                          style={[styles.avatarMiniSwatch, { backgroundColor: preset.bg }]}
-                        >
-                          <Ionicons name={preset.icon} size={16} color={preset.fg} />
-                        </Pressable>
-                      ))}
-                    </ScrollView>
-                  </View>
-                </View>
+                <TextInput
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="Tên hiển thị chính thức (đồng bộ toàn hệ thống)..."
+                  placeholderTextColor={palette.inkMuted}
+                  style={[
+                    styles.input,
+                    { color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paperRaised },
+                  ]}
+                />
               )}
+              <TextInput
+                value={university}
+                onChangeText={setUniversity}
+                placeholder="Trường Đại học / Học viện..."
+                placeholderTextColor={palette.inkMuted}
+                style={[
+                  styles.input,
+                  { color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paperRaised },
+                ]}
+              />
+              <TextInput
+                value={major}
+                onChangeText={setMajor}
+                placeholder="Chuyên ngành..."
+                placeholderTextColor={palette.inkMuted}
+                style={[
+                  styles.input,
+                  { color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paperRaised },
+                ]}
+              />
+              <TextInput
+                value={locationArea}
+                onChangeText={setLocationArea}
+                placeholder="Khu vực / Thành phố (vd: TP. Hồ Chí Minh, Hà Nội)..."
+                placeholderTextColor={palette.inkMuted}
+                style={[
+                  styles.input,
+                  { color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paperRaised },
+                ]}
+              />
+              <TextInput
+                value={interestsText}
+                onChangeText={setInterestsText}
+                placeholder="Chủ đề quan tâm (vd: CNTT, AI, ToánLýHóa, VănSử)..."
+                placeholderTextColor={palette.inkMuted}
+                style={[
+                  styles.input,
+                  { color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paperRaised },
+                ]}
+              />
+              <TextInput
+                value={bio}
+                onChangeText={setBio}
+                multiline
+                placeholder="Tiểu sử giới thiệu..."
+                placeholderTextColor={palette.inkMuted}
+                style={[
+                  styles.input,
+                  {
+                    minHeight: 70,
+                    color: palette.ink,
+                    borderColor: palette.paperMuted,
+                    backgroundColor: palette.paperRaised,
+                  },
+                ]}
+              />
 
-              {/* 3. Personal Details Inputs */}
-              <View style={{ gap: 8 }}>
-                <Text style={[typography.label, { color: palette.indigo }]}>📝 THÔNG TIN GIỚI THIỆU</Text>
-                {user && (
-                  <TextInput
-                    value={name}
-                    onChangeText={setName}
-                    placeholder="Tên hiển thị..."
-                    placeholderTextColor={palette.inkMuted}
-                    style={[styles.input, { color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paperRaised }]}
-                  />
-                )}
-                <TextInput
-                  value={university}
-                  onChangeText={setUniversity}
-                  placeholder="Trường Đại học / Học viện..."
-                  placeholderTextColor={palette.inkMuted}
-                  style={[styles.input, { color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paperRaised }]}
+              {/* Privacy Controls */}
+              <Pressable
+                onPress={() => setIsPrivateAccount((v) => !v)}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+              >
+                <Ionicons
+                  name={isPrivateAccount ? 'checkbox' : 'square-outline'}
+                  size={20}
+                  color={palette.indigo}
                 />
-                <TextInput
-                  value={major}
-                  onChangeText={setMajor}
-                  placeholder="Chuyên ngành học tập..."
-                  placeholderTextColor={palette.inkMuted}
-                  style={[styles.input, { color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paperRaised }]}
+                <Text style={{ fontSize: 13, fontWeight: '700', color: palette.ink, flex: 1 }}>
+                  🔒 Chế độ Tài khoản Riêng tư (Duyệt người theo dõi mới)
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => setShowOnlineStatus((v) => !v)}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+              >
+                <Ionicons
+                  name={showOnlineStatus ? 'checkbox' : 'square-outline'}
+                  size={20}
+                  color={palette.indigo}
                 />
-                <TextInput
-                  value={bio}
-                  onChangeText={setBio}
-                  multiline
-                  placeholder="Tiểu sử / Châm ngôn học tập..."
-                  placeholderTextColor={palette.inkMuted}
-                  style={[styles.input, { minHeight: 70, color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paperRaised }]}
-                />
-              </View>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: palette.ink, flex: 1 }}>
+                  🟢 Hiển thị trạng thái Đang hoạt động
+                </Text>
+              </Pressable>
             </ScrollView>
 
             <Button disabled={busy} onPress={() => void saveProfileDetails()} fullWidth>
@@ -1017,8 +1558,13 @@ export default function ProfileScreen() {
         </View>
       </Modal>
 
-      {/* Quick Avatar Picker Modal (when tapping camera badge directly on Avatar) */}
-      <Modal visible={avatarModalOpen} transparent animationType="fade" onRequestClose={() => setAvatarModalOpen(false)}>
+      {/* Quick Avatar Picker Modal */}
+      <Modal
+        visible={avatarModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAvatarModalOpen(false)}
+      >
         <Pressable style={styles.modalBackdrop} onPress={() => setAvatarModalOpen(false)}>
           <Pressable style={{ width: '100%', maxWidth: 420 }} onPress={() => undefined}>
             <Card style={{ padding: spacing.lg, borderRadius: radii.lg, backgroundColor: palette.paper }}>
@@ -1037,7 +1583,10 @@ export default function ProfileScreen() {
                     key={preset.id}
                     disabled={avatarBusy}
                     onPress={() => void handleSelectPresetAvatar(preset.bg)}
-                    style={[styles.presetItem, { backgroundColor: palette.paperRaised, borderColor: palette.paperMuted }]}
+                    style={[
+                      styles.presetItem,
+                      { backgroundColor: palette.paperRaised, borderColor: palette.paperMuted },
+                    ]}
                   >
                     <View style={[styles.presetCircle, { backgroundColor: preset.bg }]}>
                       <Ionicons name={preset.icon} size={20} color={preset.fg} />
@@ -1053,13 +1602,79 @@ export default function ProfileScreen() {
         </Pressable>
       </Modal>
 
-      {/* Story Modals right on Profile */}
+      {/* Gifted Admin Document Reader Modal */}
+      {readingAdminDoc ? (
+        <Modal
+          visible
+          transparent
+          animationType="fade"
+          onRequestClose={() => setReadingAdminDoc(null)}
+        >
+          <View style={styles.modalBackdrop}>
+            <Card
+              style={{
+                width: '100%',
+                maxWidth: 580,
+                maxHeight: '88%',
+                gap: 10,
+                backgroundColor: palette.paper,
+              }}
+            >
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={[typography.title, { color: palette.ink, flex: 1 }]}>
+                  📑 {readingAdminDoc.title}
+                </Text>
+                <Pressable onPress={() => setReadingAdminDoc(null)}>
+                  <Ionicons name="close" size={22} color={palette.inkMuted} />
+                </Pressable>
+              </View>
+              <ScrollView style={{ maxHeight: 420 }}>
+                <Text style={{ fontSize: 13.5, lineHeight: 21, color: palette.ink }}>
+                  {readingAdminDoc.richContent}
+                </Text>
+              </ScrollView>
+              <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end' }}>
+                {readingAdminDoc.allowDownload ? (
+                  <Button
+                    variant="secondary"
+                    onPress={() => handleDownloadAdminDocument(readingAdminDoc)}
+                  >
+                    📥 Tải tệp về máy
+                  </Button>
+                ) : null}
+                <Button
+                  onPress={() => {
+                    usePapyrusStore.getState().saveSourceDocument({
+                      id: `adoc-src-${readingAdminDoc.id}`,
+                      title: readingAdminDoc.title,
+                      text: readingAdminDoc.richContent,
+                      createdAt: new Date().toISOString(),
+                    });
+                    setReadingAdminDoc(null);
+                    router.push('/create/generate');
+                  }}
+                >
+                  ✨ Tạo Quiz AI từ tài liệu này
+                </Button>
+              </View>
+            </Card>
+          </View>
+        </Modal>
+      ) : null}
+
       <StoryViewerModal
         story={viewingStory}
         viewerId={viewerId}
         onClose={() => setViewingStory(null)}
         onReact={(sid, emo) => reactToStory(sid, emo, viewerId)}
+        onDirectMessage={(author) =>
+          router.push({
+            pathname: '/messages',
+            params: { peerId: author.id, peerName: author.name },
+          })
+        }
       />
+
       <StoryComposerModal
         visible={storyComposerOpen}
         onClose={() => setStoryComposerOpen(false)}
@@ -1067,14 +1682,41 @@ export default function ProfileScreen() {
           addStory({
             authorId: viewerId,
             authorName: viewerName,
-            authorAvatar: user?.avatarUrl ?? null,
+            authorAvatar: viewerAvatar,
             authorLevel: rankInfo.level,
-            badgeLabel: `${rankInfo.badge} ${rankInfo.titleVi}`,
+            badgeLabel: 'Thành viên Papyrus',
             ...data,
           });
           addBonusXp(20);
           sfx.playLevelUp();
           setMessage('✨ Đã đăng Tin Story mới lên Trang Cá Nhân & Cộng đồng (+20 XP)!');
+        }}
+      />
+
+      <AdvancedThreadComposerModal
+        visible={threadComposerOpen}
+        viewerId={viewerId}
+        viewerName={viewerName}
+        savedDraft={mySlice?.draft ?? null}
+        quotedPost={quotedPost}
+        communities={communities}
+        knownUsers={Object.values(profilesById)}
+        questionSets={allSets}
+        onSaveDraft={(d) => saveComposerDraft(viewerId, d)}
+        onClose={() => {
+          setThreadComposerOpen(false);
+          setQuotedPost(null);
+        }}
+        onPublish={(payload) => {
+          createSocialPost({
+            authorId: viewerId,
+            authorName: viewerName,
+            authorAvatar: viewerAvatar,
+            ...payload,
+          });
+          addBonusXp(20);
+          setQuotedPost(null);
+          setMessage('🚀 Đã đăng chuỗi Thread mới lên Trang cá nhân & Bảng tin!');
         }}
       />
     </Screen>
@@ -1083,6 +1725,15 @@ export default function ProfileScreen() {
 
 const styles = StyleSheet.create({
   container: { paddingTop: spacing.xs, paddingBottom: spacing.xxl },
+  msgBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+  },
   fbHeaderCard: { padding: 0, overflow: 'hidden' },
   coverBanner: {
     height: 178,
@@ -1148,12 +1799,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  levelBox: {
+  socialMetricsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
     marginTop: spacing.md,
-    padding: 10,
+  },
+  metricPill: {
+    flex: 1,
+    minWidth: 100,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
     borderRadius: radii.sm,
-    borderWidth: 1,
-    gap: 6,
+    backgroundColor: 'rgba(99, 102, 241, 0.08)',
+    alignItems: 'center',
   },
   fbActionRow: {
     flexDirection: 'row',
@@ -1170,42 +1829,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   fbTabsBar: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
     marginTop: spacing.md,
     borderTopWidth: 1,
-    gap: 4,
   },
   fbTabItem: {
     paddingVertical: 10,
     paddingHorizontal: 10,
-  },
-  introLine: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  inlineCheckInBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: radii.pill,
-  },
-  timelineInput: {
-    minHeight: 74,
-    borderWidth: 1,
-    borderRadius: radii.sm,
-    padding: 10,
-    fontSize: 14,
-    textAlignVertical: 'top',
-  },
-  rankLadderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 9,
-    borderRadius: radii.sm,
-    borderWidth: 1,
-    gap: 8,
   },
   weekRow: {
     flexDirection: 'row',
@@ -1251,41 +1880,8 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: radii.pill,
   },
-  editCoverPreview: {
-    height: 108,
-    borderRadius: radii.md,
-    overflow: 'hidden',
-    justifyContent: 'flex-end',
-    padding: 8,
-    position: 'relative',
-  },
-  editCoverPresetBar: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  coverPresetPill: {
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: radii.pill,
-    borderWidth: 1.5,
-  },
-  editAvatarPreview: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    borderWidth: 2,
-    borderColor: '#818CF8',
-  },
-  avatarMiniSwatch: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   input: {
-    minHeight: 46,
+    minHeight: 44,
     borderWidth: 1,
     borderRadius: radii.sm,
     paddingHorizontal: 12,

@@ -32,7 +32,12 @@ export {
   type PickedStoryMedia,
 } from '@/features/scan-ocr/data/mediaPicker';
 export { encodeImageUriToJpegBase64 } from '@/features/scan-ocr/data/ocr';
-export { checkWebAppVersionUpdate } from '@/features/release/data/webVersionCheck';
+export {
+  acknowledgeWebBuildUpdate,
+  checkWebAppVersionUpdate,
+  markWebUpdateReloaded,
+  wasWebUpdateRecentlyReloaded,
+} from '@/features/release/data/webVersionCheck';
 export {
   broadcastAdminNotificationToCloud,
   dispatchExternalNotification,

@@ -112,11 +112,11 @@ export function searchOnlineScholars(query: string, excludeUserId?: string): Fri
   const out: FriendSearchCandidate[] = [];
   onlineScholars.forEach((s) => {
     if (s.id === excludeUserId) return;
-    const hay = `${s.displayName} ${s.emailPrefix} ${s.scholarCode} ${s.id}`.toLowerCase();
+    const hay = `${s.displayName} ${s.emailPrefix}`.toLowerCase();
     if (hay.includes(q)) {
       out.push({
         id: s.id,
-        displayName: `${s.displayName} (${s.scholarCode})`,
+        displayName: s.displayName,
         avatarUrl: s.avatarUrl,
         eloRating: s.eloRating,
         totalScore: s.totalScore,

@@ -205,25 +205,67 @@ export function Screen({
 
   const [refreshing, setRefreshing] = useState(false);
   const [pullOffset, setPullOffset] = useState(0);
+  const pullOffsetRef = useRef(0);
   const scrollYRef = useRef(0);
   const startTouchYRef = useRef<number | null>(null);
+  const idleDecayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const resetPullVisual = () => {
+    startTouchYRef.current = null;
+    pullOffsetRef.current = 0;
+    setPullOffset(0);
+    if (idleDecayTimerRef.current) {
+      clearTimeout(idleDecayTimerRef.current);
+      idleDecayTimerRef.current = null;
+    }
+  };
 
   const triggerInPlaceRefresh = async () => {
     if (refreshing) return;
+    resetPullVisual();
     setRefreshing(true);
     try {
       const uid = useAuthStore.getState().user?.id;
       useStreakStore.getState().refreshStreakStatus();
       useRouteRefreshStore.getState().bumpRouteRefresh();
-      await Promise.all([
-        usePapyrusStore.getState().hydrateCloudProfile(),
-        uid ? useNotificationStore.getState().syncCloudGifts(uid) : Promise.resolve(),
-        Promise.resolve(onPullRefresh?.()),
+      await Promise.race([
+        Promise.all([
+          usePapyrusStore.getState().hydrateCloudProfile().catch(() => undefined),
+          uid ? useNotificationStore.getState().syncCloudGifts(uid).catch(() => undefined) : Promise.resolve(),
+          Promise.resolve(onPullRefresh?.()).catch(() => undefined),
+        ]),
+        new Promise<void>((resolve) => setTimeout(resolve, 1400)),
       ]);
     } finally {
-      setTimeout(() => setRefreshing(false), 320);
+      setTimeout(() => setRefreshing(false), 220);
     }
   };
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined' || !scroll) return;
+    const handleGlobalRelease = () => {
+      const pulled = pullOffsetRef.current;
+      if (pulled > 0 || startTouchYRef.current !== null) {
+        resetPullVisual();
+        if (pulled >= 56) {
+          void triggerInPlaceRefresh();
+        }
+      }
+    };
+    window.addEventListener('touchend', handleGlobalRelease, { passive: true });
+    window.addEventListener('touchcancel', handleGlobalRelease, { passive: true });
+    window.addEventListener('pointerup', handleGlobalRelease, { passive: true });
+    window.addEventListener('pointercancel', handleGlobalRelease, { passive: true });
+    window.addEventListener('blur', handleGlobalRelease);
+    return () => {
+      window.removeEventListener('touchend', handleGlobalRelease);
+      window.removeEventListener('touchcancel', handleGlobalRelease);
+      window.removeEventListener('pointerup', handleGlobalRelease);
+      window.removeEventListener('pointercancel', handleGlobalRelease);
+      window.removeEventListener('blur', handleGlobalRelease);
+      if (idleDecayTimerRef.current) clearTimeout(idleDecayTimerRef.current);
+    };
+  }, [scroll]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const webTouchHandlers =
     Platform.OS === 'web' && scroll
@@ -232,29 +274,36 @@ export function Screen({
             if (scrollYRef.current <= 2 && e.touches?.[0]) {
               startTouchYRef.current = e.touches[0].clientY;
             } else {
-              startTouchYRef.current = null;
+              resetPullVisual();
             }
           },
           onTouchMove: (e: { touches?: Array<{ clientY: number }> }) => {
-            if (startTouchYRef.current === null || scrollYRef.current > 2 || !e.touches?.[0]) return;
+            if (startTouchYRef.current === null || scrollYRef.current > 2 || !e.touches?.[0]) {
+              if (pullOffsetRef.current > 0) resetPullVisual();
+              return;
+            }
             const dy = e.touches[0].clientY - startTouchYRef.current;
-            if (dy > 14) {
-              setPullOffset(Math.min(96, Math.round(dy * 0.55)));
-            } else {
-              setPullOffset(0);
+            if (dy > 16) {
+              const next = Math.min(88, Math.round(dy * 0.52));
+              pullOffsetRef.current = next;
+              setPullOffset(next);
+              if (idleDecayTimerRef.current) clearTimeout(idleDecayTimerRef.current);
+              idleDecayTimerRef.current = setTimeout(() => {
+                resetPullVisual();
+              }, 520);
+            } else if (pullOffsetRef.current !== 0) {
+              resetPullVisual();
             }
           },
           onTouchEnd: () => {
-            const pulled = pullOffset;
-            startTouchYRef.current = null;
-            setPullOffset(0);
+            const pulled = pullOffsetRef.current;
+            resetPullVisual();
             if (pulled >= 56) {
               void triggerInPlaceRefresh();
             }
           },
           onTouchCancel: () => {
-            startTouchYRef.current = null;
-            setPullOffset(0);
+            resetPullVisual();
           },
         } as object)
       : undefined;
@@ -295,7 +344,11 @@ export function Screen({
         <ScrollView
           {...webTouchHandlers}
           onScroll={(e) => {
-            scrollYRef.current = e.nativeEvent.contentOffset.y;
+            const y = e.nativeEvent.contentOffset.y;
+            scrollYRef.current = y;
+            if (y > 4 && pullOffsetRef.current > 0) {
+              resetPullVisual();
+            }
           }}
           refreshControl={
             <RefreshControl
@@ -346,13 +399,17 @@ export function Screen({
 
 export const TopBar = memo(function TopBar({
   title,
+  subtitle,
   onBack,
   action,
+  right,
   lightContent = false,
 }: {
   title: string;
+  subtitle?: string;
   onBack?: () => void;
   action?: ReactNode;
+  right?: ReactNode;
   lightContent?: boolean;
 }) {
   const palette = usePalette();
@@ -424,8 +481,20 @@ export const TopBar = memo(function TopBar({
         <Text style={[typography.title, { color: fg, fontWeight: '800' }]} numberOfLines={1}>
           {title}
         </Text>
+        {subtitle ? (
+          <Text
+            style={{
+              fontSize: 11,
+              color: lightContent ? 'rgba(224,231,255,0.78)' : palette.inkMuted,
+              marginTop: 1,
+            }}
+            numberOfLines={1}
+          >
+            {subtitle}
+          </Text>
+        ) : null}
       </View>
-      <View style={styles.topAction}>{action ?? <OnlineStatusDot />}</View>
+      <View style={styles.topAction}>{right ?? action ?? <OnlineStatusDot />}</View>
     </View>
   );
 });
@@ -541,6 +610,7 @@ export function Button({
   children,
   onPress,
   variant = 'primary',
+  size = 'md',
   icon,
   disabled = false,
   fullWidth = false,
@@ -549,6 +619,7 @@ export function Button({
   children: ReactNode;
   onPress?: () => void;
   variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'success' | 'reward';
+  size?: 'sm' | 'md';
   icon?: IconName;
   disabled?: boolean;
   fullWidth?: boolean;
@@ -575,6 +646,7 @@ export function Button({
       onPress={onPress}
       style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
         styles.button,
+        size === 'sm' ? { minHeight: 36, paddingVertical: 6, paddingHorizontal: 12 } : undefined,
         {
           backgroundColor: cfg.bg,
           borderColor: hovered && !disabled ? palette.indigo : cfg.border,
@@ -593,8 +665,14 @@ export function Button({
         Platform.OS === 'web' && !disabled ? ({ cursor: 'pointer' } as unknown as ViewStyle) : undefined,
       ]}
     >
-      {icon && <Ionicons name={icon} size={18} color={cfg.fg} />}
-      <Text style={[typography.body, { color: cfg.fg, fontWeight: '800' }]} numberOfLines={1}>
+      {icon && <Ionicons name={icon} size={size === 'sm' ? 15 : 18} color={cfg.fg} />}
+      <Text
+        style={[
+          typography.body,
+          { color: cfg.fg, fontWeight: '800', fontSize: size === 'sm' ? 12.5 : undefined },
+        ]}
+        numberOfLines={1}
+      >
         {children}
       </Text>
     </Pressable>

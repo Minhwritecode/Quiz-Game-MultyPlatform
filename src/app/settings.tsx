@@ -37,6 +37,8 @@ import { radii, spacing, typography } from '@/core/theme/tokens';
 import { useI18n } from '@/core/i18n';
 import { VipCheckoutModal } from '@/features/membership/presentation/VipCheckoutModal';
 import { useMembershipStore } from '@/features/membership/state/useMembershipStore';
+import { useStreakStore } from '@/features/streak/state/useStreakStore';
+import { useSocialStore } from '@/features/social/state/useSocialStore';
 import { useOnboardingStore } from '@/core/state/useOnboardingStore';
 
 function PreferenceRow({
@@ -297,10 +299,12 @@ export default function SettingsScreen() {
       const dlg = document.getElementById('papyrus-logout-dialog') as HTMLDialogElement | null;
       if (dlg?.open) dlg.close('');
     }
-    // 1. Clear local auth & switch stores immediately so UI reacts in < 20ms!
+    // 1. Clear local auth & switch ALL user-scoped stores immediately so UI reacts in < 20ms with zero cross-account leak!
     useAuthStore.getState().clear();
     usePapyrusStore.getState().switchAccountScope('guest');
+    useStreakStore.getState().switchAccountScope('guest');
     useMembershipStore.getState().switchAccountScope('guest');
+    useSocialStore.getState().switchAccountScope('guest');
     router.replace('/auth');
     // 2. Clean up Supabase session asynchronously in background without blocking navigation
     void dependencies.auth.signOut().catch(() => undefined);
@@ -737,79 +741,79 @@ export default function SettingsScreen() {
       {/* Semantic Native HTML <dialog> for Web Logout Confirmation (autofocus on safe Cancel action) */}
       {Platform.OS === 'web'
         ? createElement(
-            'dialog',
+          'dialog',
+          {
+            id: 'papyrus-logout-dialog',
+            'aria-labelledby': 'papyrus-logout-title',
+            style: {
+              border: '1px solid rgba(148, 163, 184, 0.25)',
+              borderRadius: '20px',
+              padding: '24px',
+              maxWidth: '400px',
+              width: 'calc(100% - 32px)',
+              backgroundColor: '#0F172A',
+              color: '#F8FAFC',
+              boxShadow: '0 24px 54px rgba(2, 6, 23, 0.78)',
+            },
+          },
+          createElement(
+            'h1',
             {
-              id: 'papyrus-logout-dialog',
-              'aria-labelledby': 'papyrus-logout-title',
-              style: {
-                border: '1px solid rgba(148, 163, 184, 0.25)',
-                borderRadius: '20px',
-                padding: '24px',
-                maxWidth: '400px',
-                width: 'calc(100% - 32px)',
-                backgroundColor: '#0F172A',
-                color: '#F8FAFC',
-                boxShadow: '0 24px 54px rgba(2, 6, 23, 0.78)',
-              },
+              id: 'papyrus-logout-title',
+              style: { margin: 0, fontSize: '18px', fontWeight: 800, color: '#F8FAFC' },
+            },
+            'Bạn có chắc chắn muốn đăng xuất?'
+          ),
+          createElement(
+            'p',
+            {
+              style: { marginTop: '8px', marginBottom: '20px', fontSize: '14px', lineHeight: 1.5, color: '#94A3B8' },
+            },
+            'Tiến trình học tập, chuỗi Streak và cấp Học giả của bạn đã được lưu an toàn trên đám mây.'
+          ),
+          createElement(
+            'form',
+            {
+              method: 'dialog',
+              style: { display: 'flex', gap: '10px', justifyContent: 'flex-end' },
             },
             createElement(
-              'h1',
+              'button',
               {
-                id: 'papyrus-logout-title',
-                style: { margin: 0, fontSize: '18px', fontWeight: 800, color: '#F8FAFC' },
+                value: 'cancel',
+                autoFocus: true,
+                style: {
+                  minHeight: '44px',
+                  padding: '0 18px',
+                  borderRadius: '12px',
+                  border: '1px solid rgba(148, 163, 184, 0.35)',
+                  background: 'rgba(30, 41, 59, 0.8)',
+                  color: '#E2E8F0',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                },
               },
-              'Bạn có chắc chắn muốn đăng xuất?'
+              'Ở lại'
             ),
             createElement(
-              'p',
+              'button',
               {
-                style: { marginTop: '8px', marginBottom: '20px', fontSize: '14px', lineHeight: 1.5, color: '#94A3B8' },
-              },
-              'Tiến trình học tập, chuỗi Streak và cấp Học giả của bạn đã được lưu an toàn trên đám mây.'
-            ),
-            createElement(
-              'form',
-              {
-                method: 'dialog',
-                style: { display: 'flex', gap: '10px', justifyContent: 'flex-end' },
-              },
-              createElement(
-                'button',
-                {
-                  value: 'cancel',
-                  autoFocus: true,
-                  style: {
-                    minHeight: '44px',
-                    padding: '0 18px',
-                    borderRadius: '12px',
-                    border: '1px solid rgba(148, 163, 184, 0.35)',
-                    background: 'rgba(30, 41, 59, 0.8)',
-                    color: '#E2E8F0',
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                  },
+                value: 'confirm-logout',
+                style: {
+                  minHeight: '44px',
+                  padding: '0 18px',
+                  borderRadius: '12px',
+                  border: 'none',
+                  background: '#EF4444',
+                  color: '#FFFFFF',
+                  fontWeight: 800,
+                  cursor: 'pointer',
                 },
-                'Ở lại'
-              ),
-              createElement(
-                'button',
-                {
-                  value: 'confirm-logout',
-                  style: {
-                    minHeight: '44px',
-                    padding: '0 18px',
-                    borderRadius: '12px',
-                    border: 'none',
-                    background: '#EF4444',
-                    color: '#FFFFFF',
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                  },
-                },
-                'Đăng xuất ngay'
-              )
+              },
+              'Đăng xuất ngay'
             )
           )
+        )
         : null}
 
       {/* Mobile Native Logout Confirmation Modal */}

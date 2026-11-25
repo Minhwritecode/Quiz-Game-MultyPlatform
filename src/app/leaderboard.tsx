@@ -19,7 +19,6 @@ import {
 import { Badge, Button, Card, OnlineStatusDot, Screen, TopBar, usePalette } from '@/shared/ui';
 import { PapyrusPageSkeleton } from '@/shared/PapyrusLoader';
 import {
-  formatScholarCode,
   getOnlineScholarCandidates,
   subscribeOnlineScholars,
 } from '@/composition/platform';
@@ -62,11 +61,13 @@ const PlayerRow = memo(function PlayerRow({
   showAddFriend,
   addingId,
   onAddFriend,
+  onOpenProfile,
 }: {
   player: LeaderboardEntry;
   showAddFriend?: boolean;
   addingId?: string | null;
   onAddFriend?: (id: string) => void;
+  onOpenProfile?: (id: string, isMe?: boolean) => void;
 }) {
   const palette = usePalette();
   const { t } = useI18n();
@@ -88,6 +89,7 @@ const PlayerRow = memo(function PlayerRow({
 
   return (
     <Card
+      onPress={() => onOpenProfile?.(player.id, player.isMe)}
       style={[
         styles.playerCard,
         player.isMe ? { borderColor: palette.indigo, borderWidth: 2 } : undefined,
@@ -328,11 +330,11 @@ export default function LeaderboardScreen() {
     const inviteLink = `${origin}/leaderboard?addFriend=${user.id}`;
     if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
       await navigator.clipboard.writeText(inviteLink).catch(() => undefined);
-      setFriendNotice(`✅ Đã sao chép Link Kết Bạn & Mã ID của bạn! Gửi cho bạn bè hoặc dán ID "${user.id}" để kết bạn ngay.`);
+      setFriendNotice('✅ Đã sao chép liên kết kết bạn hồ sơ cá nhân của bạn!');
       return;
     }
     await Share.share({
-      message: `Kết bạn với ${user.displayName} trên Papyrus (${formatScholarCode(user.id)}): ${inviteLink}`,
+      message: `Kết bạn với ${user.displayName} trên Papyrus: ${inviteLink}`,
     }).catch(() => undefined);
   };
   const totalPages = useMemo(() => Math.max(1, Math.ceil(entries.length / PAGE_SIZE)), [entries.length]);
@@ -350,9 +352,16 @@ export default function LeaderboardScreen() {
         showAddFriend={scope === 'friends' && Boolean(user)}
         addingId={addingFriendId}
         onAddFriend={(id) => void handleAddFriend(id)}
+        onOpenProfile={(id, isMe) => {
+          if (isMe) {
+            router.push('/profile');
+          } else {
+            router.push({ pathname: '/user/[userId]', params: { userId: id } });
+          }
+        }}
       />
     ),
-    [scope, user, addingFriendId, handleAddFriend]
+    [scope, user, addingFriendId, handleAddFriend, router]
   );
 
   return (
@@ -444,13 +453,13 @@ export default function LeaderboardScreen() {
                     >
                       <Ionicons name="copy-outline" size={13} color={palette.indigo} />
                       <Text style={{ fontSize: 11, fontWeight: '800', color: palette.indigo }}>
-                        Mã của tôi: {formatScholarCode(user.id)} (Sao chép Link)
+                        Sao chép liên kết kết bạn của {user.displayName}
                       </Text>
                     </Pressable>
                   ) : null}
                 </View>
                 <Text style={[typography.caption, { color: palette.inkMuted, marginBottom: spacing.xs }]}>
-                  Hỗ trợ tìm theo: Tên hiển thị (vd: Michael), tiền tố Email, Mã PAPY-XXXXXX hoặc dán Link/ID bạn bè.
+                  Tìm nhanh theo Tên hồ sơ chính thức (hỗ trợ có dấu / không dấu) hoặc chạm vào tên để mở Trang cá nhân.
                 </Text>
                 {user ? (
                   <>
@@ -486,14 +495,19 @@ export default function LeaderboardScreen() {
                             key={cand.id}
                             style={[styles.searchResultRow, { backgroundColor: palette.paper, borderColor: palette.paperMuted }]}
                           >
-                            <View style={{ flex: 1, minWidth: 0 }}>
+                            <Pressable
+                              onPress={() =>
+                                router.push({ pathname: '/user/[userId]', params: { userId: cand.id } })
+                              }
+                              style={{ flex: 1, minWidth: 0 }}
+                            >
                               <Text style={[typography.body, { color: palette.ink, fontWeight: '700' }]} numberOfLines={1}>
                                 {cand.displayName}
                               </Text>
                               <Text style={[typography.caption, { color: palette.inkMuted }]}>
                                 {cand.eloRating} ELO · {cand.totalScore.toLocaleString('vi-VN')} XP
                               </Text>
-                            </View>
+                            </Pressable>
                             <Pressable
                               accessibilityRole="button"
                               disabled={addingFriendId === cand.id}
@@ -521,14 +535,19 @@ export default function LeaderboardScreen() {
                             key={cand.id}
                             style={[styles.searchResultRow, { backgroundColor: palette.paper, borderColor: palette.paperMuted }]}
                           >
-                            <View style={{ flex: 1, minWidth: 0 }}>
+                            <Pressable
+                              onPress={() =>
+                                router.push({ pathname: '/user/[userId]', params: { userId: cand.id } })
+                              }
+                              style={{ flex: 1, minWidth: 0 }}
+                            >
                               <Text style={[typography.body, { color: palette.ink, fontWeight: '700' }]} numberOfLines={1}>
                                 {cand.displayName}
                               </Text>
                               <Text style={[typography.caption, { color: palette.inkMuted }]}>
                                 {cand.eloRating} ELO · {cand.totalScore.toLocaleString('vi-VN')} XP
                               </Text>
-                            </View>
+                            </Pressable>
                             <Pressable
                               accessibilityRole="button"
                               disabled={addingFriendId === cand.id}

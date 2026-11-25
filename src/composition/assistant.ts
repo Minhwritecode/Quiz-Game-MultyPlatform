@@ -16,7 +16,8 @@ export const assistant = createAssistantUseCases({
       onText,
       pdf,
       usePapyrusStore.getState().questionSets,
-      image
+      image,
+      true
     ),
   load: loadHistory,
   save: saveHistory,

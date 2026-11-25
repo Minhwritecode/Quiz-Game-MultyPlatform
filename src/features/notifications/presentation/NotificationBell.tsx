@@ -33,8 +33,13 @@ export function NotificationBell() {
 
   const notifications = useNotificationStore((s) => s.notifications);
   const gifts = useNotificationStore((s) => s.gifts);
+  const quietModeEnabled = useNotificationStore((s) => s.quietModeEnabled);
+  const groupSimilar = useNotificationStore((s) => s.groupSimilar);
+  const toggleQuietMode = useNotificationStore((s) => s.toggleQuietMode);
+  const toggleGroupSimilar = useNotificationStore((s) => s.toggleGroupSimilar);
   const markRead = useNotificationStore((s) => s.markRead);
   const markAllRead = useNotificationStore((s) => s.markAllRead);
+  const dismissNotification = useNotificationStore((s) => s.dismissNotification);
   const claimGift = useNotificationStore((s) => s.claimGift);
   const syncCloudGifts = useNotificationStore((s) => s.syncCloudGifts);
 
@@ -57,11 +62,27 @@ export function NotificationBell() {
   // Only regular User accounts receive Admin broadcasts & targeted user notifications
   const myNotifications = useMemo(() => {
     if (isAdminAccount) return [];
-    return notifications.filter((n) => {
-      if (n.fromAdminConsole && !userId) return false; // Guests don't receive user-targeted admin notifications
+    const visible = notifications.filter((n) => {
+      if ((n.dismissedByUserIds ?? []).includes(viewerId)) return false;
+      if (n.fromAdminConsole && !userId) return false;
       return n.recipientId === 'all' || (userId !== null && n.recipientId === userId);
     });
-  }, [isAdminAccount, notifications, userId]);
+    if (!groupSimilar) return visible;
+    const seenGroups = new Map<string, (typeof visible)[number] & { groupedCount?: number }>();
+    const out: Array<(typeof visible)[number] & { groupedCount?: number }> = [];
+    for (const item of visible) {
+      const gKey = item.groupKey || `${item.kind}:${item.actionRoute || item.title}`;
+      const existing = seenGroups.get(gKey);
+      if (existing && (item.kind === 'reaction' || item.kind === 'comment' || item.kind === 'follow')) {
+        existing.groupedCount = (existing.groupedCount ?? 1) + 1;
+      } else {
+        const cloned = { ...item, groupedCount: 1 };
+        seenGroups.set(gKey, cloned);
+        out.push(cloned);
+      }
+    }
+    return out;
+  }, [groupSimilar, isAdminAccount, notifications, userId, viewerId]);
 
   const myUnclaimedGifts = useMemo(() => {
     if (isAdminAccount || !userId) return [];
@@ -171,6 +192,55 @@ export function NotificationBell() {
                 </Pressable>
               </View>
 
+              {/* Quiet Mode (DND) & Smart Grouping Controls */}
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: spacing.sm }}>
+                <Pressable
+                  onPress={toggleQuietMode}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 5,
+                    paddingHorizontal: 10,
+                    paddingVertical: 5,
+                    borderRadius: radii.pill,
+                    backgroundColor: quietModeEnabled ? palette.indigo : palette.paperRaised,
+                  }}
+                >
+                  <Ionicons
+                    name={quietModeEnabled ? 'moon' : 'moon-outline'}
+                    size={13}
+                    color={quietModeEnabled ? '#FFFFFF' : palette.inkMuted}
+                  />
+                  <Text
+                    style={{
+                      fontSize: 11.5,
+                      fontWeight: '800',
+                      color: quietModeEnabled ? '#FFFFFF' : palette.ink,
+                    }}
+                  >
+                    {quietModeEnabled ? 'Đang bật Không làm phiền' : 'Chế độ Không làm phiền'}
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={toggleGroupSimilar}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 5,
+                    paddingHorizontal: 10,
+                    paddingVertical: 5,
+                    borderRadius: radii.pill,
+                    backgroundColor: groupSimilar ? palette.indigoTint : palette.paperRaised,
+                  }}
+                >
+                  <Ionicons name="layers-outline" size={13} color={palette.indigo} />
+                  <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.indigo }}>
+                    {groupSimilar ? 'Gộp thông báo: Bật' : 'Gộp thông báo: Tắt'}
+                  </Text>
+                </Pressable>
+              </View>
+
               {permState !== 'granted' && permState !== 'unsupported' ? (
                 <View style={[styles.pushBanner, { backgroundColor: palette.indigoTint, borderColor: palette.indigoBorder }]}>
                   <Ionicons name="radio-outline" size={18} color={palette.indigo} />
@@ -261,17 +331,18 @@ export function NotificationBell() {
                         <View style={[styles.notifIcon, { backgroundColor: palette.paper }]}>
                           <Ionicons name={iconName} size={17} color={palette.indigo} />
                         </View>
-                        <View style={{ flex: 1, minWidth: 0, paddingRight: 64 }}>
+                        <View style={{ flex: 1, minWidth: 0, paddingRight: 80 }}>
                           <Text style={[typography.caption, { color: palette.ink, fontWeight: '800' }]} numberOfLines={1}>
                             {item.title}
+                            {item.groupedCount && item.groupedCount > 1 ? ` (+${item.groupedCount - 1})` : ''}
                           </Text>
                           <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 3 }]} numberOfLines={3}>
                             {item.body}
                           </Text>
                         </View>
 
-                        {/* Top-Right Read / Unread Status Indicator */}
-                        <View style={styles.topRightStatus}>
+                        {/* Top-Right Read / Unread + Dismiss Controls */}
+                        <View style={[styles.topRightStatus, { flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
                           {isRead ? (
                             <View style={[styles.readPill, { backgroundColor: palette.mintTint }]}>
                               <Ionicons name="checkmark-done-circle" size={14} color={palette.mint} />
@@ -283,6 +354,17 @@ export function NotificationBell() {
                               <Text style={{ fontSize: 10, fontWeight: '800', color: '#FFFFFF' }}>Mới</Text>
                             </View>
                           )}
+                          <Pressable
+                            hitSlop={8}
+                            accessibilityRole="button"
+                            accessibilityLabel="Ẩn thông báo"
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              dismissNotification(item.id, viewerId);
+                            }}
+                          >
+                            <Ionicons name="close" size={15} color={palette.inkMuted} />
+                          </Pressable>
                         </View>
                       </Pressable>
                     );

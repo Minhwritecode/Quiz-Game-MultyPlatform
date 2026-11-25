@@ -6,19 +6,29 @@ import { Badge, Button, Card, usePalette } from '@/shared/ui';
 import { PapyrusPageSkeleton } from '@/shared/PapyrusLoader';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { useAuthStore } from '@/core/state/useAuthStore';
-import { useCommunityStore } from '../state/useCommunityStore';
 import { dependencies } from '@/composition/dependencies';
 import {
   fetchSuggestedScholarsForFriends,
-  formatScholarCode,
   getOnlineScholarCandidates,
   subscribeOnlineScholars,
 } from '@/composition/platform';
-import type { FriendSearchCandidate } from '@/features/leaderboard/domain/repository';
+import { useSocialStore } from '@/features/social/state/useSocialStore';
+import {
+  areUsersBlocked,
+  areUsersFriends,
+  computeIntelligentFriendRecommendations,
+  isFollowingAccepted,
+  matchesVietnameseSearch,
+} from '@/features/social/domain/rankingAndPermissions';
 
 /**
- * Dedicated Social Network Friends Discovery & Directory Hub
- * (Cleanly separated from the Competitive Ranking Leaderboard!)
+ * Intelligent Social Graph & Friends Discovery Hub (Sections 4.1, 4.3, 4.4):
+ * - Searches & displays users STRICTLY by their main Profile Name (ZERO scholar codes!).
+ * - Disambiguates same-name users via Avatar, Bio, Major/University, Location & Mutual Friends!
+ * - Separates 1-Way Follow vs 2-Way Friend Requests (Accept / Reject / Cancel / Unfriend).
+ * - Recommends people intelligently based on shared post topics, hashtags, communities & mutuals,
+ *   with transparent explanation labels and Hide / Not Interested controls.
+ * - Routes "Message / Nhắn tin" directly to the Dedicated Messaging Center (`/messages`).
  */
 export const FriendsDiscoveryHub = memo(function FriendsDiscoveryHub({
   onOpenDirectChat,
@@ -28,78 +38,149 @@ export const FriendsDiscoveryHub = memo(function FriendsDiscoveryHub({
   const router = useRouter();
   const palette = usePalette();
   const user = useAuthStore((s) => s.user);
-  const followingIds = useCommunityStore((s) => s.followingAuthorIds);
-  const toggleFollow = useCommunityStore((s) => s.toggleFollowAuthor);
+  const viewerId = user?.id ?? 'guest';
+  const viewerName = user?.displayName ?? 'Thành viên Papyrus';
+
+  const profilesById = useSocialStore((s) => s.profilesById);
+  const posts = useSocialStore((s) => s.posts);
+  const follows = useSocialStore((s) => s.follows);
+  const friendRequests = useSocialStore((s) => s.friendRequests);
+  const relations = useSocialStore((s) => s.relations);
+  const communities = useSocialStore((s) => s.communities);
+  const userSlices = useSocialStore((s) => s.userSlices);
+
+  const ensureUserProfile = useSocialStore((s) => s.ensureUserProfile);
+  const syncCloudDirectory = useSocialStore((s) => s.syncCloudDirectory);
+  const toggleFollowUser = useSocialStore((s) => s.toggleFollowUser);
+  const sendFriendRequest = useSocialStore((s) => s.sendFriendRequest);
+  const respondFriendRequest = useSocialStore((s) => s.respondFriendRequest);
+  const cancelOrUnfriend = useSocialStore((s) => s.cancelOrUnfriend);
+  const dismissFriendRecommendation = useSocialStore((s) => s.dismissFriendRecommendation);
+  const openOrCreateDirectConversation = useSocialStore((s) => s.openOrCreateDirectConversation);
 
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
-  const [loadingSuggestions, setLoadingSuggestions] = useState(true);
-  const [tab, setTab] = useState<'discover' | 'connected' | 'online'>('discover');
-  const [suggested, setSuggested] = useState<FriendSearchCandidate[]>([]);
-  const [searchResults, setSearchResults] = useState<FriendSearchCandidate[]>([]);
+  const [loadingCloud, setLoadingCloud] = useState(false);
+  const [tab, setTab] = useState<'recommended' | 'requests' | 'friends' | 'following' | 'online'>('recommended');
   const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set());
-  const [addingId, setAddingId] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
 
   useEffect(() => {
     const syncPresence = () => {
       const list = getOnlineScholarCandidates(user?.id);
       setOnlineIds(new Set(list.map((i) => i.id)));
+      list.forEach((cand) => {
+        ensureUserProfile({
+          id: cand.id,
+          displayName: cand.displayName,
+          avatarUrl: cand.avatarUrl,
+        });
+      });
     };
     syncPresence();
     return subscribeOnlineScholars(syncPresence);
-  }, [user?.id]);
+  }, [ensureUserProfile, user?.id]);
 
   useEffect(() => {
     let active = true;
-    setLoadingSuggestions(true);
-    void fetchSuggestedScholarsForFriends(user?.id)
-      .then((items) => {
-        if (active) setSuggested(items);
-      })
-      .finally(() => {
-        if (active) setLoadingSuggestions(false);
-      });
+    void Promise.all([
+      syncCloudDirectory(),
+      fetchSuggestedScholarsForFriends(user?.id).then((items) => {
+        if (!active) return;
+        items.forEach((it) => {
+          ensureUserProfile({
+            id: it.id,
+            displayName: it.displayName,
+            avatarUrl: it.avatarUrl,
+          });
+        });
+      }),
+    ]).finally(() => {
+      if (active) setLoadingCloud(false);
+    });
     return () => {
       active = false;
     };
-  }, [user?.id]);
+  }, [ensureUserProfile, syncCloudDirectory, user?.id]);
 
-  const runSearch = useCallback(async () => {
+  const runLiveNameSearch = useCallback(async () => {
     const clean = query.trim();
-    if (clean.length < 2) {
-      setSearchResults([]);
-      return;
-    }
+    if (clean.length < 2) return;
     setSearching(true);
     setNotice('');
     try {
-      const res = await dependencies.leaderboard.searchPlayers(clean);
-      setSearchResults(res);
-      if (res.length === 0) {
-        setNotice(`Chưa tìm thấy học giả khớp với "${clean}". Hãy thử tìm theo Mã PAPY-XXXXXX hoặc sao chép Link mời bên dưới!`);
+      const remote = await dependencies.leaderboard.searchPlayers(clean);
+      remote.forEach((cand) => {
+        ensureUserProfile({
+          id: cand.id,
+          displayName: cand.displayName,
+          avatarUrl: cand.avatarUrl,
+        });
+      });
+      if (remote.length === 0) {
+        const localHit = Object.values(useSocialStore.getState().profilesById).some(
+          (p) => p.id !== viewerId && matchesVietnameseSearch(`${p.displayName} ${p.bio} ${p.major}`, clean)
+        );
+        if (!localHit) {
+          setNotice(`Chưa tìm thấy người dùng có tên "${clean}". Hãy kiểm tra lại họ tên hoặc gửi liên kết mời bạn bè!`);
+        }
       }
     } finally {
       setSearching(false);
     }
-  }, [query]);
+  }, [ensureUserProfile, query, viewerId]);
 
-  const handleConnectFriend = async (peer: FriendSearchCandidate) => {
-    setAddingId(peer.id);
-    setNotice('');
-    try {
-      const isAlreadyConnected = followingIds.includes(peer.id);
-      toggleFollow(peer.id);
-      if (!isAlreadyConnected && user) {
-        await dependencies.leaderboard.addFriend(peer.id).catch(() => undefined);
-        setNotice(`✅ Đã kết bạn với ${peer.displayName}! Giờ hai bạn có thể nhắn tin 1-1 ngay.`);
-      } else if (isAlreadyConnected) {
-        setNotice(`Đã hủy theo dõi ${peer.displayName}.`);
-      }
-    } finally {
-      setAddingId(null);
-    }
-  };
+  const graph = useMemo(
+    () => ({ follows, friendRequests, relations, communities }),
+    [communities, follows, friendRequests, relations]
+  );
+
+  const allProfiles = useMemo(
+    () => Object.values(profilesById).filter((p) => p.id !== viewerId && !areUsersBlocked(viewerId, p.id, graph)),
+    [graph, profilesById, viewerId]
+  );
+
+  const viewerProfile = profilesById[viewerId];
+  const dismissedIds = userSlices[viewerId]?.dismissedRecommendationIds ?? [];
+
+  const recommendations = useMemo(
+    () =>
+      computeIntelligentFriendRecommendations({
+        candidates: allProfiles,
+        posts,
+        viewerId,
+        viewerInterests: viewerProfile?.interests ?? ['CNTT', 'AI', 'ÔnThi'],
+        graph,
+        dismissedUserIds: dismissedIds,
+      }),
+    [allProfiles, dismissedIds, graph, posts, viewerId, viewerProfile?.interests]
+  );
+
+  const incomingRequests = useMemo(
+    () => friendRequests.filter((r) => r.receiverId === viewerId && r.status === 'pending'),
+    [friendRequests, viewerId]
+  );
+
+  const twoWayFriends = useMemo(
+    () => allProfiles.filter((p) => areUsersFriends(viewerId, p.id, graph)),
+    [allProfiles, graph, viewerId]
+  );
+
+  const followingProfiles = useMemo(
+    () => allProfiles.filter((p) => isFollowingAccepted(viewerId, p.id, graph)),
+    [allProfiles, graph, viewerId]
+  );
+
+  const searchMatches = useMemo(() => {
+    const clean = query.trim();
+    if (clean.length < 2) return [];
+    return allProfiles.filter((p) =>
+      matchesVietnameseSearch(
+        `${p.displayName} ${p.bio} ${p.major} ${p.university} ${p.interests.join(' ')}`,
+        clean
+      )
+    );
+  }, [allProfiles, query]);
 
   const shareInviteLink = async () => {
     if (!user) {
@@ -113,52 +194,46 @@ export const FriendsDiscoveryHub = memo(function FriendsDiscoveryHub({
     const url = `${origin}/friends?addFriend=${user.id}`;
     if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
       await navigator.clipboard.writeText(url).catch(() => undefined);
-      setNotice(`✅ Đã sao chép Link Kết Bạn (${formatScholarCode(user.id)}) vào bộ nhớ tạm!`);
+      setNotice(`✅ Đã sao chép Liên kết Kết bạn của ${user.displayName}!`);
       return;
     }
     await Share.share({
-      message: `Kết bạn học tập với ${user.displayName} trên Papyrus (${formatScholarCode(user.id)}): ${url}`,
+      message: `Kết bạn với ${user.displayName} trên mạng xã hội Papyrus: ${url}`,
     }).catch(() => undefined);
   };
 
-  const baseList = query.trim().length >= 2 ? searchResults : suggested;
-
-  const displayedList = useMemo(() => {
-    if (query.trim().length >= 2) return baseList;
-    if (tab === 'connected') {
-      return baseList.filter((item) => followingIds.includes(item.id));
+  const openDirectMessage = (peerId: string, peerName: string, peerAvatar: string | null) => {
+    if (onOpenDirectChat) {
+      onOpenDirectChat({ id: peerId, name: peerName });
+      return;
     }
-    if (tab === 'online') {
-      return baseList.filter((item) => onlineIds.has(item.id));
-    }
-    return baseList;
-  }, [baseList, followingIds, onlineIds, query, tab]);
-
-  const connectedCount = useMemo(
-    () => suggested.filter((i) => followingIds.includes(i.id)).length,
-    [followingIds, suggested]
-  );
+    const conv = openOrCreateDirectConversation(
+      { id: viewerId, name: viewerName, avatar: user?.avatarUrl ?? null },
+      { id: peerId, name: peerName, avatar: peerAvatar }
+    );
+    router.push({ pathname: '/messages', params: { conversationId: conv.id } });
+  };
 
   return (
     <View style={{ gap: spacing.md }}>
-      {/* Social Search & Invite Header Card */}
+      {/* Search by Main Profile Name Card */}
       <Card style={{ gap: 10, borderColor: palette.indigoBorder, borderWidth: 1.5 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
           <View style={{ flex: 1, minWidth: 180 }}>
-            <Badge tone="primary">👥 MẠNG LƯỚI HỌC GIẢ & BẠN BÈ</Badge>
+            <Badge tone="primary">👥 KẾT NỐI BẠN BÈ & ĐỒ THỊ XÃ HỘI</Badge>
             <Text style={[typography.title, { color: palette.ink, marginTop: 4 }]}>
-              Tìm Bạn Học & Kết Nối Đồng Môn
+              Tìm Bạn Bè Theo Tên Trang Cá Nhân
             </Text>
           </View>
           {user ? (
             <Pressable
               accessibilityRole="button"
               onPress={() => void shareInviteLink()}
-              style={[styles.inviteCodeBtn, { backgroundColor: palette.indigoTint, borderColor: palette.indigo }]}
+              style={[styles.inviteBtn, { backgroundColor: palette.indigoTint, borderColor: palette.indigo }]}
             >
-              <Ionicons name="link-outline" size={15} color={palette.indigo} />
+              <Ionicons name="share-social-outline" size={15} color={palette.indigo} />
               <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.indigo }}>
-                {formatScholarCode(user.id)} · Sao chép Link mời
+                Chia sẻ Liên kết của {user.displayName}
               </Text>
             </Pressable>
           ) : null}
@@ -169,28 +244,20 @@ export const FriendsDiscoveryHub = memo(function FriendsDiscoveryHub({
             <Ionicons name="search-outline" size={18} color={palette.inkMuted} />
             <TextInput
               value={query}
-              onChangeText={(v) => {
-                setQuery(v);
-                if (!v.trim()) setSearchResults([]);
-              }}
-              onSubmitEditing={() => void runSearch()}
+              onChangeText={setQuery}
+              onSubmitEditing={() => void runLiveNameSearch()}
               returnKeyType="search"
-              placeholder="Tìm tên thật, email, Mã PAPY-XXXXXX..."
+              placeholder="Tìm bằng họ tên Profile, chuyên ngành, chủ đề quan tâm..."
               placeholderTextColor={palette.inkMuted}
               style={[styles.searchInput, { color: palette.ink }]}
             />
             {query.length > 0 ? (
-              <Pressable
-                onPress={() => {
-                  setQuery('');
-                  setSearchResults([]);
-                }}
-              >
+              <Pressable onPress={() => setQuery('')}>
                 <Ionicons name="close-circle" size={18} color={palette.inkMuted} />
               </Pressable>
             ) : null}
           </View>
-          <Button icon="search" disabled={searching || query.trim().length < 2} onPress={() => void runSearch()}>
+          <Button icon="search" disabled={searching || query.trim().length < 2} onPress={() => void runLiveNameSearch()}>
             {searching ? 'Đang tìm…' : 'Tìm'}
           </Button>
         </View>
@@ -201,14 +268,16 @@ export const FriendsDiscoveryHub = memo(function FriendsDiscoveryHub({
           </View>
         )}
 
-        {/* Sub-Filter Tabs */}
+        {/* Social Graph Tabs */}
         {query.trim().length < 2 && (
-          <View style={styles.filterPillsRow}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
             {(
               [
-                { id: 'discover', label: `✨ Gợi ý kết bạn (${suggested.length})` },
-                { id: 'connected', label: `🤝 Đã kết nối (${connectedCount})` },
-                { id: 'online', label: `🟢 Trực tuyến (${onlineIds.size})` },
+                { id: 'recommended', label: `✨ Đề xuất thông minh (${recommendations.length})` },
+                { id: 'requests', label: `📩 Lời mời KB (${incomingRequests.length})` },
+                { id: 'friends', label: `🤝 Bạn bè (${twoWayFriends.length})` },
+                { id: 'following', label: `👤 Đang theo dõi (${followingProfiles.length})` },
+                { id: 'online', label: `🟢 Đang hoạt động` },
               ] as const
             ).map((f) => {
               const active = tab === f.id;
@@ -224,13 +293,7 @@ export const FriendsDiscoveryHub = memo(function FriendsDiscoveryHub({
                     },
                   ]}
                 >
-                  <Text
-                    style={{
-                      fontSize: 12,
-                      fontWeight: '800',
-                      color: active ? '#FFFFFF' : palette.ink,
-                    }}
-                  >
+                  <Text style={{ fontSize: 11.5, fontWeight: '800', color: active ? '#FFF' : palette.ink }}>
                     {f.label}
                   </Text>
                 </Pressable>
@@ -240,102 +303,187 @@ export const FriendsDiscoveryHub = memo(function FriendsDiscoveryHub({
         )}
       </Card>
 
-      {/* Results / Suggested Scholars Grid */}
-      {loadingSuggestions || searching ? (
-        <PapyrusPageSkeleton variant="leaderboard" label="Đang tải danh bạ học giả…" />
-      ) : displayedList.length === 0 ? (
-        <Card style={{ alignItems: 'center', paddingVertical: spacing.xl, gap: 8 }}>
-          <Ionicons name="people-outline" size={34} color={palette.inkMuted} />
-          <Text style={[typography.body, { color: palette.inkMuted, textAlign: 'center' }]}>
-            {tab === 'online'
-              ? 'Chưa có bạn học nào khác trực tuyến ngay giây phút này. Chuyển sang mục «Gợi ý kết bạn» để kết nối trước nhé!'
-              : tab === 'connected'
-              ? 'Bạn chưa kết bạn với học giả nào. Bấm «Kết bạn» ở danh sách gợi ý để bắt đầu trò chuyện!'
-              : 'Nhập tên hoặc sao chép Link mời bạn bè cùng tham gia Papyrus!'}
-          </Text>
-        </Card>
+      {/* Incoming Friend Requests Tab */}
+      {query.trim().length < 2 && tab === 'requests' && (
+        <View style={{ gap: 8 }}>
+          {incomingRequests.length === 0 ? (
+            <Card style={{ alignItems: 'center', paddingVertical: spacing.lg }}>
+              <Text style={{ color: palette.inkMuted, fontSize: 13 }}>Hiện không có lời mời kết bạn nào đang chờ.</Text>
+            </Card>
+          ) : (
+            incomingRequests.map((req) => {
+              const sender = profilesById[req.senderId];
+              const name = sender?.displayName || 'Thành viên Papyrus';
+              return (
+                <Card key={req.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <Pressable
+                    onPress={() => router.push({ pathname: '/user/[userId]', params: { userId: req.senderId } })}
+                    style={{ flex: 1, minWidth: 0 }}
+                  >
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: palette.ink }}>{name}</Text>
+                    <Text style={{ fontSize: 12, color: palette.inkMuted }}>
+                      {sender?.bio || 'Đã gửi lời mời kết bạn hai chiều cho bạn'}
+                    </Text>
+                  </Pressable>
+                  <Button
+                    onPress={() => {
+                      respondFriendRequest(req.id, true);
+                      void dependencies.leaderboard.addFriend(req.senderId).catch(() => undefined);
+                    }}
+                  >
+                    Chấp nhận
+                  </Button>
+                  <Button variant="secondary" onPress={() => respondFriendRequest(req.id, false)}>
+                    Từ chối
+                  </Button>
+                </Card>
+              );
+            })
+          )}
+        </View>
+      )}
+
+      {/* Main Directory / Intelligent Recommendations Grid */}
+      {loadingCloud || searching ? (
+        <PapyrusPageSkeleton variant="leaderboard" label="Đang đồng bộ danh bạ mạng xã hội…" />
       ) : (
         <View style={styles.cardsGrid}>
-          {displayedList.map((peer) => {
-            const isFriend = followingIds.includes(peer.id);
-            const isOnline = onlineIds.has(peer.id);
-            const initial = (peer.displayName.trim()[0] || 'H').toUpperCase();
+          {(query.trim().length >= 2
+            ? searchMatches.map((profile) => ({
+                profile,
+                reasonLabel: profile.bio || profile.major || 'Khớp kết quả tìm kiếm tên Profile',
+              }))
+            : tab === 'recommended'
+            ? recommendations
+            : tab === 'friends'
+            ? twoWayFriends.map((profile) => ({ profile, reasonLabel: 'Bạn bè hai chiều trên Papyrus' }))
+            : tab === 'following'
+            ? followingProfiles.map((profile) => ({ profile, reasonLabel: 'Tài khoản bạn đang theo dõi' }))
+            : tab === 'online'
+            ? allProfiles
+                .filter((p) => onlineIds.has(p.id) || p.isOnline)
+                .map((profile) => ({ profile, reasonLabel: 'Đang trực tuyến ngay lúc này' }))
+            : []
+          ).map(({ profile, reasonLabel }) => {
+            const isFriend = areUsersFriends(viewerId, profile.id, graph);
+            const isFollowing = isFollowingAccepted(viewerId, profile.id, graph);
+            const pendingSent = friendRequests.some(
+              (r) => r.senderId === viewerId && r.receiverId === profile.id && r.status === 'pending'
+            );
+            const isOnline = onlineIds.has(profile.id) || Boolean(profile.isOnline);
+
             return (
-              <Card key={peer.id} style={styles.peerCard}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                  <View style={{ position: 'relative' }}>
-                    {peer.avatarUrl ? (
-                      <Image source={{ uri: peer.avatarUrl }} style={styles.peerAvatar} />
+              <Card key={profile.id} style={styles.peerCard}>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+                  <Pressable
+                    onPress={() => router.push({ pathname: '/user/[userId]', params: { userId: profile.id } })}
+                    style={{ position: 'relative' }}
+                  >
+                    {profile.avatarUrl ? (
+                      <Image source={{ uri: profile.avatarUrl }} style={styles.peerAvatar} />
                     ) : (
-                      <View style={[styles.peerAvatar, { backgroundColor: palette.indigo, alignItems: 'center', justifyContent: 'center' }]}>
-                        <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '900' }}>{initial}</Text>
+                      <View
+                        style={[
+                          styles.peerAvatar,
+                          { backgroundColor: palette.indigo, alignItems: 'center', justifyContent: 'center' },
+                        ]}
+                      >
+                        <Text style={{ color: '#FFF', fontSize: 18, fontWeight: '900' }}>
+                          {(profile.displayName[0] || 'P').toUpperCase()}
+                        </Text>
                       </View>
                     )}
-                    {isOnline && <View style={styles.onlineDot} />}
-                  </View>
+                    {isOnline && profile.privacy.showOnlineStatus && <View style={styles.onlineDot} />}
+                  </Pressable>
 
-                  <View style={{ flex: 1, minWidth: 0 }}>
+                  <Pressable
+                    onPress={() => router.push({ pathname: '/user/[userId]', params: { userId: profile.id } })}
+                    style={{ flex: 1, minWidth: 0 }}
+                  >
                     <Text style={[typography.body, { color: palette.ink, fontWeight: '800' }]} numberOfLines={1}>
-                      {peer.displayName}
+                      {profile.displayName}
                     </Text>
-                    <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]} numberOfLines={1}>
-                      {isOnline ? '🟢 Đang hoạt động · ' : ''}
-                      {peer.eloRating} ELO · {peer.totalScore.toLocaleString('vi-VN')} XP
+                    {/* Disambiguation context for same-name users (Avatar + Bio + Major + Location!) */}
+                    {(profile.major || profile.locationArea) && (
+                      <Text style={{ fontSize: 11.5, color: palette.inkMuted, marginTop: 1 }} numberOfLines={1}>
+                        {[profile.major, profile.university, profile.locationArea].filter(Boolean).join(' · ')}
+                      </Text>
+                    )}
+                    {profile.bio ? (
+                      <Text style={{ fontSize: 11.5, color: palette.ink, marginTop: 3 }} numberOfLines={2}>
+                        {profile.bio}
+                      </Text>
+                    ) : null}
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: palette.indigo, marginTop: 4 }} numberOfLines={1}>
+                      💡 {reasonLabel}
                     </Text>
-                  </View>
+                  </Pressable>
+
+                  {tab === 'recommended' && query.trim().length < 2 && (
+                    <Pressable
+                      accessibilityLabel="Ẩn gợi ý này"
+                      onPress={() => dismissFriendRecommendation(viewerId, profile.id)}
+                      hitSlop={8}
+                    >
+                      <Ionicons name="close" size={18} color={palette.inkMuted} />
+                    </Pressable>
+                  )}
                 </View>
 
                 <View style={styles.peerActionsRow}>
                   <Pressable
                     accessibilityRole="button"
-                    disabled={addingId === peer.id}
-                    onPress={() => void handleConnectFriend(peer)}
+                    onPress={() => toggleFollowUser(viewerId, profile.id)}
                     style={[
                       styles.peerBtn,
                       {
-                        backgroundColor: isFriend ? palette.mintTint : palette.indigo,
-                        borderColor: isFriend ? palette.mint : palette.indigo,
+                        backgroundColor: isFollowing ? palette.paper : palette.indigoTint,
+                        borderColor: palette.indigo,
                       },
                     ]}
                   >
-                    <Ionicons
-                      name={isFriend ? 'checkmark-circle' : 'person-add'}
-                      size={15}
-                      color={isFriend ? palette.mint : '#FFFFFF'}
-                    />
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        fontWeight: '800',
-                        color: isFriend ? palette.mint : '#FFFFFF',
-                      }}
-                    >
-                      {isFriend ? 'Bạn bè' : 'Kết bạn'}
+                    <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.indigo }}>
+                      {isFollowing ? 'Đang theo dõi' : '+ Theo dõi'}
                     </Text>
                   </Pressable>
 
                   <Pressable
                     accessibilityRole="button"
                     onPress={() => {
-                      if (onOpenDirectChat) {
-                        onOpenDirectChat({ id: peer.id, name: peer.displayName });
+                      if (isFriend || pendingSent) {
+                        cancelOrUnfriend(viewerId, profile.id);
                       } else {
-                        router.push({
-                          pathname: '/community',
-                          params: { tab: 'messenger', dmUserId: peer.id, dmName: peer.displayName },
-                        });
+                        sendFriendRequest(viewerId, profile.id);
+                        void dependencies.leaderboard.addFriend(profile.id).catch(() => undefined);
+                        setNotice(`🤝 Đã gửi lời mời kết bạn tới ${profile.displayName}!`);
                       }
                     }}
                     style={[
                       styles.peerBtn,
                       {
-                        backgroundColor: palette.paper,
-                        borderColor: palette.paperMuted,
+                        backgroundColor: isFriend ? palette.mintTint : pendingSent ? palette.paper : palette.indigo,
+                        borderColor: isFriend ? palette.mint : palette.indigo,
                       },
                     ]}
                   >
-                    <Ionicons name="chatbubble-ellipses-outline" size={15} color={palette.indigo} />
-                    <Text style={{ fontSize: 12, fontWeight: '800', color: palette.indigo }}>Nhắn tin</Text>
+                    <Text
+                      style={{
+                        fontSize: 11.5,
+                        fontWeight: '800',
+                        color: isFriend ? palette.mint : pendingSent ? palette.inkMuted : '#FFFFFF',
+                      }}
+                    >
+                      {isFriend ? '✓ Bạn bè' : pendingSent ? 'Đã gửi KB' : 'Kết bạn'}
+                    </Text>
+                  </Pressable>
+
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => openDirectMessage(profile.id, profile.displayName, profile.avatarUrl)}
+                    style={[styles.peerBtn, { backgroundColor: palette.paper, borderColor: palette.paperMuted }]}
+                  >
+                    <Ionicons name="chatbubble-ellipses-outline" size={14} color={palette.indigo} />
+                    <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.indigo }}>Nhắn tin</Text>
                   </Pressable>
                 </View>
               </Card>
@@ -348,65 +496,33 @@ export const FriendsDiscoveryHub = memo(function FriendsDiscoveryHub({
 });
 
 const styles = StyleSheet.create({
-  inviteCodeBtn: {
+  inviteBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 6,
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: radii.pill,
     borderWidth: 1,
   },
-  searchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
+  searchRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   searchBox: {
     flex: 1,
     minWidth: 0,
-    minHeight: 46,
-    borderRadius: radii.sm,
+    minHeight: 44,
     borderWidth: 1,
-    paddingHorizontal: 12,
+    borderRadius: radii.sm,
+    paddingHorizontal: 10,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  searchInput: {
-    flex: 1,
-    minWidth: 0,
-    fontSize: 14,
-    paddingVertical: 8,
-  },
-  noticeBanner: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: radii.sm,
-  },
-  filterPillsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  filterPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: radii.pill,
-    borderWidth: 1,
-  },
-  cardsGrid: {
-    gap: 10,
-  },
-  peerCard: {
-    gap: 12,
-    padding: spacing.md,
-  },
-  peerAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-  },
+  searchInput: { flex: 1, minWidth: 0, fontSize: 13.5, paddingVertical: 8 },
+  noticeBanner: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: radii.sm },
+  filterPill: { paddingHorizontal: 11, paddingVertical: 6, borderRadius: radii.pill, borderWidth: 1 },
+  cardsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  peerCard: { flexGrow: 1, flexBasis: 290, minWidth: 260, gap: 10 },
+  peerAvatar: { width: 48, height: 48, borderRadius: 24 },
   onlineDot: {
     position: 'absolute',
     right: 0,
@@ -418,19 +534,17 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#0F172A',
   },
-  peerActionsRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
+  peerActionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   peerBtn: {
     flex: 1,
-    minHeight: 40,
-    borderRadius: radii.sm,
+    minWidth: 78,
+    minHeight: 36,
     borderWidth: 1,
+    borderRadius: radii.sm,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
+    gap: 4,
+    paddingHorizontal: 6,
   },
 });
