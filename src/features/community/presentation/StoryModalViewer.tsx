@@ -13,11 +13,14 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { STORY_GRADIENTS, type ScholarStory } from '../domain/models';
 import { Button, Card, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { pickStoryMedia } from '@/composition/platform';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
+import { VideoCoverEditorModal } from '@/features/social/presentation/VideoCoverEditorModal';
+import { GifStickerEmojiPickerModal } from '@/features/social/presentation/GifStickerEmojiPickerModal';
 
 /**
  * Fullscreen Facebook-Style 9:16 Story Viewer:
@@ -63,6 +66,7 @@ function StoryViewerModalInner({
   onReact: (storyId: string, emoji: string) => void;
   onDirectMessage?: (author: { id: string; name: string; replyText?: string }) => void;
 }) {
+  const router = useRouter();
   const reduceMotion = usePapyrusStore((s) => s.reduceMotion);
   const [paused, setPaused] = useState(false);
   const [muted, setMuted] = useState(false);
@@ -121,8 +125,8 @@ function StoryViewerModalInner({
   const bgStyle =
     Platform.OS === 'web'
       ? ({
-          backgroundImage: `linear-gradient(160deg, ${story.gradient[0]} 0%, ${story.gradient[1]} 100%)`,
-        } as unknown as ViewStyle)
+        backgroundImage: `linear-gradient(160deg, ${story.gradient[0]} 0%, ${story.gradient[1]} 100%)`,
+      } as unknown as ViewStyle)
       : { backgroundColor: story.gradient[0] };
 
   return (
@@ -160,9 +164,9 @@ function StoryViewerModalInner({
               StyleSheet.absoluteFill,
               Platform.OS === 'web'
                 ? ({
-                    backgroundImage:
-                      'linear-gradient(180deg, rgba(2,6,23,0.68) 0%, rgba(2,6,23,0.06) 28%, rgba(2,6,23,0.08) 68%, rgba(2,6,23,0.86) 100%)',
-                  } as unknown as ViewStyle)
+                  backgroundImage:
+                    'linear-gradient(180deg, rgba(2,6,23,0.68) 0%, rgba(2,6,23,0.06) 28%, rgba(2,6,23,0.08) 68%, rgba(2,6,23,0.86) 100%)',
+                } as unknown as ViewStyle)
                 : { backgroundColor: 'rgba(2,6,23,0.28)' },
             ]}
           />
@@ -184,23 +188,33 @@ function StoryViewerModalInner({
             </View>
 
             <View style={styles.viewerHeader}>
-              <View style={styles.authorBadgeAvatar}>
-                {story.authorAvatar ? (
-                  <Image source={{ uri: story.authorAvatar }} style={styles.authorAvatarImg} />
-                ) : (
-                  <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 15 }}>
-                    {(story.authorName[0] || 'S').toUpperCase()}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Xem trang cá nhân của ${story.authorName}`}
+                onPress={() => {
+                  onClose();
+                  router.push({ pathname: '/user/[userId]', params: { userId: story.authorId } });
+                }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}
+              >
+                <View style={styles.authorBadgeAvatar}>
+                  {story.authorAvatar ? (
+                    <Image source={{ uri: story.authorAvatar }} style={styles.authorAvatarImg} />
+                  ) : (
+                    <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 15 }}>
+                      {(story.authorName[0] || 'S').toUpperCase()}
+                    </Text>
+                  )}
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 14 }} numberOfLines={1}>
+                    {story.authorName}
                   </Text>
-                )}
-              </View>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 14 }} numberOfLines={1}>
-                  {story.authorName}
-                </Text>
-                <Text style={{ color: 'rgba(255,255,255,0.82)', fontSize: 11 }} numberOfLines={1}>
-                  {story.badgeLabel || `Lv.${story.authorLevel}`} · 👁️ {story.viewedByIds.length}
-                </Text>
-              </View>
+                  <Text style={{ color: 'rgba(255,255,255,0.82)', fontSize: 11 }} numberOfLines={1}>
+                    {story.badgeLabel ? `${story.badgeLabel} · ` : ''}👁️ {story.viewedByIds.length} lượt xem
+                  </Text>
+                </View>
+              </Pressable>
 
               {isVideo && (
                 <Pressable
@@ -398,6 +412,8 @@ function StoryComposerModalInner({
   const [durationSec, setDurationSec] = useState<number>(8);
   const [picking, setPicking] = useState(false);
   const [isHighlight, setIsHighlight] = useState(true);
+  const [coverEditorOpen, setCoverEditorOpen] = useState(false);
+  const [stickerModalOpen, setStickerModalOpen] = useState(false);
 
   const activeGrad = STORY_GRADIENTS[gradIdx] ?? STORY_GRADIENTS[0]!;
 
@@ -486,6 +502,24 @@ function StoryComposerModalInner({
               </Text>
             </Pressable>
 
+            <Pressable
+              onPress={() => setStickerModalOpen(true)}
+              style={[styles.mediaPickBtn, { backgroundColor: palette.paperRaised, borderColor: palette.indigo }]}
+            >
+              <Ionicons name="happy-outline" size={16} color={palette.indigo} />
+              <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.indigo }}>Sticker / GIF</Text>
+            </Pressable>
+
+            {mediaType === 'video' && videoUri ? (
+              <Pressable
+                onPress={() => setCoverEditorOpen(true)}
+                style={[styles.mediaPickBtn, { backgroundColor: palette.goldTint, borderColor: palette.gold }]}
+              >
+                <Ionicons name="film-outline" size={15} color={palette.gold} />
+                <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.gold }}>Chọn Ảnh Bìa Video</Text>
+              </Pressable>
+            ) : null}
+
             {(imageUri || videoUri) && (
               <Pressable
                 onPress={() => {
@@ -508,8 +542,8 @@ function StoryComposerModalInner({
               styles.preview916Box,
               Platform.OS === 'web'
                 ? ({
-                    backgroundImage: `linear-gradient(150deg, ${activeGrad.colors[0]} 0%, ${activeGrad.colors[1]} 100%)`,
-                  } as unknown as ViewStyle)
+                  backgroundImage: `linear-gradient(150deg, ${activeGrad.colors[0]} 0%, ${activeGrad.colors[1]} 100%)`,
+                } as unknown as ViewStyle)
                 : { backgroundColor: activeGrad.colors[0] },
             ]}
           >
@@ -618,6 +652,33 @@ function StoryComposerModalInner({
             {picking ? 'Đang xử lý ảnh/video…' : 'Đăng lên Story 24h (+20 XP)'}
           </Button>
         </Card>
+
+        <VideoCoverEditorModal
+          visible={coverEditorOpen}
+          videoUri={videoUri}
+          initialThumbnailUri={thumbnailUri}
+          defaultAspect="9:16"
+          onClose={() => setCoverEditorOpen(false)}
+          onApplyCover={(res) => {
+            setThumbnailUri(res.thumbnailUri);
+            setImageUri(res.thumbnailUri);
+          }}
+        />
+
+        <GifStickerEmojiPickerModal
+          visible={stickerModalOpen}
+          onClose={() => setStickerModalOpen(false)}
+          onSelectEmoji={(em) => setText((prev) => `${prev} ${em}`.trim())}
+          onSelectMedia={(media) => {
+            if (!videoUri) {
+              setMediaType('image');
+              setImageUri(media.uri);
+              setThumbnailUri(media.thumbnailUri || media.uri);
+            } else {
+              setText((prev) => `${prev} ✨ ${media.altText || ''}`.trim());
+            }
+          }}
+        />
       </View>
     </Modal>
   );

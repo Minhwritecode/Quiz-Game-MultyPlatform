@@ -245,10 +245,6 @@ export function AssistantWidget() {
         : '');
 
     if (syncing || request.current || !hydrated || picking || !textToSend) return;
-    if (!userId) {
-      setNotice('Vui lòng đăng nhập tài khoản để trò chuyện cùng Gia sư AI Papybot.');
-      return;
-    }
 
     const displayUserContent =
       attachedLabel && !rawTyped.includes(attachedLabel)

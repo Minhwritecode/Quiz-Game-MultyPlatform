@@ -9,7 +9,29 @@ import {
   sendAdminGiftToCloud,
 } from '@/composition/platform';
 
-export type AppNotificationKind = 'system' | 'gift' | 'friend' | 'duel' | 'streak' | 'update';
+export type AppNotificationKind =
+  | 'system'
+  | 'gift'
+  | 'friend'
+  | 'follow'
+  | 'follow_request'
+  | 'friend_request'
+  | 'friend_accepted'
+  | 'reaction'
+  | 'comment'
+  | 'reply'
+  | 'mention'
+  | 'repost'
+  | 'quote'
+  | 'community'
+  | 'poll'
+  | 'event'
+  | 'message'
+  | 'moderation'
+  | 'appeal'
+  | 'duel'
+  | 'streak'
+  | 'update';
 
 export interface AppNotificationItem {
   id: string;
@@ -18,8 +40,12 @@ export interface AppNotificationItem {
   title: string;
   body: string;
   actionRoute?: string;
+  groupKey?: string;
+  groupedCount?: number;
+  isSpoilerMasked?: boolean;
   read: boolean;
   readByUserIds?: string[];
+  dismissedByUserIds?: string[];
   fromAdminConsole?: boolean;
   createdAt: string;
 }
@@ -47,12 +73,17 @@ export interface AdminGiftItem {
 interface NotificationState {
   notifications: AppNotificationItem[];
   gifts: AdminGiftItem[];
+  quietModeEnabled: boolean;
+  groupSimilar: boolean;
+  toggleQuietMode: () => void;
+  toggleGroupSimilar: () => void;
   pushNotification: (
     item: Omit<AppNotificationItem, 'id' | 'read' | 'createdAt'>,
     alsoSendExternal?: boolean
   ) => void;
   markRead: (id: string, viewerId?: string) => void;
   markAllRead: (userId?: string | null) => void;
+  dismissNotification: (id: string, viewerId?: string) => void;
   clearNotifications: () => void;
   sendGift: (input: {
     recipientId: string;
@@ -87,32 +118,50 @@ export const useNotificationStore = create<NotificationState>()(
     (set, get) => ({
       notifications: INITIAL_NOTIFICATIONS,
       gifts: [],
+      quietModeEnabled: false,
+      groupSimilar: true,
+
+      toggleQuietMode: () => set((s) => ({ quietModeEnabled: !s.quietModeEnabled })),
+      toggleGroupSimilar: () => set((s) => ({ groupSimilar: !s.groupSimilar })),
 
       pushNotification: (item, alsoSendExternal = true) => {
+        const safeBody = item.isSpoilerMasked
+          ? '⚠️ Nội dung có cảnh báo Spoiler — chạm để mở xem an toàn.'
+          : item.body;
         const entry: AppNotificationItem = {
           ...item,
+          body: safeBody,
           id: `notif-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           read: false,
           readByUserIds: [],
+          dismissedByUserIds: [],
           createdAt: new Date().toISOString(),
         };
         set((state) => ({
-          notifications: [entry, ...state.notifications].slice(0, 80),
+          notifications: [entry, ...state.notifications].slice(0, 120),
         }));
 
         // If sent from Admin Console: broadcast to connected User devices ONLY — NEVER pop toast on the Admin session itself!
         if (item.fromAdminConsole) {
+          const cloudKind: 'system' | 'gift' | 'friend' | 'duel' | 'streak' | 'update' =
+            item.kind === 'gift' ||
+            item.kind === 'friend' ||
+            item.kind === 'duel' ||
+            item.kind === 'streak' ||
+            item.kind === 'update'
+              ? item.kind
+              : 'system';
           void broadcastAdminNotificationToCloud({
             recipientId: item.recipientId,
-            kind: item.kind,
+            kind: cloudKind,
             title: item.title,
-            body: item.body,
+            body: safeBody,
             actionRoute: item.actionRoute,
           });
           return;
         }
 
-        if (alsoSendExternal) {
+        if (alsoSendExternal && !get().quietModeEnabled) {
           void dispatchExternalNotification(entry.title, entry.body);
         }
       },
@@ -138,6 +187,19 @@ export const useNotificationStore = create<NotificationState>()(
               return { ...n, read: true, readByUserIds: nextIds };
             }
             return n;
+          }),
+        }));
+      },
+
+      dismissNotification: (id, viewerId = 'guest') => {
+        set((state) => ({
+          notifications: state.notifications.map((n) => {
+            if (n.id !== id) return n;
+            const prev = n.dismissedByUserIds ?? [];
+            return {
+              ...n,
+              dismissedByUserIds: prev.includes(viewerId) ? prev : [...prev, viewerId],
+            };
           }),
         }));
       },

@@ -14,6 +14,7 @@ import { useRouteRefreshStore } from '@/core/state/useRouteRefreshStore';
 import { useStreakStore } from '@/features/streak/state/useStreakStore';
 import { useMembershipStore } from '@/features/membership/state/useMembershipStore';
 import { useCommunityStore } from '@/features/community/state/useCommunityStore';
+import { useSocialStore } from '@/features/social/state/useSocialStore';
 import { wrapRoot, reportFailure } from '@/core/observability/monitoring';
 import { ReleaseGate } from '@/shared/ReleaseGate';
 import { AppUpdateBanner } from '@/shared/AppUpdateBanner';
@@ -37,6 +38,7 @@ const PRIMARY_TAB_PATHS = new Set([
   '/',
   '/sets',
   '/community',
+  '/messages',
   '/battle',
   '/leaderboard',
   '/friends',
@@ -143,11 +145,22 @@ function RootLayout() {
     usePapyrusStore.getState().switchAccountScope(authScope);
     useStreakStore.getState().switchAccountScope(authScope);
     useMembershipStore.getState().switchAccountScope(authScope);
+    useSocialStore.getState().switchAccountScope(authScope);
+
+    if (authUser?.id) {
+      useSocialStore.getState().ensureUserProfile({
+        id: authUser.id,
+        displayName: authUser.displayName,
+        avatarUrl: authUser.avatarUrl ?? null,
+        role: authUser.role === 'admin' ? 'admin' : 'user',
+      });
+    }
 
     if (authUser?.id && process.env.NODE_ENV !== 'test') {
       void usePapyrusStore.getState().hydrateCloudProfile();
       void useStreakStore.getState().hydrateFromCloud();
       void useMembershipStore.getState().hydrateFromCloud();
+      void useSocialStore.getState().syncCloudDirectory();
       void touchCurrentDeviceSession().then((res) => {
         if (res.revoked) {
           useAuthStore.getState().clear();
@@ -156,7 +169,17 @@ function RootLayout() {
         }
       });
     }
-  }, [authScope, authUser?.id, router]);
+  }, [authScope, authUser, router]);
+
+  // Scheduled Posts Auto-Publish & 24h Ghost Post Expiration Sweep
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'test') return;
+    useSocialStore.getState().runScheduledAndGhostSweep();
+    const sweepTimer = setInterval(() => {
+      useSocialStore.getState().runScheduledAndGhostSweep();
+    }, 30_000);
+    return () => clearInterval(sweepTimer);
+  }, []);
 
   // Live Community Realtime Sync + Smart Sound/Banner Policy:
   // - Outgoing messages: silent.
@@ -176,21 +199,20 @@ function RootLayout() {
         if (ev.message.senderId === myId) return;
 
         const foreground = isAppActivelyForegrounded();
-        const onCommunity = pathnameRef.current.startsWith('/community');
+        const onMessages = pathnameRef.current.startsWith('/messages');
         if (!foreground) {
           sfx.playIncomingAlert();
           void dispatchExternalNotification(
             `💬 Tin nhắn mới từ ${ev.message.senderName}`,
             ev.message.text.slice(0, 120)
           );
-        } else if (!onCommunity) {
-          // Inside app on another tab -> silent drop-down banner!
+        } else if (!onMessages) {
+          // Inside app on another tab -> silent drop-down banner routing to Dedicated Messaging Center!
           useRouteRefreshStore.getState().showDropBanner({
             kind: 'message',
             title: `💬 ${ev.message.senderName}`,
             body: ev.message.text,
-            actionRoute: '/community',
-            actionParams: { tab: 'messenger' },
+            actionRoute: '/messages',
           });
         }
       }

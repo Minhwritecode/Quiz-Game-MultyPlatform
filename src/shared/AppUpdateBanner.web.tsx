@@ -2,13 +2,16 @@ import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { radii, spacing, typography } from '@/core/theme/tokens';
-import { checkWebAppVersionUpdate } from '@/composition/platform';
-
-const LOCAL_BUILD_ID = '20261125-1700';
+import {
+  acknowledgeWebBuildUpdate,
+  checkWebAppVersionUpdate,
+  markWebUpdateReloaded,
+  wasWebUpdateRecentlyReloaded,
+} from '@/composition/platform';
 
 /**
- * Web/PWA live developer update detector anchored safely above the Bottom Dock
- * so it NEVER overlaps the iOS status bar clock or TopBar!
+ * Web/PWA live developer update detector anchored safely above the Bottom Dock.
+ * Uses session baseline build tracking + reload cooldown so it NEVER loops after reloading.
  */
 export function AppUpdateBanner() {
   const [updateAvailable, setUpdateAvailable] = useState(false);
@@ -20,18 +23,23 @@ export function AppUpdateBanner() {
     let active = true;
 
     const triggerUpdate = (worker?: ServiceWorker | null) => {
-      if (!active) return;
+      if (!active || wasWebUpdateRecentlyReloaded()) return;
       if (worker) waitingWorkerRef.current = worker;
       setUpdateAvailable(true);
       setDismissed(false);
     };
+
+    // Prime baseline build ID on startup (returns false on initial call)
+    void checkWebAppVersionUpdate();
 
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker
         .getRegistration()
         .then((reg) => {
           if (!reg || !active) return;
-          if (reg.waiting) triggerUpdate(reg.waiting);
+          if (reg.waiting && navigator.serviceWorker.controller && !wasWebUpdateRecentlyReloaded()) {
+            triggerUpdate(reg.waiting);
+          }
           reg.addEventListener('updatefound', () => {
             const installing = reg.installing;
             if (!installing) return;
@@ -47,12 +55,12 @@ export function AppUpdateBanner() {
     }
 
     const pollVersion = () => {
-      void checkWebAppVersionUpdate(LOCAL_BUILD_ID).then((hasNewer) => {
+      void checkWebAppVersionUpdate().then((hasNewer) => {
         if (hasNewer && active) triggerUpdate(null);
       });
     };
 
-    const timer = window.setInterval(pollVersion, 60_000);
+    const timer = window.setInterval(pollVersion, 90_000);
     const onVis = () => {
       if (document.visibilityState === 'visible') pollVersion();
     };
@@ -68,12 +76,33 @@ export function AppUpdateBanner() {
   if (!updateAvailable || dismissed) return null;
 
   const handleReload = () => {
-    if (waitingWorkerRef.current) {
-      waitingWorkerRef.current.postMessage({ type: 'SKIP_WAITING' });
+    markWebUpdateReloaded();
+    setDismissed(true);
+    setUpdateAvailable(false);
+
+    const worker = waitingWorkerRef.current;
+    if (worker && 'serviceWorker' in navigator) {
+      let reloaded = false;
+      const doReload = () => {
+        if (reloaded) return;
+        reloaded = true;
+        window.location.reload();
+      };
+      navigator.serviceWorker.addEventListener('controllerchange', doReload, { once: true });
+      worker.postMessage({ type: 'SKIP_WAITING' });
+      window.setTimeout(doReload, 500);
+      return;
     }
+
     if (typeof window !== 'undefined') {
       window.location.reload();
     }
+  };
+
+  const handleDismiss = () => {
+    acknowledgeWebBuildUpdate();
+    setDismissed(true);
+    setUpdateAvailable(false);
   };
 
   return (
@@ -98,7 +127,7 @@ export function AppUpdateBanner() {
           accessibilityRole="button"
           accessibilityLabel="Đóng thông báo cập nhật"
           hitSlop={8}
-          onPress={() => setDismissed(true)}
+          onPress={handleDismiss}
           style={styles.closeBtn}
         >
           <Ionicons name="close" size={16} color="#CBD5E1" />

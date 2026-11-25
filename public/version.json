@@ -1,5 +1,5 @@
 {
-  "version": "2.7.0",
-  "build": "20261125-2130",
-  "notes": "Papyrus v2.7: Passkey & 2FA + Active Devices, Facebook 9:16 Photo/Video Stories, Live Real-Time Search Engine, Centered 3D-Morphing Auth Modal, Clean OCR Vision & Dedicated Friends Hub"
+  "version": "3.0.0",
+  "build": "20261126-0145",
+  "notes": "Papyrus v3.0 — Production Social Media & Community (Meta Threads + Facebook Groups, Dedicated Messaging Center, Unified Zalo Polls, PapyAI Social, Video Cover Editor, Creator Insights, Moderation Appeals & Enterprise Admin Document Gift Center)"
 }

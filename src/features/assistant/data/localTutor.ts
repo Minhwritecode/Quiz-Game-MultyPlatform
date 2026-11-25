@@ -6,7 +6,8 @@ import type { ChatMessage } from '../domain/repository';
 const STOP_WORDS = new Set([
   'là', 'gì', 'của', 'và', 'các', 'trong', 'có', 'được', 'cho', 'với', 'một', 'những',
   'khi', 'nào', 'như', 'thế', 'hãy', 'giải', 'thích', 'tôi', 'bạn', 'giúp', 'về', 'tại',
-  'sao', 'theo', 'này', 'đó', 'cho', 'hỏi', 'ơi', 'nhé', 'nha', 'the', 'what', 'how', 'why', 'is', 'are', 'of', 'in', 'to', 'for', 'and',
+  'sao', 'theo', 'này', 'đó', 'hỏi', 'ơi', 'nhé', 'nha', 'xin', 'chào', 'chao', 'hi', 'hello', 'hey', 'alo', 'hôm', 'nay',
+  'the', 'what', 'how', 'why', 'is', 'are', 'of', 'in', 'to', 'for', 'and',
 ]);
 
 function tokenize(text: string): string[] {
@@ -250,16 +251,21 @@ function findMatchingKnowledge(query: string, extraSets?: QuestionSet[]): string
     explanation: string;
   }> = [];
 
+  const hasWholeWord = (text: string, token: string): boolean => {
+    const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}($|[^\\p{L}\\p{N}])`, 'iu').test(text);
+  };
+
   for (const set of allSets) {
     const setHay = `${set.title} ${set.subject} ${(set.tags ?? []).join(' ')}`.toLowerCase();
-    const setBoost = qTokens.filter((t) => setHay.includes(t)).length * 2;
+    const setBoost = qTokens.filter((t) => hasWholeWord(setHay, t)).length * 2;
     for (const q of set.questions) {
       const hay = `${q.content} ${q.options.join(' ')} ${q.explanation}`.toLowerCase();
       let score = setBoost;
       for (const tok of qTokens) {
-        if (hay.includes(tok)) score += 3;
+        if (hasWholeWord(hay, tok)) score += 3;
       }
-      if (score >= 3) {
+      if (score >= 4) {
         scored.push({
           score,
           setTitle: set.title,
@@ -288,12 +294,48 @@ export function answerLocally(
   messages: ChatMessage[],
   context: string,
   document?: string,
-  extraSets?: QuestionSet[]
+  extraSets?: QuestionSet[],
+  strictMatchOnly = false
 ): string {
   const lastUser = [...messages].reverse().find((m) => m.role === 'user')?.content.trim() ?? '';
   const lower = lastUser.toLowerCase();
 
-  // 1. Exact Math / Equation Solver FIRST (handles "1+1=", "2x + 6 = 14", percentages, roots...)
+  // 0. Natural Conversational Check-ins, Small Talk & Greetings FIRST!
+  if (
+    /(hôm nay.*thế nào|bạn khỏe không|dạo này sao|how are you|how's it going|bạn đang làm gì|vui không|khỏe chứ)/i.test(
+      lower
+    )
+  ) {
+    const hasHi = /(xin chào|chào|hi|hello|hey)/i.test(lower);
+    return [
+      hasHi
+        ? '👋 Chào bạn nhé! Hôm nay mình rất khỏe và tràn đầy năng lượng để trò chuyện cùng bạn! ✨'
+        : '😊 Cảm ơn bạn đã hỏi thăm nha! Hôm nay Papybot rất vui và sẵn sàng đồng hành cùng bạn mọi lúc!',
+      '',
+      'Ngày hôm nay của bạn thế nào rồi? Bạn muốn **trò chuyện thư giãn**, **hỏi bất kỳ chủ đề nào đang tò mò**, **nhờ tóm tắt bài viết/tài liệu**, hay **luyện nhanh vài câu đố** cùng mình?',
+    ].join('\n');
+  }
+
+  if (
+    /^[\s!.,?]*(xin chào|chào bạn|chào papybot|chào papy|chào cậu|chào|hello|helo|hi|hey|alo|ê|hí|yo)(\s+(xin chào|chào|bạn|papybot|papy|cậu|mình|ơi|nhé|nha|ạ|there|ad))*[\s!.,?]*$/i.test(
+      lower
+    )
+  ) {
+    return [
+      '👋 Xin chào! Rất vui được trò chuyện cùng bạn trên **Papyrus**!',
+      'Bạn cứ hỏi tự nhiên bất cứ câu gì nhé — từ trò chuyện hàng ngày, giải toán, viết code, hỏi đáp kiến thức cho tới đọc ảnh/PDF, mình luôn sẵn sàng!',
+    ].join('\n');
+  }
+
+  if (/(cảm ơn|thanks|thank you|tuyệt quá|giỏi quá|hay quá)/i.test(lower) && lastUser.length < 48) {
+    return '🥰 Không có chi đâu nè! Rất vui vì giúp được bạn. Cần hỏi thêm câu gì cứ nhắn mình liền nhé!';
+  }
+
+  if (/(tạm biệt|bye|ngủ ngon|hẹn gặp lại)/i.test(lower) && lastUser.length < 48) {
+    return '🌙 Tạm biệt bạn nhé! Chúc bạn một ngày thật vui vẻ và nhiều năng lượng nha! ✨';
+  }
+
+  // 1. Exact Math / Equation Solver (handles "1+1=", "2x + 6 = 14", percentages, roots...)
   const mathAns = trySolveMath(lastUser);
   if (mathAns) {
     return mathAns;
@@ -330,21 +372,25 @@ export function answerLocally(
     return matched;
   }
 
-  // 7. Conversational Greetings & Helpful Direct Answer
+  // When called in pre-API mode, return empty string so /api/papybot handles open-ended conversation & live Wikipedia/LLM!
+  if (strictMatchOnly) {
+    return '';
+  }
+
   if (/^(xin chào|chào|hello|hi|hey|alo|ê)\b/i.test(lower)) {
     return [
-      '👋 Xin chào! Mình là **Papybot AI** — Gia sư đa phương thức của bạn.',
-      '• Gửi **phép tính / phương trình** (vd: `2x + 6 = 14`), **chụp ảnh bài tập**, **đính kèm PDF/DOCX**, hoặc **bấm 🎤 nói trực tiếp** để mình giải đáp ngay nhé!',
+      '👋 Chào bạn! Mình đang lắng nghe bạn đây ✨',
+      'Bạn hãy chia sẻ thêm câu hỏi hoặc chủ đề bạn muốn trao đổi nhé — mình sẽ giải đáp chi tiết ngay!',
     ].join('\n');
   }
 
-  // Thoughtful structured academic synthesis for open-ended queries
+  // Friendly offline conversational fallback (when device has no internet)
   return [
-    `📘 **Phân tích học thuật cho chủ đề:** *"${lastUser.slice(0, 120)}"*`,
+    `💬 Mình đã nhận được tin nhắn của bạn: *"${lastUser.slice(0, 120)}"*`,
     '',
-    `• **Bản chất cốt lõi:** Để nắm vững *"${lastUser.slice(0, 80)}"*, hãy chia nhỏ thành **Định nghĩa → Cơ chế hoạt động → Ví dụ thực tiễn / Công thức**.`,
-    `• **Gợi ý thực hành ngay trên Papyrus (màn hình \`${context || '/'}\`):**`,
-    '  1. Đính kèm **ảnh chụp trang sách / slide PDF** bằng nút 📷 hoặc 📄 bên dưới để mình trích xuất định nghĩa chính xác từng dòng.',
-    '  2. Hoặc thử gõ tên môn học (*Cấu trúc dữ liệu, Hệ điều hành, Mạng máy tính, CSDL, Lịch sử, Vật lý, Hóa học, Sinh học, Văn học*) để mở kho 20 bộ câu hỏi chuẩn Đại học!',
+    `Hiện thiết bị đang ở chế độ ngoại tuyến hoặc mất kết nối tạm thời nên mình chưa tra cứu trực tuyến mở rộng được. Ngay cả khi không có mạng, bạn vẫn có thể:`,
+    `• Gửi **phép tính / phương trình** (vd: \`2x + 6 = 14\`, \`sqrt(144) + 25\`),`,
+    `• Đính kèm **PDF / DOCX / Ảnh bài tập** để mình trích xuất nội dung tại chỗ,`,
+    `• Hoặc hỏi về **20 bộ chuyên đề Đại học** có sẵn trên máy (CNTT, Toán-Lý-Hóa-Sinh, Lịch sử, Văn học) tại màn hình \`${context || '/'}\` nhé!`,
   ].join('\n');
 }
