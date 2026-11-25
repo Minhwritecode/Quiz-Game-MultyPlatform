@@ -2,14 +2,17 @@ import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Updates from 'expo-updates';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 
 /**
- * Native developer update banner via expo-updates.
- * Silently checks for OTA updates and surfaces a crisp 1-tap reload bar.
+ * Native developer update banner anchored safely above the Bottom Nav
+ * so it NEVER collides with the status bar clock or TopBar.
  */
 export function AppUpdateBanner() {
+  const insets = useSafeAreaInsets();
   const [updateReady, setUpdateReady] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
   const [reloading, setReloading] = useState(false);
 
   useEffect(() => {
@@ -27,14 +30,14 @@ export function AppUpdateBanner() {
     };
   }, []);
 
-  if (!updateReady) return null;
+  if (!updateReady || dismissed) return null;
 
   return (
-    <View style={styles.wrap}>
+    <View style={[styles.wrap, { bottom: Math.max(76, insets.bottom + 72) }]}>
       <View style={styles.card}>
         <Ionicons name="sparkles" size={18} color="#FDE68A" />
         <Text style={[typography.caption, styles.copy]} numberOfLines={2}>
-          Nhà phát triển đã có bản cập nhật mới. Vui lòng tải lại ứng dụng!
+          Nhà phát triển đã có bản cập nhật mới. Chạm Tải lại ngay!
         </Text>
         <Pressable
           accessibilityRole="button"
@@ -47,6 +50,9 @@ export function AppUpdateBanner() {
         >
           <Text style={styles.reloadText}>{reloading ? '...' : 'Tải lại'}</Text>
         </Pressable>
+        <Pressable hitSlop={8} onPress={() => setDismissed(true)}>
+          <Ionicons name="close" size={16} color="#CBD5E1" />
+        </Pressable>
       </View>
     </View>
   );
@@ -55,7 +61,6 @@ export function AppUpdateBanner() {
 const styles = StyleSheet.create({
   wrap: {
     position: 'absolute',
-    top: 48,
     left: spacing.md,
     right: spacing.md,
     zIndex: 999,
@@ -63,14 +68,14 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
-    maxWidth: 520,
+    maxWidth: 500,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
     backgroundColor: '#1E1B4B',
-    borderWidth: 1,
-    borderColor: '#6366F1',
-    borderRadius: radii.md,
+    borderWidth: 1.5,
+    borderColor: '#818CF8',
+    borderRadius: radii.lg,
     paddingHorizontal: spacing.md,
     paddingVertical: 10,
   },

@@ -1,4 +1,6 @@
 import { supabase } from '@/core/network/supabase';
+import { readKnownUserAccounts } from '@/features/profile/data/profileCloudSync';
+import { getOnlineScholarCandidates, searchOnlineScholars } from './liveScholarDirectory';
 import type {
   BattleHistoryItem,
   FriendSearchCandidate,
@@ -315,12 +317,32 @@ export async function fetchFriendsLeaderboard(params: {
 
 export async function searchPlayersForFriend(query: string): Promise<FriendSearchCandidate[]> {
   const clean = query.trim();
-  if (!supabase || clean.length < 2) return [];
+  if (clean.length < 2) return [];
   const lower = clean.toLowerCase();
   try {
-    const { data: sessionData } = await supabase.auth.getSession();
-    const myId = sessionData.session?.user?.id;
+    const sessionData = supabase ? (await supabase.auth.getSession()).data : null;
+    const myId = sessionData?.session?.user?.id;
     const byId = new Map<string, FriendSearchCandidate>();
+
+    // 0. Direct UUID / Invite Link match (allows instant friend add by pasting UUID or link!)
+    const uuidMatch = clean.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+    if (uuidMatch && uuidMatch[0] !== myId) {
+      const targetUuid = uuidMatch[0].toLowerCase();
+      byId.set(targetUuid, {
+        id: targetUuid,
+        displayName: `Học giả (${targetUuid.slice(0, 8).toUpperCase()})`,
+        avatarUrl: null,
+        eloRating: 1200,
+        totalScore: 0,
+      });
+    }
+
+    // 0b. Realtime Online Scholar Directory (works immediately across devices even before SQL migration!)
+    for (const liveCand of searchOnlineScholars(clean, myId)) {
+      byId.set(liveCand.id, liveCand);
+    }
+
+    if (!supabase) return Array.from(byId.values()).slice(0, 15);
 
     // 1. Primary: SECURITY DEFINER search RPC (bypasses strict read-own-profile RLS safely)
     try {
@@ -404,6 +426,62 @@ export async function searchPlayersForFriend(query: string): Promise<FriendSearc
   } catch {
     return [];
   }
+}
+
+/**
+ * Rich Social Scholar Discovery: combines live online scholars, real Supabase registered profiles,
+ * and known community accounts so Friends Discovery is never empty and always shows real peers.
+ */
+export async function fetchSuggestedScholarsForFriends(currentUserId?: string): Promise<FriendSearchCandidate[]> {
+  const byId = new Map<string, FriendSearchCandidate>();
+
+  for (const onl of getOnlineScholarCandidates(currentUserId)) {
+    if (onl.id && onl.id !== currentUserId) {
+      byId.set(onl.id, onl);
+    }
+  }
+
+  const known = await readKnownUserAccounts();
+  for (const k of known) {
+    if (!k.id || k.id === currentUserId || k.role === 'admin' || k.role === 'superadmin') continue;
+    if (!byId.has(k.id)) {
+      byId.set(k.id, {
+        id: k.id,
+        displayName: k.displayName,
+        avatarUrl: k.avatarUrl,
+        eloRating: k.eloRating,
+        totalScore: k.totalScore,
+      });
+    }
+  }
+
+  if (supabase) {
+    try {
+      const { data } = await supabase.rpc('get_leaderboard_players', {
+        p_timeframe: 'all',
+        p_topic: 'all',
+        p_limit: 30,
+        p_offset: 0,
+      });
+      if (Array.isArray(data)) {
+        for (const row of data as RpcRow[]) {
+          const id = String(row.user_id ?? '');
+          if (!id || id === currentUserId || byId.has(id)) continue;
+          byId.set(id, {
+            id,
+            displayName: row.display_name || 'Học giả Papyrus',
+            avatarUrl: row.avatar_url ?? null,
+            eloRating: 1200,
+            totalScore: Number(row.total_score ?? 0),
+          });
+        }
+      }
+    } catch {
+      // Non-fatal
+    }
+  }
+
+  return Array.from(byId.values()).slice(0, 24);
 }
 
 export async function addFriendById(friendId: string): Promise<boolean> {

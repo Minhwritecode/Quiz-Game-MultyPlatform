@@ -3,9 +3,40 @@ import { fetch } from 'expo/fetch';
 import { createAnswerParser } from './stream';
 import type { PdfAttachment } from './pdf';
 import { supabase } from '@/core/network/supabase';
-import type { ChatMessage } from '../domain/repository';
+import type { ChatMessage, ImageAttachment } from '../domain/repository';
+import type { QuestionSet } from '@/core/domain/models';
 import { answerLocally } from './localTutor';
+import { extractTextFromPdfBase64 } from '@/features/ai-quiz/services/documentTextExtractor';
+import { sanitizeOcrAndDocumentText } from '@/features/scan-ocr/domain/ocrCleaner';
 export type { ChatMessage } from '../domain/repository';
+
+/**
+ * Ensures strictly alternating `user` -> `assistant` -> `user` messages ending with `user`
+ * so the Supabase `papybot` Edge Function validator never rejects multi-turn conversations.
+ */
+function normalizeAlternatingMessages(messages: ChatMessage[]): ChatMessage[] {
+  const merged: ChatMessage[] = [];
+  for (const m of messages) {
+    const clean = m.content.trim().slice(0, 3900);
+    if (!clean) continue;
+    const prev = merged[merged.length - 1];
+    if (prev && prev.role === m.role) {
+      prev.content = `${prev.content}\n\n${clean}`.slice(0, 3900);
+    } else {
+      merged.push({ role: m.role, content: clean });
+    }
+  }
+  while (merged.length > 0 && merged[0]?.role !== 'user') {
+    merged.shift();
+  }
+  if (merged.length === 0) {
+    return [{ role: 'user', content: 'Hãy hỗ trợ phân tích nội dung bài học này.' }];
+  }
+  if (merged[merged.length - 1]?.role !== 'user') {
+    merged.push({ role: 'user', content: 'Hãy tiếp tục giải thích chi tiết.' });
+  }
+  return merged.slice(-19);
+}
 
 export async function askPapybot(
   messages: ChatMessage[],
@@ -13,10 +44,15 @@ export async function askPapybot(
   document: string | undefined,
   signal: AbortSignal,
   onText?: (text: string) => void,
-  pdf?: PdfAttachment
+  pdf?: PdfAttachment,
+  extraSets?: QuestionSet[],
+  image?: ImageAttachment
 ): Promise<string> {
+  const cleanDoc = document ? sanitizeOcrAndDocumentText(document) : undefined;
+  const normalizedMessages = normalizeAlternatingMessages(messages);
+
   if (!supabase) {
-    const local = answerLocally(messages, context, document);
+    const local = answerLocally(normalizedMessages, context, cleanDoc, extraSets);
     onText?.(local);
     return local;
   }
@@ -28,31 +64,42 @@ export async function askPapybot(
   const cancel = () => controller.abort();
   signal.addEventListener('abort', cancel);
   if (signal.aborted) cancel();
-  const timer = setTimeout(cancel, 25000);
+  const timer = setTimeout(cancel, 28000);
 
   const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
   const key = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
   const fallbackLocal = (): string => {
-    const reply = answerLocally(messages, context, document);
+    const effectiveDoc =
+      cleanDoc && cleanDoc.trim().length > 0
+        ? cleanDoc
+        : pdf?.data
+        ? extractTextFromPdfBase64(pdf.data)
+        : undefined;
+    const reply = answerLocally(normalizedMessages, context, effectiveDoc, extraSets);
     onText?.(reply);
     return reply;
   };
 
+  const buildRequestBody = (stream: boolean) => ({
+    messages: normalizedMessages,
+    context: (context || '/').slice(0, 110),
+    ...(cleanDoc ? { document: cleanDoc.slice(0, 28000) } : {}),
+    ...(pdf?.data ? { pdf: pdf.data } : {}),
+    ...(image?.data && image.data.length <= 4_400_000 ? { image } : {}),
+    ...(stream ? { stream: true } : {}),
+  });
+
   const invokeNonStream = async (): Promise<string> => {
-    const body = pdf
-      ? { messages, context, document, pdf: pdf.data }
-      : { messages, context, document };
     const result = await client.functions.invoke('papybot', {
-      body,
+      body: buildRequestBody(false),
       signal: controller.signal,
     });
     if (result.error) {
       const status = result.error.context?.status;
-      if (status === 429 || status === 401 || status === 400) {
+      if (status === 429 || status === 401) {
         throw serviceFailure(status);
       }
-      // Graceful local academic tutor fallback when cloud AI key/provider returns 502/503
       return fallbackLocal();
     }
     if (typeof result.data?.answer !== 'string' || !result.data.answer.trim()) {
@@ -73,10 +120,10 @@ export async function askPapybot(
           Authorization: `Bearer ${data.session.access_token}`,
         },
         signal: controller.signal,
-        body: JSON.stringify({ messages, context, document, pdf: pdf?.data, stream: true }),
+        body: JSON.stringify(buildRequestBody(true)),
       });
       if (!response.ok) {
-        if (response.status === 429 || response.status === 401 || response.status === 400) {
+        if (response.status === 429 || response.status === 401) {
           throw serviceFailure(response.status);
         }
         return fallbackLocal();

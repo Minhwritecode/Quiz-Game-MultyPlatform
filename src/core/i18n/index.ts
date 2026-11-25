@@ -7,6 +7,7 @@ export const translations = {
     nav: {
       home: 'Trang chủ',
       library: 'Thư viện',
+      community: 'Cộng đồng',
       battle: 'Thi đấu',
       rank: 'Xếp hạng',
       settings: 'Cài đặt',
@@ -324,6 +325,7 @@ export const translations = {
     nav: {
       home: 'Home',
       library: 'Library',
+      community: 'Community',
       battle: 'Battle',
       rank: 'Rank',
       settings: 'Settings',

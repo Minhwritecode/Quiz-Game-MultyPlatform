@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { preferenceStorage } from '@/composition/preferences';
 import type { QuestionSet } from '@/core/domain/models';
 import {
+  broadcastAdminNotificationToCloud,
   dispatchExternalNotification,
   fetchCloudGiftsForCurrentUser,
   sendAdminGiftToCloud,
@@ -18,7 +19,16 @@ export interface AppNotificationItem {
   body: string;
   actionRoute?: string;
   read: boolean;
+  readByUserIds?: string[];
+  fromAdminConsole?: boolean;
   createdAt: string;
+}
+
+export function isNotificationReadForViewer(item: AppNotificationItem, viewerId: string): boolean {
+  if (Array.isArray(item.readByUserIds)) {
+    return item.readByUserIds.includes(viewerId);
+  }
+  return Boolean(item.read);
 }
 
 export interface AdminGiftItem {
@@ -41,7 +51,7 @@ interface NotificationState {
     item: Omit<AppNotificationItem, 'id' | 'read' | 'createdAt'>,
     alsoSendExternal?: boolean
   ) => void;
-  markRead: (id: string) => void;
+  markRead: (id: string, viewerId?: string) => void;
   markAllRead: (userId?: string | null) => void;
   clearNotifications: () => void;
   sendGift: (input: {
@@ -52,6 +62,7 @@ interface NotificationState {
     message: string;
     questionSet?: QuestionSet;
     documentText?: string;
+    fromAdminConsole?: boolean;
   }) => Promise<AdminGiftItem>;
   claimGift: (giftId: string, userId: string) => AdminGiftItem | null;
   syncCloudGifts: (userId?: string | null) => Promise<void>;
@@ -59,14 +70,15 @@ interface NotificationState {
 
 const INITIAL_NOTIFICATIONS: AppNotificationItem[] = [
   {
-    id: 'welcome-papyrus-v24',
+    id: 'welcome-papyrus-v25',
     recipientId: 'all',
     kind: 'system',
-    title: 'Chào mừng đến với Papyrus 2.4!',
-    body: '20 bộ câu hỏi Đại học (IT, Lịch sử, Sinh – Lý – Hóa, Văn học) & đấu trường 3D đầy màu sắc đã sẵn sàng trong Thư viện của bạn.',
-    actionRoute: '/sets',
+    title: 'Chào mừng đến với Papyrus 2.5!',
+    body: 'Khám phá Cộng đồng Học thuật (Threads + Messenger/Zalo + Tra cứu tin mới mỗi ngày) và Đấu trường Nhập vai 3D!',
+    actionRoute: '/community',
     read: false,
-    createdAt: '2026-11-24T00:00:00.000Z',
+    readByUserIds: [],
+    createdAt: '2026-11-25T00:00:00.000Z',
   },
 ];
 
@@ -81,29 +93,52 @@ export const useNotificationStore = create<NotificationState>()(
           ...item,
           id: `notif-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           read: false,
+          readByUserIds: [],
           createdAt: new Date().toISOString(),
         };
         set((state) => ({
-          notifications: [entry, ...state.notifications].slice(0, 60),
+          notifications: [entry, ...state.notifications].slice(0, 80),
         }));
+
+        // If sent from Admin Console: broadcast to connected User devices ONLY — NEVER pop toast on the Admin session itself!
+        if (item.fromAdminConsole) {
+          void broadcastAdminNotificationToCloud({
+            recipientId: item.recipientId,
+            kind: item.kind,
+            title: item.title,
+            body: item.body,
+            actionRoute: item.actionRoute,
+          });
+          return;
+        }
+
         if (alsoSendExternal) {
           void dispatchExternalNotification(entry.title, entry.body);
         }
       },
 
-      markRead: (id) => {
+      markRead: (id, viewerId = 'guest') => {
         set((state) => ({
-          notifications: state.notifications.map((n) => (n.id === id ? { ...n, read: true } : n)),
+          notifications: state.notifications.map((n) => {
+            if (n.id !== id) return n;
+            const prevIds = n.readByUserIds ?? [];
+            const nextIds = prevIds.includes(viewerId) ? prevIds : [...prevIds, viewerId];
+            return { ...n, read: true, readByUserIds: nextIds };
+          }),
         }));
       },
 
       markAllRead: (userId) => {
+        const viewer = userId || 'guest';
         set((state) => ({
-          notifications: state.notifications.map((n) =>
-            n.recipientId === 'all' || !userId || n.recipientId === userId
-              ? { ...n, read: true }
-              : n
-          ),
+          notifications: state.notifications.map((n) => {
+            if (n.recipientId === 'all' || !userId || n.recipientId === userId) {
+              const prevIds = n.readByUserIds ?? [];
+              const nextIds = prevIds.includes(viewer) ? prevIds : [...prevIds, viewer];
+              return { ...n, read: true, readByUserIds: nextIds };
+            }
+            return n;
+          }),
         }));
       },
 
@@ -136,21 +171,20 @@ export const useNotificationStore = create<NotificationState>()(
               input.message ||
               `Quản trị viên đã gửi tặng bạn "${input.title}". Mở hộp thư hoặc Hồ sơ để nhận ngay!`,
             actionRoute: '/profile',
+            fromAdminConsole: input.fromAdminConsole ?? true,
           },
-          true
+          false
         );
 
-        if (input.recipientId !== 'all') {
-          void sendAdminGiftToCloud({
-            recipientId: input.recipientId,
-            recipientName: input.recipientName,
-            giftType: input.giftType,
-            title: input.title,
-            message: input.message,
-            questionSet: input.questionSet,
-            documentText: input.documentText,
-          });
-        }
+        void sendAdminGiftToCloud({
+          recipientId: input.recipientId,
+          recipientName: input.recipientName,
+          giftType: input.giftType,
+          title: input.title,
+          message: input.message,
+          questionSet: input.questionSet,
+          documentText: input.documentText,
+        });
 
         return gift;
       },
@@ -195,7 +229,7 @@ export const useNotificationStore = create<NotificationState>()(
       },
     }),
     {
-      name: 'papyrus.notifications.v1',
+      name: 'papyrus.notifications.v2',
       storage: createJSONStorage(() => preferenceStorage),
     }
   )

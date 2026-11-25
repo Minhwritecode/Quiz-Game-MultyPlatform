@@ -1,4 +1,8 @@
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
+import { useAuthStore } from '@/core/state/useAuthStore';
+import { useRouteRefreshStore } from '@/core/state/useRouteRefreshStore';
+import { useNotificationStore } from '@/features/notifications/state/useNotificationStore';
+import { useStreakStore } from '@/features/streak/state/useStreakStore';
 import { useAssistantUiStore } from '@/core/state/useAssistantUiStore';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, usePathname } from 'expo-router';
@@ -8,6 +12,7 @@ import {
   Easing,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -149,13 +154,48 @@ export const SmoothReveal = memo(function SmoothReveal({
   );
 });
 
+function navigateWithViewTransition(runNav: () => void, reduceMotion: boolean) {
+  if (
+    Platform.OS === 'web' &&
+    !reduceMotion &&
+    typeof document !== 'undefined' &&
+    'startViewTransition' in document &&
+    typeof (document as Document & { startViewTransition?: (cb: () => void) => { finished: Promise<void> } })
+      .startViewTransition === 'function'
+  ) {
+    const vt = (
+      document as Document & { startViewTransition: (cb: () => void) => { finished: Promise<void> } }
+    ).startViewTransition(() => {
+      runNav();
+    });
+    vt.finished.finally(() => {
+      const mainHeading = document.getElementById('papyrus-route-focus');
+      mainHeading?.focus?.();
+    });
+    return;
+  }
+  runNav();
+  if (Platform.OS === 'web' && typeof document !== 'undefined') {
+    requestAnimationFrame(() => {
+      document.getElementById('papyrus-route-focus')?.focus?.();
+    });
+  }
+}
+
 export function Screen({
   children,
   scroll = true,
   bottomNav = false,
   transparent = false,
   contentStyle,
-}: PropsWithChildren<{ scroll?: boolean; bottomNav?: boolean; transparent?: boolean; contentStyle?: object }>) {
+  onPullRefresh,
+}: PropsWithChildren<{
+  scroll?: boolean;
+  bottomNav?: boolean;
+  transparent?: boolean;
+  contentStyle?: object;
+  onPullRefresh?: () => Promise<void> | void;
+}>) {
   const palette = usePalette();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -163,14 +203,108 @@ export function Screen({
   const maxWidth = width >= 900 ? 1160 : 760;
   const bottomBarHeight = 62 + Math.max(6, insets.bottom);
 
+  const [refreshing, setRefreshing] = useState(false);
+  const [pullOffset, setPullOffset] = useState(0);
+  const scrollYRef = useRef(0);
+  const startTouchYRef = useRef<number | null>(null);
+
+  const triggerInPlaceRefresh = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      const uid = useAuthStore.getState().user?.id;
+      useStreakStore.getState().refreshStreakStatus();
+      useRouteRefreshStore.getState().bumpRouteRefresh();
+      await Promise.all([
+        usePapyrusStore.getState().hydrateCloudProfile(),
+        uid ? useNotificationStore.getState().syncCloudGifts(uid) : Promise.resolve(),
+        Promise.resolve(onPullRefresh?.()),
+      ]);
+    } finally {
+      setTimeout(() => setRefreshing(false), 320);
+    }
+  };
+
+  const webTouchHandlers =
+    Platform.OS === 'web' && scroll
+      ? ({
+          onTouchStart: (e: { touches?: Array<{ clientY: number }> }) => {
+            if (scrollYRef.current <= 2 && e.touches?.[0]) {
+              startTouchYRef.current = e.touches[0].clientY;
+            } else {
+              startTouchYRef.current = null;
+            }
+          },
+          onTouchMove: (e: { touches?: Array<{ clientY: number }> }) => {
+            if (startTouchYRef.current === null || scrollYRef.current > 2 || !e.touches?.[0]) return;
+            const dy = e.touches[0].clientY - startTouchYRef.current;
+            if (dy > 14) {
+              setPullOffset(Math.min(96, Math.round(dy * 0.55)));
+            } else {
+              setPullOffset(0);
+            }
+          },
+          onTouchEnd: () => {
+            const pulled = pullOffset;
+            startTouchYRef.current = null;
+            setPullOffset(0);
+            if (pulled >= 56) {
+              void triggerInPlaceRefresh();
+            }
+          },
+          onTouchCancel: () => {
+            startTouchYRef.current = null;
+            setPullOffset(0);
+          },
+        } as object)
+      : undefined;
+
   return (
     <SafeAreaView
       style={[styles.safe, { backgroundColor: transparent ? 'transparent' : palette.paper }]}
       edges={['top', 'left', 'right']}
     >
       {bottomNav && desktopWeb && <DesktopNav />}
+
+      {/* Minimalist silent orbital pull indicator (NO text banner, refreshes current state in-place!) */}
+      {(pullOffset >= 24 || refreshing) && (
+        <View pointerEvents="none" style={styles.pullBannerWrap}>
+          <View
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 17,
+              backgroundColor: palette.paperRaised,
+              borderWidth: 1.5,
+              borderColor: palette.indigo,
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: refreshing ? 1 : Math.min(1, pullOffset / 56),
+              transform: [
+                { translateY: refreshing ? 10 : Math.min(18, Math.round(pullOffset * 0.22)) },
+                { rotate: `${pullOffset * 4}deg` },
+              ],
+            }}
+          >
+            <Ionicons name="sync" size={16} color={palette.indigo} />
+          </View>
+        </View>
+      )}
+
       {scroll ? (
         <ScrollView
+          {...webTouchHandlers}
+          onScroll={(e) => {
+            scrollYRef.current = e.nativeEvent.contentOffset.y;
+          }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => void triggerInPlaceRefresh()}
+              tintColor={palette.indigo}
+              colors={[palette.indigo]}
+            />
+          }
           contentInsetAdjustmentBehavior="automatic"
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
@@ -181,11 +315,17 @@ export function Screen({
           ]}
           showsVerticalScrollIndicator={false}
         >
-          <View style={[styles.content, { maxWidth }, contentStyle]}>{children}</View>
+          <View
+            nativeID="papyrus-route-focus"
+            style={[styles.content, { maxWidth }, contentStyle]}
+          >
+            {children}
+          </View>
           {bottomNav && desktopWeb && <AppFooter />}
         </ScrollView>
       ) : (
         <View
+          nativeID="papyrus-route-focus"
           style={[
             styles.content,
             styles.nonScrollContent,
@@ -217,29 +357,75 @@ export const TopBar = memo(function TopBar({
 }) {
   const palette = usePalette();
   const router = useRouter();
+  const hapticsEnabled = usePapyrusStore((s) => s.haptics);
   const fg = lightContent ? '#F8FAFC' : palette.ink;
-  const borderCol = lightContent ? 'rgba(255,255,255,0.14)' : palette.paperMuted;
+  const surfaceBg = lightContent ? 'rgba(15, 23, 66, 0.84)' : palette.paperRaised;
+  const borderCol = lightContent ? 'rgba(129, 140, 248, 0.42)' : palette.indigoBorder;
+  const backBg = lightContent ? 'rgba(99, 102, 241, 0.28)' : palette.indigoTint;
+  const backBorder = lightContent ? 'rgba(165, 180, 252, 0.48)' : palette.indigoBorder;
+
+  const handleBack = () => {
+    if (hapticsEnabled && Platform.OS !== 'web') {
+      void Haptics.selectionAsync().catch(() => undefined);
+    }
+    if (onBack) {
+      onBack();
+      return;
+    }
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/');
+    }
+  };
+
   return (
-    <View style={[styles.topBar, { borderBottomColor: borderCol }]}>
+    <View
+      style={[
+        styles.topBar,
+        shadows.card,
+        {
+          backgroundColor: surfaceBg,
+          borderColor: borderCol,
+        },
+        Platform.OS === 'web'
+          ? ({
+              backdropFilter: 'blur(16px)',
+              WebkitBackdropFilter: 'blur(16px)',
+            } as unknown as ViewStyle)
+          : undefined,
+      ]}
+    >
       <Pressable
-        hitSlop={10}
+        hitSlop={12}
         accessibilityRole="button"
         accessibilityLabel="Go back"
-        onPress={onBack ?? (() => router.back())}
+        onPress={handleBack}
         style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
           styles.iconButton,
           {
-            backgroundColor: hovered || pressed ? (lightContent ? 'rgba(255,255,255,0.12)' : palette.indigoTint) : 'transparent',
-            transform: pressed ? [{ scale: 0.94 }] : undefined,
+            backgroundColor: hovered || pressed ? palette.indigo : backBg,
+            borderColor: backBorder,
+            borderWidth: 1,
+            transform: pressed ? [{ scale: 0.93 }] : undefined,
           },
+          Platform.OS === 'web' ? ({ cursor: 'pointer' } as unknown as ViewStyle) : undefined,
         ]}
       >
-        <Ionicons name="arrow-back" size={22} color={fg} />
+        {({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => (
+          <Ionicons
+            name="arrow-back"
+            size={20}
+            color={hovered || pressed ? '#FFFFFF' : lightContent ? '#E0E7FF' : palette.indigoDeep}
+          />
+        )}
       </Pressable>
-      <Text style={[typography.title, { color: fg, flex: 1 }]} numberOfLines={1}>
-        {title}
-      </Text>
-      <View style={styles.topAction}>{action}</View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={[typography.title, { color: fg, fontWeight: '800' }]} numberOfLines={1}>
+          {title}
+        </Text>
+      </View>
+      <View style={styles.topAction}>{action ?? <OnlineStatusDot />}</View>
     </View>
   );
 });
@@ -562,19 +748,25 @@ export const BottomNav = memo(function BottomNav() {
   const insets = useSafeAreaInsets();
   const { t } = useI18n();
   const items = useMemo<
-    Array<{ route: '/' | '/sets' | '/battle' | '/leaderboard' | '/settings'; label: string; icon: IconName }>
+    Array<{
+      route: '/' | '/sets' | '/community' | '/battle' | '/leaderboard' | '/settings';
+      label: string;
+      icon: IconName;
+    }>
   >(
     () => [
       { route: '/', label: t.nav.home, icon: 'home-outline' },
       { route: '/sets', label: t.nav.library, icon: 'library-outline' },
+      { route: '/community', label: t.nav.community, icon: 'people-circle-outline' },
       { route: '/battle', label: t.nav.battle, icon: 'game-controller-outline' },
       { route: '/leaderboard', label: t.nav.rank, icon: 'trophy-outline' },
       { route: '/settings', label: t.nav.settings, icon: 'settings-outline' },
     ],
-    [t.nav.home, t.nav.library, t.nav.battle, t.nav.rank, t.nav.settings]
+    [t.nav.home, t.nav.library, t.nav.community, t.nav.battle, t.nav.rank, t.nav.settings]
   );
 
   const hapticsEnabled = usePapyrusStore((s) => s.haptics);
+  const reduceMotion = usePapyrusStore((s) => s.reduceMotion);
 
   const webDockStyle =
     Platform.OS === 'web'
@@ -610,11 +802,13 @@ export const BottomNav = memo(function BottomNav() {
             accessibilityRole="tab"
             accessibilityLabel={item.label}
             accessibilityState={{ selected: active }}
+            {...(Platform.OS === 'web' && active ? ({ 'aria-current': 'page' } as object) : {})}
             onPress={() => {
+              if (active) return;
               if (hapticsEnabled && Platform.OS !== 'web') {
                 void Haptics.selectionAsync().catch(() => undefined);
               }
-              router.replace(item.route);
+              navigateWithViewTransition(() => router.replace(item.route), reduceMotion);
             }}
             style={({ pressed }) => [
               styles.navItem,
@@ -656,14 +850,18 @@ export const DesktopNav = memo(function DesktopNav() {
   const { language, toggleLanguage, t } = useI18n();
   const openAssistant = useAssistantUiStore((s) => s.openAssistant);
 
-  const items = useMemo<Array<{ route: '/' | '/sets' | '/battle' | '/leaderboard'; label: string }>>(
+  const reduceMotion = usePapyrusStore((s) => s.reduceMotion);
+  const items = useMemo<
+    Array<{ route: '/' | '/sets' | '/community' | '/battle' | '/leaderboard'; label: string }>
+  >(
     () => [
       { route: '/', label: t.nav.home },
       { route: '/sets', label: t.nav.library },
+      { route: '/community', label: t.nav.community },
       { route: '/battle', label: t.nav.battle },
       { route: '/leaderboard', label: t.nav.rank },
     ],
-    [t.nav.home, t.nav.library, t.nav.battle, t.nav.rank]
+    [t.nav.home, t.nav.library, t.nav.community, t.nav.battle, t.nav.rank]
   );
 
   return (
@@ -692,7 +890,11 @@ export const DesktopNav = memo(function DesktopNav() {
                 key={item.route}
                 accessibilityRole="link"
                 accessibilityState={{ selected: active }}
-                onPress={() => router.replace(item.route)}
+                {...(Platform.OS === 'web' && active ? ({ 'aria-current': 'page' } as object) : {})}
+                onPress={() => {
+                  if (active) return;
+                  navigateWithViewTransition(() => router.replace(item.route), reduceMotion);
+                }}
                 style={({ hovered }: { pressed: boolean; hovered?: boolean }) => [
                   styles.desktopNavLink,
                   active && { backgroundColor: palette.indigoTint },
@@ -845,19 +1047,41 @@ export const uiColors = { colors, spacing, radii, typography };
 
 const styles = StyleSheet.create({
   safe: { flex: 1 },
+  pullBannerWrap: {
+    position: 'absolute',
+    top: 8,
+    left: spacing.md,
+    right: spacing.md,
+    zIndex: 95,
+    alignItems: 'center',
+  },
+  pullBannerPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: radii.pill,
+  },
   scroll: { alignItems: 'center', paddingHorizontal: spacing.lg, flexGrow: 1 },
   content: { width: '100%', flexGrow: 1 },
   nonScrollContent: { flex: 1, alignSelf: 'center', paddingHorizontal: spacing.lg },
   topBar: {
-    minHeight: 56,
+    minHeight: 58,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    borderBottomWidth: 1,
-    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderRadius: radii.md,
+    borderCurve: 'continuous',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    marginTop: spacing.xs,
+    marginBottom: spacing.md,
+    zIndex: 40,
   },
-  topAction: { marginLeft: 'auto', minWidth: 36, alignItems: 'flex-end' },
-  iconButton: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
+  topAction: { marginLeft: 'auto', minWidth: 36, alignItems: 'flex-end', justifyContent: 'center' },
+  iconButton: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   brandMark: { alignItems: 'center', justifyContent: 'center' },
   card: { borderRadius: radii.md, borderCurve: 'continuous', borderWidth: 1, padding: spacing.lg },
   button: {

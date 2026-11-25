@@ -163,6 +163,34 @@ class SoundEffectsManager {
   // --- SOUND EFFECTS (SFX) ---
 
   /**
+   * Chuông báo tinh tế khi có tin nhắn / thông báo đến lúc ứng dụng đang ở nền (ngoài màn hình chính)
+   */
+  public playIncomingAlert() {
+    if (this.sfxMuted) return;
+    const ctx = this.getContext();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      const tones = [587.33, 880.0]; // D5 -> A5 warm crystal chime
+      tones.forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const start = now + i * 0.11;
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, start);
+        gain.gain.setValueAtTime(0.16, start);
+        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.32);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(start);
+        osc.stop(start + 0.34);
+      });
+    } catch {
+      // Ignore autoplay restriction
+    }
+  }
+
+  /**
    * Tia chùm sét tri thức (Knowledge Beam / Spell Cast)
    */
   public playSpellCast() {

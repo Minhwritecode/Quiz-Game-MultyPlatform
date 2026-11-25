@@ -19,6 +19,7 @@ import { Badge, Button, Card, Screen, TopBar, usePalette } from '@/shared/ui';
 import { CharacterHero, CharacterAction } from '@/shared/CharacterHero';
 import { GameEnvironment } from '@/shared/GameEnvironment';
 import { MagicParticles } from '@/shared/MagicParticles';
+import { RpgCombatArena3D } from '@/shared/visuals/RpgCombatArena3D';
 import { sfx } from '@/core/audio/sfx';
 import { SoundToggle } from '@/shared/SoundToggle';
 import { useStreakStore } from '@/features/streak/state/useStreakStore';
@@ -486,8 +487,17 @@ export default function SurvivalGameScreen() {
 
   const timerColor = secondsLeft <= 3 ? '#EF4444' : secondsLeft <= 6 ? '#F59E0B' : CYAN;
 
+  const rpgCombatState =
+    characterAction === 'attack'
+      ? 'player_attack'
+      : characterAction === 'hurt'
+      ? 'enemy_attack'
+      : characterAction === 'victory'
+      ? 'victory'
+      : 'idle';
+
   return (
-    <GameEnvironment gameMode="survival" actionEffect={characterAction} pulseTrigger={particleTrigger}>
+    <GameEnvironment gameMode="survival" enable3DToggle={false} actionEffect={characterAction} pulseTrigger={particleTrigger}>
       <Screen scroll={true} transparent>
         <TopBar
           title={t.survival.title}
@@ -604,41 +614,19 @@ export default function SurvivalGameScreen() {
           })}
         </View>
 
-        {/* Character Battle Stage */}
-        <View style={styles.battleStage}>
-          {/* Player mage */}
-          <View style={{ alignItems: 'center', flex: 1 }}>
-            <CharacterHero
-              action={characterAction}
-              hp={userPlayer?.lives ?? 3}
-              maxHp={3}
-              size="md"
-              name={userPlayer?.name ?? 'Papyrus Scholar'}
-              showHealthBar
-              lightContent
-            />
-          </View>
-
-          {/* Knowledge Beam in center */}
-          <View style={{ flex: 2, justifyContent: 'center' }}>
-            <KnowledgeBeam visible={beamVisible} />
-            {/* Particle burst overlay */}
-            <View style={{ position: 'relative', height: 60, alignItems: 'center' }}>
-              <MagicParticles
-                color={CYAN}
-                count={8}
-                type="sparkles"
-                trigger={particleTrigger}
-                style={{ position: 'absolute', top: -60, left: '50%' }}
-              />
-            </View>
-          </View>
-
-          {/* Boss */}
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-            <BossCharacter hp={bossHp} maxHp={10} />
-          </View>
-        </View>
+        {/* Immersive Arena-Floor 3D RPG Battle Stage (Fire Arrows vs Crushing Magma Boulders!) */}
+        <RpgCombatArena3D
+          combatState={rpgCombatState}
+          triggerKey={questionIndex * 10 + (isAnswerLocked ? 1 : 0) + particleTrigger}
+          playerHp={userPlayer?.lives ?? 3}
+          playerMaxHp={3}
+          bossHp={bossHp}
+          bossMaxHp={10}
+          playerLabel={userPlayer?.name ?? 'Đại Pháp Sư (Bạn)'}
+          bossLabel="Golem Hắc Thạch"
+          arenaTheme="colosseum"
+          height={232}
+        />
 
         {/* Score display */}
         <View style={{ alignItems: 'center', marginBottom: spacing.sm }}>

@@ -1,8 +1,7 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import {
-  ActivityIndicator,
   AppState,
   FlatList,
   Image,
@@ -10,13 +9,20 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
   View,
   useWindowDimensions,
 } from 'react-native';
-import { Badge, Button, Card, OnlineStatusDot, Screen, usePalette } from '@/shared/ui';
+import { Badge, Button, Card, OnlineStatusDot, Screen, TopBar, usePalette } from '@/shared/ui';
+import { PapyrusPageSkeleton } from '@/shared/PapyrusLoader';
+import {
+  formatScholarCode,
+  getOnlineScholarCandidates,
+  subscribeOnlineScholars,
+} from '@/composition/platform';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { useAuthStore } from '@/core/state/useAuthStore';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
@@ -142,7 +148,10 @@ export default function LeaderboardScreen() {
   const { t } = useI18n();
   const { width } = useWindowDimensions();
 
-  const [scope, setScope] = useState<'global' | 'friends'>('global');
+  const params = useLocalSearchParams<{ addFriend?: string }>();
+  const [scope, setScope] = useState<'global' | 'friends'>(() =>
+    params.addFriend ? 'friends' : 'global'
+  );
   const [timeFilter, setTimeFilter] = useState<LeaderboardTimeframe>('week');
   const [topicFilter, setTopicFilter] = useState<LeaderboardTopic>('all');
   const [page, setPage] = useState(0);
@@ -156,8 +165,17 @@ export default function LeaderboardScreen() {
   const [friendQuery, setFriendQuery] = useState('');
   const [searchingFriends, setSearchingFriends] = useState(false);
   const [searchResults, setSearchResults] = useState<FriendSearchCandidate[]>([]);
+  const [onlineScholars, setOnlineScholars] = useState<FriendSearchCandidate[]>([]);
   const [addingFriendId, setAddingFriendId] = useState<string | null>(null);
   const [friendNotice, setFriendNotice] = useState('');
+
+  useEffect(() => {
+    const syncOnline = () => {
+      setOnlineScholars(getOnlineScholarCandidates(user?.id));
+    };
+    syncOnline();
+    return subscribeOnlineScholars(syncOnline);
+  }, [user?.id]);
 
   const fetchEntries = useCallback(async () => {
     if (scope === 'friends') {
@@ -279,6 +297,44 @@ export default function LeaderboardScreen() {
     [handleRefresh, router, user]
   );
 
+  const handledInviteRef = useRef<string | null>(null);
+  useEffect(() => {
+    const targetId = params.addFriend;
+    if (!targetId || !user || targetId === user.id || handledInviteRef.current === targetId) {
+      return;
+    }
+    handledInviteRef.current = targetId;
+    let active = true;
+    void dependencies.leaderboard.addFriend(targetId).then((ok) => {
+      if (!active) return;
+      if (ok) {
+        setFriendNotice('Đã kết bạn qua liên kết mời thành công!');
+        void handleRefresh();
+      } else {
+        setFriendNotice('Không thể kết bạn lúc này. Hãy thử lại.');
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [handleRefresh, params.addFriend, user]);
+
+  const shareMyFriendInvite = async () => {
+    if (!user) return;
+    const origin =
+      Platform.OS === 'web' && typeof window !== 'undefined'
+        ? window.location.origin
+        : 'https://papyrus-lyart-five.vercel.app';
+    const inviteLink = `${origin}/leaderboard?addFriend=${user.id}`;
+    if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
+      await navigator.clipboard.writeText(inviteLink).catch(() => undefined);
+      setFriendNotice(`✅ Đã sao chép Link Kết Bạn & Mã ID của bạn! Gửi cho bạn bè hoặc dán ID "${user.id}" để kết bạn ngay.`);
+      return;
+    }
+    await Share.share({
+      message: `Kết bạn với ${user.displayName} trên Papyrus (${formatScholarCode(user.id)}): ${inviteLink}`,
+    }).catch(() => undefined);
+  };
   const totalPages = useMemo(() => Math.max(1, Math.ceil(entries.length / PAGE_SIZE)), [entries.length]);
   const safePage = Math.min(page, totalPages - 1);
   const paged = useMemo(
@@ -319,15 +375,13 @@ export default function LeaderboardScreen() {
         renderItem={renderItem}
         ListHeaderComponent={
           <>
-            {/* Clean Header with Minimal Green/Red Status Dot */}
+            {/* Prominent TopBar + Header */}
+            <TopBar title={t.leaderboard.title} />
             <View style={styles.header}>
               <View style={styles.headerTopRow}>
                 <Text style={[typography.label, { color: palette.indigo }]}>{t.leaderboard.badge}</Text>
                 <OnlineStatusDot />
               </View>
-              <Text style={[typography.heading, { color: palette.ink, marginTop: spacing.xs }]}>
-                {t.leaderboard.title}
-              </Text>
               <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
                 {t.leaderboard.sub}
               </Text>
@@ -371,8 +425,32 @@ export default function LeaderboardScreen() {
             {/* Search & Add Friend Bar inside Friends tab */}
             {scope === 'friends' && (
               <Card style={{ marginBottom: spacing.md, padding: spacing.md }}>
-                <Text style={[typography.label, { color: palette.indigo, marginBottom: spacing.xs }]}>
-                  TÌM & KẾT BẠN
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: spacing.xs }}>
+                  <Text style={[typography.label, { color: palette.indigo }]}>
+                    TÌM & KẾT BẠN TRỰC TUYẾN
+                  </Text>
+                  {user ? (
+                    <Pressable
+                      onPress={() => void shareMyFriendInvite()}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 4,
+                        paddingHorizontal: 10,
+                        paddingVertical: 4,
+                        borderRadius: radii.pill,
+                        backgroundColor: palette.indigoTint,
+                      }}
+                    >
+                      <Ionicons name="copy-outline" size={13} color={palette.indigo} />
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: palette.indigo }}>
+                        Mã của tôi: {formatScholarCode(user.id)} (Sao chép Link)
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+                <Text style={[typography.caption, { color: palette.inkMuted, marginBottom: spacing.xs }]}>
+                  Hỗ trợ tìm theo: Tên hiển thị (vd: Michael), tiền tố Email, Mã PAPY-XXXXXX hoặc dán Link/ID bạn bè.
                 </Text>
                 {user ? (
                   <>
@@ -381,7 +459,7 @@ export default function LeaderboardScreen() {
                         value={friendQuery}
                         onChangeText={setFriendQuery}
                         onSubmitEditing={() => void handleSearchFriends()}
-                        placeholder="Nhập tên hiển thị (vd: khoaimichaelminh)..."
+                        placeholder="Nhập tên hiển thị, email hoặc dán ID bạn bè..."
                         placeholderTextColor={palette.inkMuted}
                         style={[
                           styles.friendInput,
@@ -396,6 +474,41 @@ export default function LeaderboardScreen() {
                         Tìm
                       </Button>
                     </View>
+
+                    {/* Live Online Scholars Instant Discovery */}
+                    {onlineScholars.length > 0 && searchResults.length === 0 && (
+                      <View style={{ marginTop: spacing.sm, gap: 6 }}>
+                        <Text style={{ fontSize: 11, fontWeight: '800', color: palette.mint }}>
+                          🟢 HỌC GIẢ ĐANG TRỰC TUYẾN ({onlineScholars.length}) — CHẠM ĐỂ KẾT BẠN NGAY:
+                        </Text>
+                        {onlineScholars.slice(0, 6).map((cand) => (
+                          <View
+                            key={cand.id}
+                            style={[styles.searchResultRow, { backgroundColor: palette.paper, borderColor: palette.paperMuted }]}
+                          >
+                            <View style={{ flex: 1, minWidth: 0 }}>
+                              <Text style={[typography.body, { color: palette.ink, fontWeight: '700' }]} numberOfLines={1}>
+                                {cand.displayName}
+                              </Text>
+                              <Text style={[typography.caption, { color: palette.inkMuted }]}>
+                                {cand.eloRating} ELO · {cand.totalScore.toLocaleString('vi-VN')} XP
+                              </Text>
+                            </View>
+                            <Pressable
+                              accessibilityRole="button"
+                              disabled={addingFriendId === cand.id}
+                              onPress={() => void handleAddFriend(cand.id)}
+                              style={[styles.addFriendBtn, { backgroundColor: palette.indigo }]}
+                            >
+                              <Ionicons name="person-add" size={14} color="#FFFFFF" />
+                              <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '800' }}>
+                                {addingFriendId === cand.id ? '...' : 'Kết bạn'}
+                              </Text>
+                            </Pressable>
+                          </View>
+                        ))}
+                      </View>
+                    )}
                     {!!friendNotice && (
                       <Text style={[typography.caption, { color: palette.indigo, marginTop: spacing.xs }]}>
                         {friendNotice}
@@ -544,10 +657,10 @@ export default function LeaderboardScreen() {
                       {item.outcome === 'win'
                         ? `Thắng${item.eloDelta ? ` (+${item.eloDelta})` : ''}`
                         : item.outcome === 'forfeit'
-                        ? 'Bỏ cuộc'
-                        : item.outcome === 'draw'
-                        ? 'Hòa'
-                        : `Thua${item.eloDelta ? ` (${item.eloDelta})` : ''}`}
+                          ? 'Bỏ cuộc'
+                          : item.outcome === 'draw'
+                            ? 'Hòa'
+                            : `Thua${item.eloDelta ? ` (${item.eloDelta})` : ''}`}
                     </Badge>
                   </View>
                 ))}
@@ -591,11 +704,8 @@ export default function LeaderboardScreen() {
         }
         ListEmptyComponent={
           loading ? (
-            <View style={{ alignItems: 'center', paddingVertical: spacing.xxl }}>
-              <ActivityIndicator size="large" color={palette.indigo} />
-              <Text style={[typography.caption, { color: palette.inkMuted, marginTop: spacing.sm }]}>
-                Đang tải bảng xếp hạng...
-              </Text>
+            <View style={{ paddingVertical: spacing.md }}>
+              <PapyrusPageSkeleton variant="leaderboard" />
             </View>
           ) : (
             <View style={{ alignItems: 'center', paddingVertical: spacing.xxl }}>

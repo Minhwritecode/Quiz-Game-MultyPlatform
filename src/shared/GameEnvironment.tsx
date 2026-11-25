@@ -1,5 +1,6 @@
 import React, { ReactNode, memo, useEffect, useRef, useState } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { Model3DView, type Model3DActionEffect } from './Model3DView';
@@ -423,6 +424,7 @@ export function GameEnvironment({
   actionEffect = 'idle',
   pulseTrigger = 0,
 }: GameEnvironmentProps) {
+  const insets = useSafeAreaInsets();
   const reduceMotion = usePapyrusStore((s) => s.reduceMotion);
   const [show3D, setShow3D] = useState(() => show3DByDefault && !reduceMotion);
   const config = CONFIGS[gameMode];
@@ -451,7 +453,7 @@ export function GameEnvironment({
 
       {/* Framed Blender 3D Realm Showcase Stage */}
       {enable3DToggle && !reduceMotion && (
-        <View style={styles.stageHeaderWrap}>
+        <View style={[styles.stageHeaderWrap, { paddingTop: Math.max(10, insets.top + 6) }]}>
           {show3D ? (
             <View style={styles.stage3DContainer}>
               <Model3DErrorBoundary>

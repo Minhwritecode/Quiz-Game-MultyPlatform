@@ -286,11 +286,16 @@ function LoadedGlbStage({
 }
 
 export default function Model3DCanvasWeb(props: Model3DCanvasWebProps) {
-  const isCharacter = props.model === 'character';
-  const isEmblem = props.model === 'questEmblem' || props.model === 'splashMorph';
-  const defaultTiltX = isCharacter ? 0.04 : isEmblem ? 0.08 : 0.24;
+  const isCharacter = props.model === 'character' || props.model === 'bossGolem';
+  const isProp =
+    props.model === 'questEmblem' ||
+    props.model === 'splashMorph' ||
+    props.model === 'royalScroll' ||
+    props.model === 'archerBow' ||
+    props.model === 'alchemyCauldrons';
+  const defaultTiltX = isCharacter ? 0.03 : isProp ? 0.06 : 0.22;
 
-  const dragRotationYRef = useRef(isCharacter ? 0.15 : 0.45);
+  const dragRotationYRef = useRef(isCharacter ? 0.12 : 0.28);
   const dragRotationXRef = useRef(defaultTiltX);
   const tapImpulseRef = useRef(0);
   const draggingRef = useRef(false);
@@ -298,10 +303,10 @@ export default function Model3DCanvasWeb(props: Model3DCanvasWebProps) {
   const lastPosRef = useRef({ x: 0, y: 0 });
 
   const cameraPos: [number, number, number] = isCharacter
-    ? [0, 0.22, 3.25]
-    : isEmblem
-    ? [0, 0.15, 3.45]
-    : [0, 1.15, 3.75];
+    ? [0, 0.18, 3.25]
+    : isProp
+    ? [0, 0.12, 3.45]
+    : [0, 0.95, 3.65];
 
   return (
     <div

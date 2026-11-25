@@ -19,6 +19,7 @@ import { Badge, Button, Card, Screen, TopBar, usePalette } from '@/shared/ui';
 import { CharacterHero, CharacterAction } from '@/shared/CharacterHero';
 import { GameEnvironment } from '@/shared/GameEnvironment';
 import { MagicParticles } from '@/shared/MagicParticles';
+import { RpgCombatArena3D } from '@/shared/visuals/RpgCombatArena3D';
 import { sfx } from '@/core/audio/sfx';
 import { SoundToggle } from '@/shared/SoundToggle';
 import { useStreakStore } from '@/features/streak/state/useStreakStore';
@@ -489,8 +490,15 @@ export default function MatchGameScreen() {
   const columns = width >= 800 ? 4 : 3;
   const cardWidth = Math.min((width - 48 - (columns - 1) * 12) / columns, 240);
 
+  const matchCombatState =
+    characterAction === 'attack' || characterAction === 'victory'
+      ? 'player_attack'
+      : characterAction === 'hurt'
+      ? 'enemy_attack'
+      : 'idle';
+
   return (
-    <GameEnvironment gameMode="match" actionEffect={characterAction} pulseTrigger={particleTrigger}>
+    <GameEnvironment gameMode="match" enable3DToggle={false} actionEffect={characterAction} pulseTrigger={particleTrigger}>
       <Screen scroll={true} transparent>
       <TopBar
         title={t.match.title}
@@ -509,6 +517,21 @@ export default function MatchGameScreen() {
             <Ionicons name="chevron-down" size={14} color={CYAN} />
           </Pressable>
         }
+      />
+
+      {/* Immersive 3D Grand Library RPG Stage */}
+      <RpgCombatArena3D
+        combatState={matchCombatState}
+        combo={combo}
+        triggerKey={matchedPairs * 10 + moves + particleTrigger}
+        playerHp={Math.max(1, totalPairs - Math.floor(moves / 3))}
+        playerMaxHp={Math.max(1, totalPairs)}
+        bossHp={Math.max(0, totalPairs - matchedPairs)}
+        bossMaxHp={Math.max(1, totalPairs)}
+        playerLabel="Đại Pháp Sư (Bạn)"
+        bossLabel="Thủ Thư Hắc Ám"
+        arenaTheme="library"
+        height={198}
       />
 
       {/* Library Environment Header */}

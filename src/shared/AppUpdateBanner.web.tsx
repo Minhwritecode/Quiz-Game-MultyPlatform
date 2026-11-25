@@ -4,13 +4,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { checkWebAppVersionUpdate } from '@/composition/platform';
 
-const LOCAL_BUILD_ID = '20261124-2000';
+const LOCAL_BUILD_ID = '20261125-1700';
 
 /**
- * Web/PWA live developer update detector:
- * 1) Listens to Service Worker `updatefound` / `waiting` worker events.
- * 2) Polls `/version.json` every 60s and when tab regains focus so new Vercel deployments
- *    immediately prompt the user with a clean reload banner.
+ * Web/PWA live developer update detector anchored safely above the Bottom Dock
+ * so it NEVER overlaps the iOS status bar clock or TopBar!
  */
 export function AppUpdateBanner() {
   const [updateAvailable, setUpdateAvailable] = useState(false);
@@ -28,7 +26,6 @@ export function AppUpdateBanner() {
       setDismissed(false);
     };
 
-    // 1. Service Worker registration & update lifecycle listener
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker
         .getRegistration()
@@ -49,7 +46,6 @@ export function AppUpdateBanner() {
         .catch(() => undefined);
     }
 
-    // 2. Version manifest polling (detects Vercel deploys even without SW)
     const pollVersion = () => {
       void checkWebAppVersionUpdate(LOCAL_BUILD_ID).then((hasNewer) => {
         if (hasNewer && active) triggerUpdate(null);
@@ -88,10 +84,10 @@ export function AppUpdateBanner() {
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={[typography.caption, styles.title]} numberOfLines={1}>
-            Nhà phát triển vừa có cập nhật mới!
+            Đã có bản cập nhật mới từ nhà phát triển!
           </Text>
-          <Text style={styles.sub} numberOfLines={2}>
-            Xin hãy tải lại ứng dụng để nhận tính năng và bản sửa lỗi mới nhất.
+          <Text style={styles.sub} numberOfLines={1}>
+            Chạm Tải lại để nhận tính năng mới nhất ngay.
           </Text>
         </View>
         <Pressable accessibilityRole="button" onPress={handleReload} style={styles.reloadBtn}>
@@ -115,7 +111,7 @@ export function AppUpdateBanner() {
 const styles = StyleSheet.create({
   wrap: {
     position: 'fixed' as unknown as 'absolute',
-    top: 12,
+    bottom: 'calc(env(safe-area-inset-bottom, 0px) + 74px)' as unknown as number,
     left: spacing.md,
     right: spacing.md,
     zIndex: 9999,
@@ -124,17 +120,17 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
-    maxWidth: 540,
+    maxWidth: 500,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
     backgroundColor: 'rgba(15, 23, 66, 0.96)',
     borderWidth: 1.5,
-    borderColor: '#6366F1',
-    borderRadius: radii.md,
+    borderColor: '#818CF8',
+    borderRadius: radii.lg,
     paddingHorizontal: spacing.md,
     paddingVertical: 10,
-    boxShadow: '0 10px 30px rgba(6, 10, 36, 0.55)',
+    boxShadow: '0 12px 32px rgba(6, 10, 36, 0.65)',
   } as object,
   iconPill: {
     width: 32,
@@ -144,15 +140,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  title: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
-  sub: { color: '#CBD5E1', fontSize: 11.5, marginTop: 1 },
+  title: { color: '#FFFFFF', fontWeight: '800', fontSize: 12.5 },
+  sub: { color: '#CBD5E1', fontSize: 11, marginTop: 1 },
   reloadBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     backgroundColor: '#F59E0B',
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 7,
     borderRadius: radii.pill,
   },
   reloadText: { color: '#0F172A', fontSize: 12, fontWeight: '800' },

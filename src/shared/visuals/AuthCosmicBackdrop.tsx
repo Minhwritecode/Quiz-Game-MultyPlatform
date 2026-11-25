@@ -1,52 +1,79 @@
-import { useEffect, useRef } from 'react';
-import { Animated, StyleSheet, View } from 'react-native';
+import { memo } from 'react';
+import { Platform, StyleSheet, View, type ViewStyle } from 'react-native';
 
-export type AuthVisualMode = 'signIn' | 'signUp' | 'forgot' | 'resetPassword';
+const AMBIENT_COLORS: Record<string, { top: string; bottom: string }> = {
+  signIn: { top: 'rgba(99, 102, 241, 0.22)', bottom: 'rgba(56, 189, 248, 0.14)' },
+  signUp: { top: 'rgba(16, 185, 129, 0.20)', bottom: 'rgba(99, 102, 241, 0.15)' },
+  forgot: { top: 'rgba(56, 189, 248, 0.22)', bottom: 'rgba(129, 140, 248, 0.14)' },
+  resetPassword: { top: 'rgba(168, 85, 247, 0.22)', bottom: 'rgba(99, 102, 241, 0.14)' },
+  twoFactor: { top: 'rgba(245, 158, 11, 0.20)', bottom: 'rgba(99, 102, 241, 0.14)' },
+};
 
-export function AuthCosmicBackdrop({ mode, reduceMotion = false }: { mode: AuthVisualMode; reduceMotion?: boolean }) {
-  const pulse = useRef(new Animated.Value(0.45)).current;
-
-  useEffect(() => {
-    if (reduceMotion) return;
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, { toValue: 0.88, duration: 2400, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 0.42, duration: 2400, useNativeDriver: true }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [pulse, reduceMotion]);
-
-  const orb1 = mode === 'signUp' ? '#10B981' : mode === 'forgot' ? '#06B6D4' : '#4F46E5';
-  const orb2 = mode === 'resetPassword' ? '#8B5CF6' : '#F59E0B';
+/**
+ * Calm, minimalist, distraction-free ambient aurora backdrop behind the centered Auth Modal.
+ */
+export const AuthCosmicBackdrop = memo(function AuthCosmicBackdrop({
+  mode = 'signIn',
+}: {
+  mode?: string;
+  reduceMotion?: boolean;
+}) {
+  const glow = AMBIENT_COLORS[mode] ?? AMBIENT_COLORS.signIn!;
 
   return (
-    <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#060A24' }]}>
-      <Animated.View
-        style={{
-          position: 'absolute',
-          top: -60,
-          left: -40,
-          width: 280,
-          height: 280,
-          borderRadius: 140,
-          backgroundColor: orb1,
-          opacity: pulse.interpolate({ inputRange: [0.4, 0.9], outputRange: [0.16, 0.34] }),
-        }}
+    <View pointerEvents="none" style={styles.root}>
+      <View
+        style={[
+          styles.orbTop,
+          { backgroundColor: glow.top },
+          Platform.OS === 'web'
+            ? ({
+                filter: 'blur(90px)',
+                transition: 'background-color 520ms ease',
+              } as unknown as ViewStyle)
+            : undefined,
+        ]}
       />
-      <Animated.View
-        style={{
-          position: 'absolute',
-          bottom: -50,
-          right: -40,
-          width: 260,
-          height: 260,
-          borderRadius: 130,
-          backgroundColor: orb2,
-          opacity: pulse.interpolate({ inputRange: [0.4, 0.9], outputRange: [0.12, 0.28] }),
-        }}
+      <View
+        style={[
+          styles.orbBottom,
+          { backgroundColor: glow.bottom },
+          Platform.OS === 'web'
+            ? ({
+                filter: 'blur(100px)',
+                transition: 'background-color 520ms ease',
+              } as unknown as ViewStyle)
+            : undefined,
+        ]}
       />
     </View>
   );
-}
+});
+
+const styles = StyleSheet.create({
+  root: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: '#050818',
+    overflow: 'hidden',
+  },
+  orbTop: {
+    position: 'absolute',
+    top: -110,
+    left: '12%',
+    width: 340,
+    height: 340,
+    borderRadius: 170,
+  },
+  orbBottom: {
+    position: 'absolute',
+    bottom: -120,
+    right: '8%',
+    width: 360,
+    height: 360,
+    borderRadius: 180,
+  },
+});

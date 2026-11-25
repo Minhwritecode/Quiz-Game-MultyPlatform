@@ -3,7 +3,18 @@ import { ActivityIndicator, StyleSheet, Text, View, type ViewStyle } from 'react
 import { Ionicons } from '@expo/vector-icons';
 import { Model3DErrorBoundary } from './Model3DErrorBoundary';
 
-export type Model3DType = 'survival' | 'battle' | 'match' | 'study' | 'character' | 'questEmblem' | 'splashMorph';
+export type Model3DType =
+  | 'survival'
+  | 'battle'
+  | 'match'
+  | 'study'
+  | 'character'
+  | 'questEmblem'
+  | 'splashMorph'
+  | 'bossGolem'
+  | 'archerBow'
+  | 'royalScroll'
+  | 'alchemyCauldrons';
 export type Character3DAnimation = 'Idle' | 'Cast_Spell' | 'Hit_Reaction' | 'Victory_Dance';
 export type Model3DActionEffect = 'idle' | 'attack' | 'hurt' | 'victory';
 

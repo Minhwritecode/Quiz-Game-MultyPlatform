@@ -1,12 +1,11 @@
 import { supabase } from '@/core/network/supabase';
+import { sanitizeOcrAndDocumentText } from '../domain/ocrCleaner';
 
 const TESSERACT_CDN = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
 const FAST_LANG_CDN = 'https://tessdata.projectnaptha.com/4.0.0_fast';
 
 export interface OcrOptions {
-  /** Tesseract language code(s), e.g. 'vie+eng', 'jpn+eng', 'kor+eng', 'chi_sim+eng', 'fra+deu+spa+eng' */
   language?: string;
-  /** Optional progress callback (0..1, human-readable status) */
   onProgress?: (progress: number, stage: string) => void;
 }
 
@@ -26,7 +25,9 @@ interface TesseractWindow extends Window {
 function loadImageElement(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.crossOrigin = 'anonymous';
+    if (/^https?:\/\//i.test(src)) {
+      img.crossOrigin = 'anonymous';
+    }
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error('Could not decode image.'));
     img.src = src;
@@ -34,8 +35,35 @@ function loadImageElement(src: string): Promise<HTMLImageElement> {
 }
 
 /**
- * Downscales & contrast-enhances high-res phone photos on an offscreen canvas.
- * Makes OCR 5-10x faster and far more accurate on mobile Safari/Chrome.
+ * Encodes an image URI into a crisp JPEG Base64 payload for direct Multimodal Gemini Vision analysis.
+ */
+export async function encodeImageUriToJpegBase64(imageUri: string): Promise<string> {
+  if (typeof document === 'undefined' || !imageUri) return '';
+  try {
+    const img = await loadImageElement(imageUri);
+    const maxEdge = 1650;
+    const w0 = img.naturalWidth || img.width || 900;
+    const h0 = img.naturalHeight || img.height || 700;
+    const scale = Math.min(1, maxEdge / Math.max(w0, h0));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(w0 * scale));
+    canvas.height = Math.max(1, Math.round(h0 * scale));
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return '';
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+    const idx = dataUrl.indexOf(',');
+    return idx >= 0 ? dataUrl.slice(idx + 1) : '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Preserves crisp typography on dense diagrams (up to 1950px; upscales tiny screenshots < 900px by 1.6x)
+ * without harsh binarization that turns colored diagram boxes into garbage characters.
  */
 async function preprocessImageToCanvas(
   imageUri: string
@@ -43,10 +71,10 @@ async function preprocessImageToCanvas(
   if (typeof document === 'undefined') return null;
   try {
     const img = await loadImageElement(imageUri);
-    const maxEdge = 1350;
-    const w0 = img.naturalWidth || 900;
-    const h0 = img.naturalHeight || 700;
-    const scale = Math.min(1, maxEdge / Math.max(w0, h0));
+    const w0 = img.naturalWidth || img.width || 900;
+    const h0 = img.naturalHeight || img.height || 700;
+    const longest = Math.max(w0, h0);
+    const scale = longest < 900 ? 1.65 : Math.min(1, 1950 / longest);
     const width = Math.max(1, Math.round(w0 * scale));
     const height = Math.max(1, Math.round(h0 * scale));
     const canvas = document.createElement('canvas');
@@ -54,26 +82,27 @@ async function preprocessImageToCanvas(
     canvas.height = height;
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, 0, width, height);
     ctx.drawImage(img, 0, 0, width, height);
 
-    // JPEG copy for multimodal AI Vision before contrast-grayscale pass
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.84);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.86);
     const idx = dataUrl.indexOf(',');
     const base64Jpeg = idx >= 0 ? dataUrl.slice(idx + 1) : '';
 
-    // Fast grayscale + gentle contrast stretch for crisp OCR edges
+    // Gentle luminance normalization for Tesseract without turning colored icons into © / ® artifacts
     try {
       const imgData = ctx.getImageData(0, 0, width, height);
       const d = imgData.data;
-      const contrast = 1.25;
       for (let i = 0; i < d.length; i += 4) {
         const gray = 0.299 * d[i]! + 0.587 * d[i + 1]! + 0.114 * d[i + 2]!;
-        const boosted = Math.max(0, Math.min(255, (gray - 128) * contrast + 132));
-        d[i] = boosted;
-        d[i + 1] = boosted;
-        d[i + 2] = boosted;
+        const norm = gray > 215 ? 255 : gray < 48 ? 16 : Math.round((gray - 128) * 1.12 + 128);
+        const clamped = Math.max(0, Math.min(255, norm));
+        d[i] = clamped;
+        d[i + 1] = clamped;
+        d[i + 2] = clamped;
       }
       ctx.putImageData(imgData, 0, 0);
     } catch {
@@ -89,7 +118,7 @@ async function preprocessImageToCanvas(
 async function recognizeViaGeminiVisionFast(base64Jpeg: string): Promise<string> {
   if (!supabase || !base64Jpeg) return '';
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 4000);
+  const timeout = setTimeout(() => controller.abort(), 14_000);
   try {
     const { data: sessionData } = await supabase.auth.getSession();
     if (!sessionData.session) return '';
@@ -99,7 +128,7 @@ async function recognizeViaGeminiVisionFast(base64Jpeg: string): Promise<string>
           {
             role: 'user',
             content:
-              'Transcribe ALL text visible in this image in its exact original language(s) (Vietnamese, English, Japanese, Korean, Chinese, French, Russian, Arabic, math formulas, etc.). Output ONLY the extracted text with no commentary.',
+              'Hãy đọc và trích xuất CHÍNH XÁC, SẠCH SẼ toàn bộ chữ, tiêu đề sơ đồ, công thức toán học trong hình ảnh này theo đúng ngôn ngữ gốc (Tiếng Việt / Tiếng Anh / Đa ngôn ngữ). Trình bày rõ ràng theo từng mục/dòng, tuyệt đối không thêm ký tự rác.',
           },
         ],
         context: '/create/scan',
@@ -109,13 +138,13 @@ async function recognizeViaGeminiVisionFast(base64Jpeg: string): Promise<string>
       signal: controller.signal,
     });
     if (!result.error && typeof result.data?.answer === 'string') {
-      const cleaned = result.data.answer.trim();
+      const cleaned = sanitizeOcrAndDocumentText(result.data.answer);
       if (cleaned.length >= 4 && !cleaned.includes('AI không phản hồi')) {
         return cleaned;
       }
     }
   } catch {
-    // Fast-fail straight into local multilingual Tesseract_fast engine
+    // Fall back to cleaned local Tesseract engine
   } finally {
     clearTimeout(timeout);
   }
@@ -154,7 +183,7 @@ async function recognizeViaFastTesseract(
   onProgress?: (progress: number, stage: string) => void
 ): Promise<string> {
   try {
-    onProgress?.(0.15, 'Đang nạp bộ máy OCR đa ngôn ngữ...');
+    onProgress?.(0.18, 'Đang nạp bộ máy OCR độ nét cao...');
     const tesseract = await loadTesseractScript();
     if (!tesseract) return '';
 
@@ -165,36 +194,30 @@ async function recognizeViaFastTesseract(
         const p = typeof m.progress === 'number' ? m.progress : 0;
         const st = m.status || '';
         if (st.includes('loading language') || st.includes('downloading')) {
-          onProgress(0.2 + p * 0.35, `Đang tải gói chữ (${language}) ${Math.round(p * 100)}%...`);
+          onProgress(0.22 + p * 0.33, `Đang tải gói ngôn ngữ (${language}) ${Math.round(p * 100)}%...`);
         } else if (st.includes('recognizing text')) {
-          onProgress(0.55 + p * 0.42, `Đang nhận diện ký tự ${Math.round(p * 100)}%...`);
+          onProgress(0.55 + p * 0.42, `Đang nhận diện & khử nhiễu ký tự ${Math.round(p * 100)}%...`);
         }
       },
     });
 
     const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 28_000));
     const res = await Promise.race([ocrPromise, timeoutPromise]);
-    onProgress?.(1, 'Hoàn tất nhận diện!');
-    return (res?.data?.text ?? '').replace(/\s+\n/g, '\n').trim();
+    onProgress?.(1, 'Hoàn tất nhận diện & chuẩn hóa văn bản!');
+    return sanitizeOcrAndDocumentText(res?.data?.text ?? '');
   } catch {
     return '';
   }
 }
 
-/**
- * Fast Multilingual Web OCR Adapter:
- * 1) Downscales & contrast-enhances image on canvas (5-10x faster on iPhone/Android photos).
- * 2) Probes Gemini Vision (4s fast-fail) for any language / handwriting when cloud AI is active.
- * 3) Runs fast `tessdata_fast` Tesseract.js v5 with user-selected multilingual pack & live % progress.
- */
 export async function recognizeLocalImage(imageUri: string, options?: OcrOptions): Promise<string> {
   if (!imageUri) return '';
   const lang = options?.language || 'vie+eng';
-  options?.onProgress?.(0.08, 'Đang tối ưu độ nét hình ảnh...');
+  options?.onProgress?.(0.08, 'Đang tối ưu độ nét hình ảnh & sơ đồ...');
 
   const prepared = await preprocessImageToCanvas(imageUri);
   if (prepared?.base64Jpeg) {
-    options?.onProgress?.(0.14, 'Đang thử AI Vision đa ngôn ngữ...');
+    options?.onProgress?.(0.14, 'Đang phân tích hình ảnh qua AI Vision...');
     const visionText = await recognizeViaGeminiVisionFast(prepared.base64Jpeg);
     if (visionText.length >= 4) {
       options?.onProgress?.(1, 'Nhận diện thành công qua AI Vision!');

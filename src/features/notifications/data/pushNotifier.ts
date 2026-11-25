@@ -2,6 +2,8 @@ import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { supabase } from '@/core/network/supabase';
 import type { QuestionSet } from '@/core/domain/models';
+import { readKnownUserAccounts } from '@/features/profile/data/profileCloudSync';
+import { getOnlineScholarCandidates } from '@/features/leaderboard/data/liveScholarDirectory';
 
 export type ExternalPermissionState = 'granted' | 'denied' | 'default' | 'unsupported';
 
@@ -44,6 +46,8 @@ export async function requestExternalNotificationPermission(): Promise<ExternalP
 export async function dispatchExternalNotification(title: string, body: string): Promise<boolean> {
   if (Platform.OS === 'web') {
     if (typeof window === 'undefined' || typeof Notification === 'undefined') return false;
+    // Never fire user OS toast if current screen is the /admin console itself!
+    if (window.location?.pathname?.startsWith('/admin')) return false;
     if (Notification.permission !== 'granted') return false;
     try {
       const reg =
@@ -81,19 +85,127 @@ export async function dispatchExternalNotification(title: string, body: string):
 
 export interface AdminUserSummary {
   id: string;
+  email?: string;
   displayName: string;
   avatarUrl: string | null;
   eloRating: number;
   totalScore: number;
   gamesPlayed: number;
+  currentStreak?: number;
+  isOnline?: boolean;
   role: string;
   membershipTier: string;
 }
 
+/**
+ * Unified Enterprise User Discovery for `/admin`:
+ * 1) `get_superadmin_overview` SECURITY DEFINER RPC (returns ALL `public.profiles` rows in Supabase Cloud!)
+ * 2) `get_leaderboard_players` RPC
+ * 3) Live Online Scholars via Supabase Realtime Presence (`liveScholarDirectory`)
+ * 4) Known Registered Accounts Registry (`readKnownUserAccounts`) + active auth session
+ */
 export async function listAllUsersForAdmin(): Promise<AdminUserSummary[]> {
-  if (!supabase) return [];
   const byId = new Map<string, AdminUserSummary>();
+  const onlineList = getOnlineScholarCandidates();
+  const onlineIds = new Set(onlineList.map((o) => o.id));
 
+  // 1. Seed with Known Registered Accounts (includes email, avatar & streak)
+  const known = await readKnownUserAccounts();
+  for (const k of known) {
+    byId.set(k.id, {
+      id: k.id,
+      email: k.email,
+      displayName: k.displayName,
+      avatarUrl: k.avatarUrl,
+      eloRating: k.eloRating,
+      totalScore: k.totalScore,
+      gamesPlayed: k.gamesPlayed,
+      currentStreak: k.currentStreak,
+      isOnline: onlineIds.has(k.id),
+      role: k.role || 'user',
+      membershipTier: k.membershipTier || 'apprentice',
+    });
+  }
+
+  // 2. Merge Live Online Scholars across devices
+  for (const onl of onlineList) {
+    const prev = byId.get(onl.id);
+    byId.set(onl.id, {
+      id: onl.id,
+      email: prev?.email,
+      displayName: onl.displayName || prev?.displayName || 'Học giả Trực tuyến',
+      avatarUrl: onl.avatarUrl ?? prev?.avatarUrl ?? null,
+      eloRating: Math.max(onl.eloRating, prev?.eloRating ?? 1200),
+      totalScore: Math.max(onl.totalScore, prev?.totalScore ?? 0),
+      gamesPlayed: prev?.gamesPlayed ?? 0,
+      currentStreak: prev?.currentStreak ?? 0,
+      isOnline: true,
+      role: prev?.role ?? 'user',
+      membershipTier: prev?.membershipTier ?? 'apprentice',
+    });
+  }
+
+  if (!supabase) return Array.from(byId.values());
+
+  // 3. Include currently signed-in Supabase user on this browser if any
+  try {
+    const { data: sess } = await supabase.auth.getSession();
+    const u = sess.session?.user;
+    if (u?.id) {
+      const prev = byId.get(u.id);
+      const sync = (u.user_metadata?.papyrus_sync as Record<string, unknown> | undefined) ?? {};
+      byId.set(u.id, {
+        id: u.id,
+        email: u.email ?? prev?.email,
+        displayName:
+          (u.user_metadata?.full_name as string | undefined) ||
+          prev?.displayName ||
+          (u.email ? u.email.split('@')[0]! : 'Học giả Papyrus'),
+        avatarUrl: (u.user_metadata?.avatar_url as string | undefined) ?? prev?.avatarUrl ?? null,
+        eloRating: Number(sync.eloRating ?? prev?.eloRating ?? 1200),
+        totalScore: Number(sync.totalScore ?? prev?.totalScore ?? 0),
+        gamesPlayed: Number(sync.gamesPlayed ?? prev?.gamesPlayed ?? 0),
+        currentStreak: Number(sync.currentStreak ?? prev?.currentStreak ?? 0),
+        isOnline: true,
+        role: prev?.role ?? 'user',
+        membershipTier: String(sync.membershipTier ?? prev?.membershipTier ?? 'apprentice'),
+      });
+    }
+  } catch {
+    // Non-fatal
+  }
+
+  // 4. Call SECURITY DEFINER `get_superadmin_overview` RPC — fetches ALL rows in `public.profiles`!
+  try {
+    const { data: overview, error: ovErr } = await supabase.rpc('get_superadmin_overview');
+    if (!ovErr && overview && typeof overview === 'object') {
+      const cloudUsers = (overview as { users?: Array<Record<string, unknown>> }).users;
+      if (Array.isArray(cloudUsers)) {
+        for (const cu of cloudUsers) {
+          const id = String(cu.id ?? '');
+          if (!id) continue;
+          const prev = byId.get(id);
+          byId.set(id, {
+            id,
+            email: prev?.email,
+            displayName: String(cu.displayName || prev?.displayName || 'Học giả Papyrus'),
+            avatarUrl: prev?.avatarUrl ?? null,
+            eloRating: Math.max(Number(cu.eloRating ?? 1200), prev?.eloRating ?? 1200),
+            totalScore: prev?.totalScore ?? Number(cu.gamesPlayed ?? 0) * 120,
+            gamesPlayed: Math.max(Number(cu.gamesPlayed ?? 0), prev?.gamesPlayed ?? 0),
+            currentStreak: prev?.currentStreak ?? 0,
+            isOnline: onlineIds.has(id) || Boolean(prev?.isOnline),
+            role: String(cu.role || prev?.role || 'user'),
+            membershipTier: String(cu.membershipTier || prev?.membershipTier || 'apprentice'),
+          });
+        }
+      }
+    }
+  } catch {
+    // Non-fatal
+  }
+
+  // 5. Merge `get_leaderboard_players` for totalScore & avatars
   try {
     const { data, error } = await supabase.rpc('get_leaderboard_players', {
       p_timeframe: 'all',
@@ -105,40 +217,22 @@ export async function listAllUsersForAdmin(): Promise<AdminUserSummary[]> {
       for (const row of data as Array<Record<string, unknown>>) {
         const id = String(row.user_id ?? '');
         if (!id) continue;
+        const prev = byId.get(id);
         byId.set(id, {
           id,
-          displayName: String(row.display_name || 'Học giả Papyrus'),
-          avatarUrl: typeof row.avatar_url === 'string' ? row.avatar_url : null,
-          eloRating: 1200,
-          totalScore: Number(row.total_score ?? 0),
-          gamesPlayed: Number(row.games_played ?? 0),
-          role: 'user',
-          membershipTier: 'apprentice',
-        });
-      }
-    }
-  } catch {
-    // Non-fatal
-  }
-
-  try {
-    const { data } = await supabase
-      .from('profiles')
-      .select('id, display_name, avatar_url, elo_rating, total_score, games_played, role, membership_tier')
-      .limit(100);
-    if (Array.isArray(data)) {
-      for (const p of data as Array<Record<string, unknown>>) {
-        const id = String(p.id ?? '');
-        if (!id) continue;
-        byId.set(id, {
-          id,
-          displayName: String(p.display_name || 'Học giả Papyrus'),
-          avatarUrl: typeof p.avatar_url === 'string' ? p.avatar_url : null,
-          eloRating: Number(p.elo_rating ?? 1200),
-          totalScore: Number(p.total_score ?? 0),
-          gamesPlayed: Number(p.games_played ?? 0),
-          role: String(p.role || 'user'),
-          membershipTier: String(p.membership_tier || 'apprentice'),
+          email: prev?.email,
+          displayName: String(row.display_name || prev?.displayName || 'Học giả Papyrus'),
+          avatarUrl:
+            typeof row.avatar_url === 'string' && row.avatar_url
+              ? row.avatar_url
+              : prev?.avatarUrl ?? null,
+          eloRating: prev?.eloRating ?? 1200,
+          totalScore: Math.max(Number(row.total_score ?? 0), prev?.totalScore ?? 0),
+          gamesPlayed: Math.max(Number(row.games_played ?? 0), prev?.gamesPlayed ?? 0),
+          currentStreak: Math.max(Number(row.streak ?? 0), prev?.currentStreak ?? 0),
+          isOnline: onlineIds.has(id) || Boolean(prev?.isOnline),
+          role: prev?.role ?? 'user',
+          membershipTier: prev?.membershipTier ?? 'apprentice',
         });
       }
     }
@@ -160,6 +254,22 @@ export async function sendAdminGiftToCloud(input: {
 }): Promise<boolean> {
   if (!supabase) return false;
   try {
+    // Also broadcast gift over Supabase Realtime so connected user devices get instant delivery even before SQL table migration!
+    const bch = supabase.channel('papyrus:admin-broadcasts');
+    bch.subscribe((status: string) => {
+      if (status === 'SUBSCRIBED') {
+        void bch
+          .send({
+            type: 'broadcast',
+            event: 'admin-gift',
+            payload: input,
+          })
+          .finally(() => {
+            setTimeout(() => void supabase?.removeChannel(bch), 1200);
+          });
+      }
+    });
+
     const { error } = await supabase.from('admin_gifts').insert({
       recipient_id: input.recipientId,
       recipient_name: input.recipientName,
@@ -174,6 +284,34 @@ export async function sendAdminGiftToCloud(input: {
     return !error;
   } catch {
     return false;
+  }
+}
+
+export async function broadcastAdminNotificationToCloud(input: {
+  recipientId: string | 'all';
+  kind: 'system' | 'gift' | 'friend' | 'duel' | 'streak' | 'update';
+  title: string;
+  body: string;
+  actionRoute?: string;
+}): Promise<void> {
+  if (!supabase) return;
+  try {
+    const ch = supabase.channel('papyrus:admin-broadcasts');
+    ch.subscribe((status: string) => {
+      if (status === 'SUBSCRIBED') {
+        void ch
+          .send({
+            type: 'broadcast',
+            event: 'admin-notif',
+            payload: input,
+          })
+          .finally(() => {
+            setTimeout(() => void supabase?.removeChannel(ch), 1200);
+          });
+      }
+    });
+  } catch {
+    // Ignore
   }
 }
 
