@@ -7,7 +7,7 @@ import { pickSourceDocument } from '@/features/scan-ocr/data/documentSource';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 
 export const assistant = createAssistantUseCases({
-  ask: (messages, context, document, signal, onText, pdf) =>
+  ask: (messages, context, document, signal, onText, pdf, image) =>
     askPapybot(
       messages,
       context,
@@ -15,7 +15,8 @@ export const assistant = createAssistantUseCases({
       signal,
       onText,
       pdf,
-      usePapyrusStore.getState().questionSets
+      usePapyrusStore.getState().questionSets,
+      image
     ),
   load: loadHistory,
   save: saveHistory,

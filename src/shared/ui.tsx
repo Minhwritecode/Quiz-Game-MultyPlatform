@@ -1,4 +1,8 @@
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
+import { useAuthStore } from '@/core/state/useAuthStore';
+import { useRouteRefreshStore } from '@/core/state/useRouteRefreshStore';
+import { useNotificationStore } from '@/features/notifications/state/useNotificationStore';
+import { useStreakStore } from '@/features/streak/state/useStreakStore';
 import { useAssistantUiStore } from '@/core/state/useAssistantUiStore';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, usePathname } from 'expo-router';
@@ -204,18 +208,20 @@ export function Screen({
   const scrollYRef = useRef(0);
   const startTouchYRef = useRef<number | null>(null);
 
-  const triggerReloadOrRefresh = async (hardReload: boolean) => {
-    if (hardReload && Platform.OS === 'web' && typeof window !== 'undefined') {
-      setRefreshing(true);
-      window.location.reload();
-      return;
-    }
+  const triggerInPlaceRefresh = async () => {
+    if (refreshing) return;
     setRefreshing(true);
     try {
-      await usePapyrusStore.getState().hydrateCloudProfile();
-      await onPullRefresh?.();
+      const uid = useAuthStore.getState().user?.id;
+      useStreakStore.getState().refreshStreakStatus();
+      useRouteRefreshStore.getState().bumpRouteRefresh();
+      await Promise.all([
+        usePapyrusStore.getState().hydrateCloudProfile(),
+        uid ? useNotificationStore.getState().syncCloudGifts(uid) : Promise.resolve(),
+        Promise.resolve(onPullRefresh?.()),
+      ]);
     } finally {
-      setTimeout(() => setRefreshing(false), 380);
+      setTimeout(() => setRefreshing(false), 320);
     }
   };
 
@@ -232,8 +238,8 @@ export function Screen({
           onTouchMove: (e: { touches?: Array<{ clientY: number }> }) => {
             if (startTouchYRef.current === null || scrollYRef.current > 2 || !e.touches?.[0]) return;
             const dy = e.touches[0].clientY - startTouchYRef.current;
-            if (dy > 12) {
-              setPullOffset(Math.min(136, Math.round(dy * 0.62)));
+            if (dy > 14) {
+              setPullOffset(Math.min(96, Math.round(dy * 0.55)));
             } else {
               setPullOffset(0);
             }
@@ -242,10 +248,8 @@ export function Screen({
             const pulled = pullOffset;
             startTouchYRef.current = null;
             setPullOffset(0);
-            if (pulled >= 102) {
-              void triggerReloadOrRefresh(true);
-            } else if (pulled >= 54) {
-              void triggerReloadOrRefresh(false);
+            if (pulled >= 56) {
+              void triggerInPlaceRefresh();
             }
           },
           onTouchCancel: () => {
@@ -262,36 +266,27 @@ export function Screen({
     >
       {bottomNav && desktopWeb && <DesktopNav />}
 
-      {/* Interactive Pull-Down Refresh / Hard-Pull Reload Pill */}
+      {/* Minimalist silent orbital pull indicator (NO text banner, refreshes current state in-place!) */}
       {(pullOffset >= 24 || refreshing) && (
         <View pointerEvents="none" style={styles.pullBannerWrap}>
           <View
-            style={[
-              styles.pullBannerPill,
-              {
-                backgroundColor: pullOffset >= 102 ? '#F59E0B' : palette.indigo,
-                transform: [{ translateY: Math.min(20, Math.round(pullOffset * 0.16)) }],
-              },
-            ]}
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 17,
+              backgroundColor: palette.paperRaised,
+              borderWidth: 1.5,
+              borderColor: palette.indigo,
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: refreshing ? 1 : Math.min(1, pullOffset / 56),
+              transform: [
+                { translateY: refreshing ? 10 : Math.min(18, Math.round(pullOffset * 0.22)) },
+                { rotate: `${pullOffset * 4}deg` },
+              ],
+            }}
           >
-            <Ionicons
-              name={pullOffset >= 102 ? 'rocket' : 'refresh'}
-              size={14}
-              color={pullOffset >= 102 ? '#0F172A' : '#FFFFFF'}
-            />
-            <Text
-              style={{
-                fontSize: 11.5,
-                fontWeight: '800',
-                color: pullOffset >= 102 ? '#0F172A' : '#FFFFFF',
-              }}
-            >
-              {refreshing
-                ? 'Đang đồng bộ & làm mới dữ liệu…'
-                : pullOffset >= 102
-                ? 'Thả tay để tải lại toàn bộ ứng dụng!'
-                : 'Kéo xuống để làm mới · Kéo mạnh hơn để tải lại app'}
-            </Text>
+            <Ionicons name="sync" size={16} color={palette.indigo} />
           </View>
         </View>
       )}
@@ -305,7 +300,7 @@ export function Screen({
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
-              onRefresh={() => void triggerReloadOrRefresh(false)}
+              onRefresh={() => void triggerInPlaceRefresh()}
               tintColor={palette.indigo}
               colors={[palette.indigo]}
             />

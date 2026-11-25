@@ -2,9 +2,9 @@ import { errorMessage } from '@/core/domain/failure';
 import Constants from 'expo-constants';
 import { roomInvite } from '@/features/room-battle/domain/invite';
 import { InviteQr, ScanRoomQr } from '@/features/room-battle/presentation/RoomQr';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Alert, Animated, AppState, Easing, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Animated, AppState, Easing, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { preferenceStorage } from '@/composition/preferences';
 import { Ionicons } from '@expo/vector-icons';
 import { Badge, Button, Card, IconTile, Screen, TopBar, usePalette } from '@/shared/ui';
@@ -113,6 +113,9 @@ export default function BattleScreen() {
   const [questionCount, setQuestionCount] = useState(10);
   const [secondsPerQuestion, setSecondsPerQuestion] = useState(15);
   const [maxPlayers, setMaxPlayers] = useState(4);
+  const [setCategoryFilter, setSetCategoryFilter] = useState<'all' | 'it' | 'stem' | 'humanities' | 'mine'>('all');
+  const [setSearchQuery, setSetSearchQuery] = useState('');
+  const [showAllSets, setShowAllSets] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
   const recordedRef = useRef(false);
 
@@ -306,6 +309,31 @@ export default function BattleScreen() {
 
   const me = battle?.players.find((p) => p.userId === user?.id);
   const question = battle?.question;
+
+  const enrichedSets = useMemo(() => {
+    const sourcePool = localQuestionSets.length > 0 ? localQuestionSets : seedQuestionSets;
+    return sets.map((s) => {
+      const matched = sourcePool.find((loc) => loc.id === s.id || loc.title === s.title);
+      const subj = matched?.subject || 'Đại học';
+      const qCount = matched?.questions.length ?? 10;
+      const isSeed = String(matched?.id || s.id).startsWith('seed-');
+      const hay = `${s.title} ${subj}`.toLowerCase();
+      let cat: 'it' | 'stem' | 'humanities' | 'mine' = 'it';
+      if (!isSeed) cat = 'mine';
+      else if (/(vật lý|hóa|sinh|toán|lượng tử|di truyền)/i.test(hay)) cat = 'stem';
+      else if (/(lịch sử|văn học|sử|triết|văn)/i.test(hay)) cat = 'humanities';
+      return { ...s, subject: subj, qCount, cat, isSeed };
+    });
+  }, [localQuestionSets, sets]);
+
+  const filteredBattleSets = useMemo(() => {
+    const q = setSearchQuery.trim().toLowerCase();
+    return enrichedSets.filter((item) => {
+      if (setCategoryFilter !== 'all' && item.cat !== setCategoryFilter) return false;
+      if (q && !`${item.title} ${item.subject}`.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [enrichedSets, setCategoryFilter, setSearchQuery]);
 
   return (
     <Screen bottomNav>
@@ -527,41 +555,35 @@ export default function BattleScreen() {
                   { color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paper },
                 ]}
               />
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                <View style={{ flex: 1, minWidth: 150 }}>
-                  <Button
-                    icon="flash-outline"
-                    variant="reward"
-                    disabled={code.trim().length < 4}
-                    onPress={() =>
-                      router.push({
-                        pathname: '/multiplayer/join',
-                        params: { room: code.trim().toUpperCase() },
-                      })
-                    }
-                    fullWidth
-                  >
-                    Vào Phòng Kahoot Live
-                  </Button>
-                </View>
-                {user ? (
-                  <View style={{ flex: 1, minWidth: 150 }}>
-                    <Button
-                      icon="shield-checkmark-outline"
-                      disabled={busy || !/^[a-z0-9]{6}$/i.test(code.trim())}
-                      onPress={() =>
-                        void run(async () => {
-                          const room = await dependencies.rooms.join(code.trim().toUpperCase());
-                          await enter(room.id);
-                        })
+              <Button
+                icon="flash"
+                variant="reward"
+                disabled={busy || code.trim().length < 4}
+                onPress={() => {
+                  const cleanPin = code.trim().toUpperCase();
+                  if (user && /^[A-Z0-9]{6}$/.test(cleanPin)) {
+                    void run(async () => {
+                      try {
+                        const room = await dependencies.rooms.join(cleanPin);
+                        await enter(room.id);
+                      } catch {
+                        router.push({
+                          pathname: '/multiplayer/join',
+                          params: { room: cleanPin },
+                        });
                       }
-                      fullWidth
-                    >
-                      Vào Phòng Colosseum
-                    </Button>
-                  </View>
-                ) : null}
-              </View>
+                    });
+                    return;
+                  }
+                  router.push({
+                    pathname: '/multiplayer/join',
+                    params: { room: cleanPin },
+                  });
+                }}
+                fullWidth
+              >
+                Vào Phòng Đấu Ngay (Tự nhận diện PIN)
+              </Button>
 
               <View style={{ borderTopWidth: 1, borderTopColor: palette.paperMuted, marginTop: spacing.md, paddingTop: spacing.sm, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
                 <Text style={[typography.caption, { color: palette.inkMuted, flex: 1 }]}>
@@ -761,72 +783,191 @@ export default function BattleScreen() {
                   </Button>
                 </View>
               ) : (
-                <View style={styles.setsList}>
-                  {sets.slice(0, 20).map((set) => (
-                    <View key={set.id} style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-                      <View style={{ flex: 1 }}>
-                        <Button
-                          disabled={busy}
-                          variant="secondary"
-                          icon="play"
-                          fullWidth
-                          onPress={() =>
-                            void run(async () => {
-                              if (!useMembershipStore.getState().canCreateBattle()) {
-                                Alert.alert(
-                                  'Đạt giới hạn tạo phòng hôm nay',
-                                  'Học Giả Tập Sự được tạo tối đa 3 phòng đấu/ngày. Bạn có thể nâng cấp lên VIP để tạo phòng không giới hạn!'
-                                );
-                                return;
-                              }
-                              const sourcePool = localQuestionSets.length > 0 ? localQuestionSets : seedQuestionSets;
-                              const fullLocal = sourcePool.find(
-                                (item) => item.id === set.id || item.title === set.title
-                              );
-                              const cloudSetId = fullLocal
-                                ? await dependencies.battle.ensureCloudSet(fullLocal)
-                                : set.id;
-                              const room = await dependencies.rooms.create({
-                                setId: cloudSetId,
-                                questionCount: Math.min(questionCount, fullLocal?.questions.length ?? questionCount),
-                                secondsPerQuestion,
-                                mode: roomMode,
-                                maxPlayers,
-                              });
-                              useMembershipStore.getState().consumeBattle();
-                              await enter(room.id);
-                            })
-                          }
+                <View style={{ marginTop: spacing.md, gap: 10 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                    <Text style={[typography.title, { color: palette.ink, fontSize: 16 }]}>
+                      📚 Chọn Bộ Đề Mở Phòng Kahoot hoặc Colosseum ({filteredBattleSets.length})
+                    </Text>
+                  </View>
+
+                  {/* Search & Structured Category Filter for Kahoot / Colosseum Sets */}
+                  <TextInput
+                    value={setSearchQuery}
+                    onChangeText={setSetSearchQuery}
+                    placeholder="Tìm nhanh tên môn hoặc bộ đề..."
+                    placeholderTextColor={palette.inkMuted}
+                    style={{
+                      minHeight: 42,
+                      borderWidth: 1,
+                      borderColor: palette.paperMuted,
+                      backgroundColor: palette.paper,
+                      borderRadius: radii.sm,
+                      paddingHorizontal: 12,
+                      color: palette.ink,
+                      fontSize: 13.5,
+                    }}
+                  />
+
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+                    {(
+                      [
+                        { id: 'all', label: 'Tất cả bộ đề' },
+                        { id: 'it', label: '💻 CNTT & AI' },
+                        { id: 'stem', label: '🔬 Lý · Hóa · Sinh' },
+                        { id: 'humanities', label: '🏛️ Sử & Văn học' },
+                        { id: 'mine', label: '✨ Đề của tôi' },
+                      ] as const
+                    ).map((cat) => {
+                      const active = setCategoryFilter === cat.id;
+                      return (
+                        <Pressable
+                          key={cat.id}
+                          onPress={() => {
+                            setSetCategoryFilter(cat.id);
+                            setShowAllSets(false);
+                          }}
+                          style={{
+                            paddingHorizontal: 12,
+                            paddingVertical: 7,
+                            borderRadius: radii.pill,
+                            borderWidth: 1,
+                            backgroundColor: active ? palette.indigo : palette.paper,
+                            borderColor: active ? palette.indigo : palette.paperMuted,
+                          }}
                         >
-                          {`Colosseum (${maxPlayers}P): ${set.title}`}
-                        </Button>
-                      </View>
-                      <Pressable
-                        disabled={busy}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Mở Kahoot nhanh ${set.title}`}
-                        onPress={async () => {
-                          const created = await roomApi.create(set.id, user?.displayName || 'Chủ phòng');
-                          router.push({
-                            pathname: '/multiplayer/host/[roomCode]',
-                            params: { roomCode: created.roomCode },
-                          });
-                        }}
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              fontWeight: '800',
+                              color: active ? '#FFFFFF' : palette.ink,
+                            }}
+                          >
+                            {cat.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+
+                  <View style={{ gap: 8 }}>
+                    {(showAllSets ? filteredBattleSets : filteredBattleSets.slice(0, 6)).map((set) => (
+                      <View
+                        key={set.id}
                         style={{
-                          minHeight: 48,
-                          paddingHorizontal: 12,
-                          borderRadius: radii.sm,
-                          backgroundColor: palette.goldTint,
+                          padding: 12,
+                          borderRadius: radii.md,
                           borderWidth: 1,
-                          borderColor: palette.gold,
-                          alignItems: 'center',
-                          justifyContent: 'center',
+                          borderColor: palette.paperMuted,
+                          backgroundColor: palette.paper,
+                          gap: 8,
                         }}
                       >
-                        <Text style={{ color: palette.gold, fontWeight: '900', fontSize: 12 }}>⚡ Kahoot</Text>
-                      </Pressable>
-                    </View>
-                  ))}
+                        <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <Text style={[typography.body, { color: palette.ink, fontWeight: '800' }]} numberOfLines={2}>
+                              {set.title}
+                            </Text>
+                            <Text style={{ fontSize: 11.5, color: palette.inkMuted, marginTop: 2 }}>
+                              {set.subject} · {set.qCount} câu hỏi
+                            </Text>
+                          </View>
+                        </View>
+
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                          <Pressable
+                            disabled={busy}
+                            accessibilityRole="button"
+                            onPress={async () => {
+                              const created = await roomApi.create(set.id, user?.displayName || 'Chủ phòng');
+                              router.push({
+                                pathname: '/multiplayer/host/[roomCode]',
+                                params: { roomCode: created.roomCode },
+                              });
+                            }}
+                            style={{
+                              flex: 1,
+                              minWidth: 125,
+                              minHeight: 40,
+                              paddingHorizontal: 12,
+                              borderRadius: radii.sm,
+                              backgroundColor: palette.goldTint,
+                              borderWidth: 1,
+                              borderColor: palette.gold,
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: 5,
+                            }}
+                          >
+                            <Ionicons name="flash" size={14} color={palette.gold} />
+                            <Text style={{ color: palette.gold, fontWeight: '900', fontSize: 12 }}>Mở Kahoot Live</Text>
+                          </Pressable>
+
+                          <Pressable
+                            disabled={busy}
+                            accessibilityRole="button"
+                            onPress={() =>
+                              void run(async () => {
+                                if (!useMembershipStore.getState().canCreateBattle()) {
+                                  Alert.alert(
+                                    'Đạt giới hạn tạo phòng hôm nay',
+                                    'Học Giả Tập Sự được tạo tối đa 3 phòng đấu/ngày. Bạn có thể nâng cấp lên VIP để tạo phòng không giới hạn!'
+                                  );
+                                  return;
+                                }
+                                const sourcePool = localQuestionSets.length > 0 ? localQuestionSets : seedQuestionSets;
+                                const fullLocal = sourcePool.find(
+                                  (item) => item.id === set.id || item.title === set.title
+                                );
+                                const cloudSetId = fullLocal
+                                  ? await dependencies.battle.ensureCloudSet(fullLocal)
+                                  : set.id;
+                                const room = await dependencies.rooms.create({
+                                  setId: cloudSetId,
+                                  questionCount: Math.min(questionCount, fullLocal?.questions.length ?? questionCount),
+                                  secondsPerQuestion,
+                                  mode: roomMode,
+                                  maxPlayers,
+                                });
+                                useMembershipStore.getState().consumeBattle();
+                                await enter(room.id);
+                              })
+                            }
+                            style={{
+                              flex: 1,
+                              minWidth: 135,
+                              minHeight: 40,
+                              paddingHorizontal: 12,
+                              borderRadius: radii.sm,
+                              backgroundColor: palette.indigo,
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: 5,
+                            }}
+                          >
+                            <Ionicons name="shield-checkmark" size={14} color="#FFFFFF" />
+                            <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 12 }}>
+                              Phòng Colosseum ({maxPlayers}P)
+                            </Text>
+                          </Pressable>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+
+                  {filteredBattleSets.length > 6 && (
+                    <Pressable
+                      onPress={() => setShowAllSets((v) => !v)}
+                      style={{ alignSelf: 'center', paddingVertical: 8 }}
+                    >
+                      <Text style={{ fontSize: 12.5, fontWeight: '800', color: palette.indigo }}>
+                        {showAllSets
+                          ? '▲ Thu gọn danh sách bộ đề'
+                          : `▼ Xem thêm ${filteredBattleSets.length - 6} bộ đề khác`}
+                      </Text>
+                    </Pressable>
+                  )}
                 </View>
               )}
             </Card>

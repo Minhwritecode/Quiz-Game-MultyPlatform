@@ -25,6 +25,13 @@ export {
   exportStudyPdfReport,
 } from '@/features/study/data/sessionPdf';
 export { pickRichSourceDocument } from '@/features/scan-ocr/data/documentSource';
+export {
+  pickAvatarImageDataUrl,
+  pickCoverImageDataUrl,
+  pickStoryMedia,
+  type PickedStoryMedia,
+} from '@/features/scan-ocr/data/mediaPicker';
+export { encodeImageUriToJpegBase64 } from '@/features/scan-ocr/data/ocr';
 export { checkWebAppVersionUpdate } from '@/features/release/data/webVersionCheck';
 export {
   broadcastAdminNotificationToCloud,
@@ -44,7 +51,28 @@ export {
   registerScholarPresence,
   subscribeOnlineScholars,
 } from '@/features/leaderboard/data/liveScholarDirectory';
+export { fetchSuggestedScholarsForFriends } from '@/features/leaderboard/data/leaderboardRepository';
 export { sendMagicLinkEmail } from '@/features/auth/data/authRepository';
+export {
+  authenticateWithPasskeyButton,
+  beginTotpEnrollment,
+  checkSignInRequires2FA,
+  confirmTotpEnrollment,
+  deleteRegisteredPasskey,
+  disableTotp2FA,
+  isPlatformPasskeyAvailable,
+  loadUserSecuritySnapshot,
+  registerNewPasskey,
+  renameRegisteredPasskey,
+  revokeAllOtherDeviceSessions,
+  revokeDeviceSession,
+  touchCurrentDeviceSession,
+  verifySignIn2FACode,
+  type DeviceSessionRecord,
+  type PendingTotpEnrollment,
+  type StoredPasskeyItem,
+  type UserSecuritySnapshot,
+} from '@/features/auth/data/securityCenter';
 export {
   resolveHistoryConflict,
   type ChatConflictResolution,

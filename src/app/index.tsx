@@ -32,6 +32,9 @@ import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { useAuthStore } from '@/core/state/useAuthStore';
 import { useAssistantUiStore } from '@/core/state/useAssistantUiStore';
 import { useCommunityStore } from '@/features/community/state/useCommunityStore';
+import { CreateStoryCard916, StoryCard916 } from '@/features/community/presentation/StoryCard916';
+import { StoryComposerModal, StoryViewerModal } from '@/features/community/presentation/StoryModalViewer';
+import type { ScholarStory } from '@/features/community/domain/models';
 import { getScholarRankInfo } from '@/core/domain/scholarRank';
 import { getLocalDateString } from '@/features/streak/domain/models';
 import { useI18n } from '@/core/i18n';
@@ -64,6 +67,11 @@ export default function HomeScreen() {
   const checkInToday = useStreakStore((state) => state.checkInToday);
   const stories = useCommunityStore((state) => state.stories);
   const posts = useCommunityStore((state) => state.posts);
+  const addStory = useCommunityStore((state) => state.addStory);
+  const markStoryViewed = useCommunityStore((state) => state.markStoryViewed);
+  const reactToStory = useCommunityStore((state) => state.reactToStory);
+  const [viewingHomeStory, setViewingHomeStory] = useState<ScholarStory | null>(null);
+  const [homeStoryComposerOpen, setHomeStoryComposerOpen] = useState(false);
 
   const { language, toggleLanguage, t } = useI18n();
   const { width } = useWindowDimensions();
@@ -225,16 +233,6 @@ export default function HomeScreen() {
               </View>
             </View>
             <View style={styles.topRightControls}>
-              {Platform.OS === 'web' && (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Làm mới trang"
-                  onPress={() => window.location.reload()}
-                  style={[styles.iconPillBtn, { backgroundColor: palette.paperRaised, borderColor: palette.paperMuted }]}
-                >
-                  <Ionicons name="refresh" size={16} color={palette.indigo} />
-                </Pressable>
-              )}
               <NotificationBell />
               <Pressable
                 onPress={toggleLanguage}
@@ -366,39 +364,26 @@ export default function HomeScreen() {
             onAction={() => router.push('/community')}
           />
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.storiesStrip}>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => router.push('/profile?composeStory=1')}
-              style={[styles.storyBubbleCard, { backgroundColor: palette.paperRaised, borderColor: palette.indigoBorder }]}
-            >
-              <View style={[styles.storyPlusCircle, { backgroundColor: palette.indigoTint }]}>
-                <Ionicons name="add" size={24} color={palette.indigo} />
-              </View>
-              <Text style={[typography.caption, { color: palette.ink, fontWeight: '800', fontSize: 11.5 }]} numberOfLines={1}>
-                Đăng Tin 24h
-              </Text>
-            </Pressable>
+            <CreateStoryCard916
+              avatarUrl={user?.avatarUrl}
+              displayName={user?.displayName || 'Papyrus'}
+              onPress={() => setHomeStoryComposerOpen(true)}
+            />
 
-            {stories.slice(0, 6).map((st) => (
-              <Pressable
-                key={st.id}
-                accessibilityRole="button"
-                onPress={() => router.push('/community')}
-                style={[styles.storyBubbleCard, { backgroundColor: st.gradient[0], borderColor: st.gradient[1] }]}
-              >
-                <View style={[styles.storyAvatarRing, { borderColor: '#FBBF24' }]}>
-                  <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 13 }}>
-                    {(st.authorName[0] || 'S').toUpperCase()}
-                  </Text>
-                </View>
-                <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '800', marginTop: 4 }} numberOfLines={1}>
-                  {st.authorName}
-                </Text>
-                <Text style={{ color: '#E0E7FF', fontSize: 10 }} numberOfLines={2}>
-                  {st.text}
-                </Text>
-              </Pressable>
-            ))}
+            {stories.slice(0, 8).map((st) => {
+              const viewerId = user?.id ?? 'guest';
+              return (
+                <StoryCard916
+                  key={st.id}
+                  story={st}
+                  seen={st.viewedByIds.includes(viewerId)}
+                  onPress={() => {
+                    markStoryViewed(st.id, viewerId);
+                    setViewingHomeStory(st);
+                  }}
+                />
+              );
+            })}
           </ScrollView>
 
           {posts[0] ? (
@@ -807,6 +792,35 @@ export default function HomeScreen() {
       </Screen>
 
       <DraggableHomePapybot />
+
+      <StoryViewerModal
+        story={viewingHomeStory}
+        viewerId={user?.id ?? 'guest'}
+        onClose={() => setViewingHomeStory(null)}
+        onReact={(sid, emo) => reactToStory(sid, emo, user?.id ?? 'guest')}
+        onDirectMessage={(author) => {
+          router.push({
+            pathname: '/community',
+            params: { tab: 'messenger', dmUserId: author.id, dmName: author.name },
+          });
+        }}
+      />
+      <StoryComposerModal
+        visible={homeStoryComposerOpen}
+        onClose={() => setHomeStoryComposerOpen(false)}
+        onPublish={(data) => {
+          addStory({
+            authorId: user?.id ?? 'guest',
+            authorName: user?.displayName ?? 'Học giả Papyrus',
+            authorAvatar: user?.avatarUrl ?? null,
+            authorLevel: rankInfo.level,
+            badgeLabel: `${rankInfo.badge} ${rankInfo.titleVi}`,
+            ...data,
+          });
+          addBonusXp(20);
+          sfx.playLevelUp();
+        }}
+      />
     </View>
   );
 }

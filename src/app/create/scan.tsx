@@ -9,6 +9,7 @@ import { Badge, Button, Card, IconTile, PageHeader, ProgressBar, Screen, TopBar,
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { createSourceDocument } from '@/features/scan-ocr/domain/sourceDocument';
+import { sanitizeOcrAndDocumentText } from '@/features/scan-ocr/domain/ocrCleaner';
 import {
   buildCombinedSourceText,
   createScanPage,
@@ -137,14 +138,14 @@ export default function ScanScreen() {
       for (let i = 0; i < images.length; i++) {
         setScanProgress({ current: i + 1, total: images.length, ratio: 0.08, stage: 'Đang chuẩn bị ảnh...' });
         const uri = images[i]!;
-        const rawText = (
+        const rawText = sanitizeOcrAndDocumentText(
           await recognizeLocalImage(uri, {
             language: ocrLanguage,
             onProgress: (ratio, stage) => {
               setScanProgress({ current: i + 1, total: images.length, ratio, stage });
             },
           })
-        ).trim();
+        );
         newlyScanned.push(
           createScanPage({
             id: replacePageId ?? `page-${Date.now()}-${i}`,

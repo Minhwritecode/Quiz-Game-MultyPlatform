@@ -1,25 +1,26 @@
-import { memo, useEffect, useRef, useState } from 'react';
+import { createElement, memo, useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Platform, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
+import { useRouteRefreshStore } from '@/core/state/useRouteRefreshStore';
 import { usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 
-const MORPH_STAGES: Array<{
-  icon: 'document-text' | 'diamond' | 'sparkles' | 'shield-checkmark';
-  color: string;
+const ASTRAL_MORPH_ICONS: Array<{
+  icon: 'sparkles' | 'diamond-outline' | 'book-outline' | 'prism-outline';
+  accent: string;
   radius: number;
-  tip: string;
 }> = [
-  { icon: 'document-text', color: '#6366F1', radius: 14, tip: 'Đang mở cuộn tri thức Papyrus…' },
-  { icon: 'diamond', color: '#06B6D4', radius: 28, tip: 'Đang kết tinh bộ đề & thuật ngữ…' },
-  { icon: 'sparkles', color: '#F59E0B', radius: 20, tip: 'Đang đồng bộ ma trận câu hỏi 3D…' },
-  { icon: 'shield-checkmark', color: '#10B981', radius: 34, tip: 'Sẵn sàng bước vào Đấu trường!' },
+  { icon: 'sparkles', accent: '#818CF8', radius: 20 },
+  { icon: 'diamond-outline', accent: '#22D3EE', radius: 28 },
+  { icon: 'book-outline', accent: '#A78BFA', radius: 16 },
+  { icon: 'prism-outline', accent: '#34D399', radius: 24 },
 ];
 
 /**
- * Signature multi-stage geometric morphing loader (Scroll -> Diamond -> Starburst -> Shield)
- * with GPU-only transform/opacity transitions and reduced-motion accessibility compliance.
+ * 1. PAGE / TAB / NAVIGATION LOADER (`PapyrusMorphLoader`)
+ * Strictly used ONLY for route loading & tab transitions (completely separate from network skeletons!).
+ * Silky liquid-glass orbital rings + semantic <progress> conic trail on Web + reduced-motion 6s slowdown.
  */
 export const PapyrusMorphLoader = memo(function PapyrusMorphLoader({
   label,
@@ -30,166 +31,169 @@ export const PapyrusMorphLoader = memo(function PapyrusMorphLoader({
 }) {
   const palette = usePalette();
   const reduceMotion = usePapyrusStore((s) => s.reduceMotion);
-  const [stageIdx, setStageIdx] = useState(0);
-  const spinAnim = useRef(new Animated.Value(0)).current;
-  const morphScale = useRef(new Animated.Value(1)).current;
-  const ringPulse = useRef(new Animated.Value(0.45)).current;
+  const [idx, setIdx] = useState(0);
+  const outerSpin = useRef(new Animated.Value(0)).current;
+  const innerFloat = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setStageIdx((prev) => (prev + 1) % MORPH_STAGES.length);
-    }, 1100);
-    return () => clearInterval(timer);
+    const id = setInterval(() => {
+      setIdx((p) => (p + 1) % ASTRAL_MORPH_ICONS.length);
+    }, 950);
+    return () => clearInterval(id);
   }, []);
 
   useEffect(() => {
-    if (reduceMotion) {
-      // Slow down rotation significantly (8s) rather than stopping completely so users still perceive active progress
-      morphScale.setValue(1);
-      ringPulse.setValue(0.65);
-      const slowSpin = Animated.loop(
-        Animated.timing(spinAnim, {
-          toValue: 1,
-          duration: 8000,
-          easing: Easing.linear,
-          useNativeDriver: true,
-        })
-      );
-      slowSpin.start();
-      return () => slowSpin.stop();
-    }
+    outerSpin.setValue(0);
+    const duration = reduceMotion ? 6000 : 1650;
     const spinLoop = Animated.loop(
-      Animated.timing(spinAnim, {
+      Animated.timing(outerSpin, {
         toValue: 1,
-        duration: 2800,
+        duration,
         easing: Easing.linear,
         useNativeDriver: true,
       })
     );
-    const breathLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(morphScale, {
-          toValue: 1.14,
-          duration: 550,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-        Animated.timing(morphScale, {
-          toValue: 0.94,
-          duration: 550,
-          easing: Easing.inOut(Easing.cubic),
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    const haloLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(ringPulse, { toValue: 0.92, duration: 900, useNativeDriver: true }),
-        Animated.timing(ringPulse, { toValue: 0.25, duration: 900, useNativeDriver: true }),
-      ])
-    );
     spinLoop.start();
-    breathLoop.start();
-    haloLoop.start();
+
+    if (reduceMotion) {
+      innerFloat.setValue(0);
+      return () => spinLoop.stop();
+    }
+
+    const floatLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(innerFloat, {
+          toValue: 1,
+          duration: 720,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(innerFloat, {
+          toValue: 0,
+          duration: 720,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    floatLoop.start();
+
     return () => {
       spinLoop.stop();
-      breathLoop.stop();
-      haloLoop.stop();
+      floatLoop.stop();
     };
-  }, [morphScale, reduceMotion, ringPulse, spinAnim]);
+  }, [innerFloat, outerSpin, reduceMotion]);
 
-  const stage = MORPH_STAGES[stageIdx]!;
-  const boxSize = compact ? 54 : 76;
+  const current = ASTRAL_MORPH_ICONS[idx]!;
+  const ringSize = compact ? 52 : 68;
+  const coreSize = compact ? 34 : 44;
 
   return (
     <View
       accessibilityRole="progressbar"
-      accessibilityLabel={label || stage.tip}
-      style={[styles.loaderWrap, compact && { paddingVertical: spacing.md }]}
+      accessibilityLabel={label || 'Đang chuyển trang'}
+      style={[styles.loaderRoot, compact && { paddingVertical: spacing.sm }]}
     >
-      <View style={{ width: boxSize + 28, height: boxSize + 28, alignItems: 'center', justifyContent: 'center' }}>
-        {/* Outer Orbiting Conic Halo */}
+      <View style={{ width: ringSize + 16, height: ringSize + 16, alignItems: 'center', justifyContent: 'center' }}>
+        {/* Soft Ambient Aura */}
         <Animated.View
-          style={[
-            styles.outerHalo,
-            {
-              width: boxSize + 24,
-              height: boxSize + 24,
-              borderRadius: (boxSize + 24) / 2,
-              borderColor: stage.color,
-              opacity: ringPulse,
-              transform: [
-                {
-                  rotate: spinAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: ['0deg', '360deg'],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={[styles.orbitDot, { backgroundColor: stage.color }]} />
-        </Animated.View>
+          style={{
+            position: 'absolute',
+            width: ringSize + 12,
+            height: ringSize + 12,
+            borderRadius: (ringSize + 12) / 2,
+            backgroundColor: current.accent,
+            opacity: innerFloat.interpolate({ inputRange: [0, 1], outputRange: [0.1, 0.24] }),
+            transform: [
+              {
+                scale: innerFloat.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1.08] }),
+              },
+            ],
+          }}
+        />
 
-        {/* Morphing Geometric Core */}
+        {/* Semantic Indeterminate Conic Ring on Web / Smooth Native Orbital Arc */}
+        {Platform.OS === 'web' ? (
+          createElement('progress', {
+            'aria-label': label || 'Đang tải trang',
+            className: 'papyrus-spinner',
+            style: {
+              width: `${ringSize}px`,
+              height: `${ringSize}px`,
+              position: 'absolute',
+            },
+          })
+        ) : (
+          <Animated.View
+            style={[
+              styles.nativeArcRing,
+              {
+                width: ringSize,
+                height: ringSize,
+                borderRadius: ringSize / 2,
+                borderTopColor: current.accent,
+                borderRightColor: 'rgba(56, 189, 248, 0.45)',
+                borderBottomColor: 'rgba(148, 163, 184, 0.12)',
+                borderLeftColor: 'rgba(148, 163, 184, 0.12)',
+                transform: [
+                  {
+                    rotate: outerSpin.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: ['0deg', '360deg'],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          />
+        )}
+
+        {/* Liquid-Glass Morphing Core */}
         <Animated.View
           style={[
-            styles.morphCore,
+            styles.prismCore,
             {
-              width: boxSize,
-              height: boxSize,
-              borderRadius: stage.radius,
-              backgroundColor: '#0F172A',
-              borderColor: stage.color,
+              width: coreSize,
+              height: coreSize,
+              borderRadius: compact ? Math.round(current.radius * 0.72) : current.radius,
+              borderColor: `${current.accent}66`,
               transform: [
-                { scale: morphScale },
                 {
-                  rotate: spinAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: ['0deg', '-180deg'],
-                  }),
+                  scale: innerFloat.interpolate({ inputRange: [0, 1], outputRange: [0.95, 1.06] }),
                 },
               ],
             },
             Platform.OS === 'web'
               ? ({
-                  transition: 'border-radius 450ms cubic-bezier(0.22, 1, 0.36, 1), border-color 450ms ease',
+                  backdropFilter: 'blur(12px)',
+                  WebkitBackdropFilter: 'blur(12px)',
+                  transition: 'border-radius 420ms cubic-bezier(0.22, 1, 0.36, 1), border-color 420ms ease',
                 } as unknown as ViewStyle)
               : undefined,
           ]}
         >
-          <Ionicons name={stage.icon} size={compact ? 24 : 32} color={stage.color} />
+          <Ionicons name={current.icon} size={compact ? 17 : 21} color={current.accent} />
         </Animated.View>
       </View>
 
-      <Text style={[typography.title, { color: palette.ink, marginTop: spacing.sm, textAlign: 'center' }]}>
-        {label || stage.tip}
-      </Text>
-      {!compact && (
-        <View style={styles.stageDots}>
-          {MORPH_STAGES.map((s, idx) => (
-            <View
-              key={s.icon}
-              style={[
-                styles.stageDot,
-                {
-                  width: idx === stageIdx ? 20 : 7,
-                  backgroundColor: idx === stageIdx ? stage.color : palette.paperMuted,
-                },
-              ]}
-            />
-          ))}
-        </View>
-      )}
+      {label ? (
+        <Text
+          style={[
+            typography.caption,
+            { color: palette.inkMuted, fontWeight: '700', marginTop: 8, textAlign: 'center' },
+          ]}
+        >
+          {label}
+        </Text>
+      ) : null}
     </View>
   );
 });
 
-const ShimmerBlock = memo(function ShimmerBlock({
+const WaveSkeletonBar = memo(function WaveSkeletonBar({
   width,
   height,
-  radius = 12,
+  radius = 8,
   style,
 }: {
   width: number | `${number}%`;
@@ -199,22 +203,22 @@ const ShimmerBlock = memo(function ShimmerBlock({
 }) {
   const palette = usePalette();
   const reduceMotion = usePapyrusStore((s) => s.reduceMotion);
-  const pulse = useRef(new Animated.Value(0.45)).current;
+  const wave = useRef(new Animated.Value(0.32)).current;
 
   useEffect(() => {
     if (reduceMotion) {
-      pulse.setValue(0.6);
+      wave.setValue(0.5);
       return;
     }
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(pulse, { toValue: 0.92, duration: 780, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 0.38, duration: 780, useNativeDriver: true }),
+        Animated.timing(wave, { toValue: 0.78, duration: 850, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(wave, { toValue: 0.28, duration: 850, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
       ])
     );
     loop.start();
     return () => loop.stop();
-  }, [pulse, reduceMotion]);
+  }, [reduceMotion, wave]);
 
   return (
     <Animated.View
@@ -224,7 +228,7 @@ const ShimmerBlock = memo(function ShimmerBlock({
           height,
           borderRadius: radius,
           backgroundColor: palette.paperMuted,
-          opacity: pulse,
+          opacity: wave,
         },
         style,
       ]}
@@ -235,31 +239,81 @@ const ShimmerBlock = memo(function ShimmerBlock({
 export type SkeletonVariant = 'study' | 'leaderboard' | 'library' | 'dashboard';
 
 /**
- * Rich contextual Skeleton + Morphing Header screen for smooth perceived-zero-latency loading.
+ * 2. WEAK / OFFLINE NETWORK DATA SKELETON (`PapyrusPageSkeleton` / `PapyrusNetworkSkeleton`)
+ * Strictly separated from the Page/Tab Loader!
+ * Used ONLY for online-dependent data sections when the connection is offline (`!isOnline`)
+ * or experiencing slow network latency (> 650ms).
  */
 export const PapyrusPageSkeleton = memo(function PapyrusPageSkeleton({
   variant = 'library',
   label,
+  immediate = false,
 }: {
   variant?: SkeletonVariant;
   label?: string;
+  immediate?: boolean;
 }) {
   const palette = usePalette();
+  const isOnline = useRouteRefreshStore((s) => s.isOnline);
+  const [slowNetworkReached, setSlowNetworkReached] = useState(() => !isOnline || immediate);
+
+  useEffect(() => {
+    if (!isOnline || immediate) {
+      setSlowNetworkReached(true);
+      return;
+    }
+    // Only display Skeleton if online data takes > 650ms (weak/slow connection), otherwise show sleek Loader
+    const timer = setTimeout(() => setSlowNetworkReached(true), 650);
+    return () => clearTimeout(timer);
+  }, [immediate, isOnline]);
+
+  if (!slowNetworkReached && isOnline) {
+    return <PapyrusMorphLoader compact label={label} />;
+  }
 
   return (
     <View style={styles.skeletonRoot}>
-      <PapyrusMorphLoader compact label={label} />
+      <View
+        style={[
+          styles.networkHintPill,
+          {
+            backgroundColor: isOnline ? palette.indigoTint : palette.goldTint,
+            borderColor: isOnline ? palette.indigoBorder : palette.gold,
+          },
+        ]}
+      >
+        <Ionicons
+          name={isOnline ? 'cellular-outline' : 'cloud-offline-outline'}
+          size={15}
+          color={isOnline ? palette.indigo : palette.gold}
+        />
+        <Text
+          style={{
+            fontSize: 11.5,
+            fontWeight: '800',
+            color: isOnline ? palette.indigoDeep : palette.gold,
+            flex: 1,
+          }}
+        >
+          {!isOnline
+            ? 'Đang ngoại tuyến — hiển thị khung chờ dữ liệu trực tuyến'
+            : label || 'Mạng hơi chậm — đang đồng bộ dữ liệu trực tuyến…'}
+        </Text>
+      </View>
 
       {variant === 'dashboard' && (
         <View style={styles.kpiRow}>
           {[0, 1, 2, 3].map((i) => (
             <View
               key={i}
-              style={[styles.skelCard, { flex: 1, minWidth: 140, backgroundColor: palette.paperRaised, borderColor: palette.paperMuted }]}
+              style={[
+                styles.skelCard,
+                { flex: 1, minWidth: 140, backgroundColor: palette.paperRaised, borderColor: palette.paperMuted },
+              ]}
             >
-              <ShimmerBlock width="55%" height={11} radius={6} />
-              <ShimmerBlock width="75%" height={26} radius={8} style={{ marginTop: 10 }} />
-              <ShimmerBlock width="100%" height={8} radius={4} style={{ marginTop: 12 }} />
+              <WaveSkeletonBar width="50%" height={10} radius={5} />
+              <WaveSkeletonBar width="72%" height={24} radius={7} style={{ marginTop: 10 }} />
+              <WaveSkeletonBar width="100%" height={7} radius={4} style={{ marginTop: 12 }} />
             </View>
           ))}
         </View>
@@ -267,17 +321,16 @@ export const PapyrusPageSkeleton = memo(function PapyrusPageSkeleton({
 
       {variant === 'study' && (
         <View style={[styles.skelCard, { backgroundColor: palette.paperRaised, borderColor: palette.paperMuted }]}>
-          <ShimmerBlock width="100%" height={168} radius={16} />
-          <ShimmerBlock width="85%" height={20} radius={8} style={{ marginTop: 16 }} />
-          <ShimmerBlock width="65%" height={16} radius={8} style={{ marginTop: 8 }} />
-          {[0, 1, 2, 3].map((k) => (
-            <ShimmerBlock key={k} width="100%" height={48} radius={12} style={{ marginTop: 10 }} />
+          <WaveSkeletonBar width="100%" height={150} radius={14} />
+          <WaveSkeletonBar width="82%" height={18} radius={7} style={{ marginTop: 14 }} />
+          {[0, 1, 2].map((k) => (
+            <WaveSkeletonBar key={k} width="100%" height={44} radius={11} style={{ marginTop: 10 }} />
           ))}
         </View>
       )}
 
       {(variant === 'leaderboard' || variant === 'library') &&
-        [0, 1, 2, 3, 4].map((row) => (
+        [0, 1, 2, 3].map((row) => (
           <View
             key={row}
             style={[
@@ -285,56 +338,49 @@ export const PapyrusPageSkeleton = memo(function PapyrusPageSkeleton({
               { backgroundColor: palette.paperRaised, borderColor: palette.paperMuted },
             ]}
           >
-            <ShimmerBlock width={44} height={44} radius={14} />
-            <View style={{ flex: 1, gap: 8 }}>
-              <ShimmerBlock width="72%" height={15} radius={6} />
-              <ShimmerBlock width="46%" height={11} radius={6} />
+            <WaveSkeletonBar width={42} height={42} radius={21} />
+            <View style={{ flex: 1, gap: 7 }}>
+              <WaveSkeletonBar width="68%" height={13} radius={6} />
+              <WaveSkeletonBar width="42%" height={10} radius={5} />
             </View>
-            <ShimmerBlock width={64} height={28} radius={14} />
+            <WaveSkeletonBar width={58} height={24} radius={12} />
           </View>
         ))}
     </View>
   );
 });
 
+export const PapyrusNetworkSkeleton = PapyrusPageSkeleton;
+
 const styles = StyleSheet.create({
-  loaderWrap: {
+  loaderRoot: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: spacing.xl,
+    paddingVertical: spacing.lg,
   },
-  outerHalo: {
+  nativeArcRing: {
     position: 'absolute',
-    borderWidth: 2,
-    borderStyle: 'dashed',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
+    borderWidth: 3,
   },
-  orbitDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    marginTop: -5,
-  },
-  morphCore: {
-    borderWidth: 2.5,
+  prismCore: {
+    backgroundColor: 'rgba(15, 23, 52, 0.86)',
+    borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  stageDots: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: spacing.sm,
-  },
-  stageDot: {
-    height: 7,
-    borderRadius: 4,
   },
   skeletonRoot: {
     width: '100%',
     gap: spacing.sm,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  networkHintPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radii.pill,
+    borderWidth: 1,
   },
   kpiRow: {
     flexDirection: 'row',
@@ -349,7 +395,7 @@ const styles = StyleSheet.create({
   skelRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
+    gap: 12,
     padding: spacing.md,
     borderRadius: radii.md,
     borderWidth: 1,

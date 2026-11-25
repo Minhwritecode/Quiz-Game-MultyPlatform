@@ -1,5 +1,6 @@
 import { seedQuestionSets } from '@/core/data/seed';
 import type { QuestionSet } from '@/core/domain/models';
+import { sanitizeOcrAndDocumentText } from '@/features/scan-ocr/domain/ocrCleaner';
 import type { ChatMessage } from '../domain/repository';
 
 const STOP_WORDS = new Set([
@@ -121,13 +122,21 @@ function trySolveMath(rawInput: string): string | null {
 /**
  * Chunked RAG retrieval over attached PDF / DOCX / TXT / OCR Image text with explicit citations.
  */
-function answerFromAttachedDocument(query: string, doc: string): string {
+function answerFromAttachedDocument(query: string, rawDoc: string): string {
+  const doc = sanitizeOcrAndDocumentText(rawDoc.replace(/^\[Nội dung nhận diện từ ảnh đính kèm\]:\s*/i, ''));
   const lower = query.toLowerCase();
   const paragraphs = doc
     .replace(/\r/g, '\n')
-    .split(/\n{2,}|(?<=[.!?])\s+(?=[A-ZÀ-Ỹ0-9•\-])/)
+    .split(/\n+|(?<=[.!?])\s+(?=[A-ZÀ-Ỹ0-9•\-])/)
     .map((p) => p.replace(/\s+/g, ' ').trim())
-    .filter((p) => p.length >= 15);
+    .filter((p) => p.length >= 12 && (p.match(/\p{L}{2,}/gu) || []).length >= 3);
+
+  if (paragraphs.length === 0) {
+    return [
+      '🖼️ **Ảnh/Tài liệu đính kèm chứa nhiều chi tiết sơ đồ nhỏ hoặc chữ nghệ thuật:**',
+      '• Để Papybot phân tích sâu nhất sơ đồ này, bạn hãy gõ tên chủ đề chính trên ảnh (ví dụ: *"Giải thích kiến trúc Voice AI Real-Time"* hoặc *"Phân tích luồng Data Flow"*) để mình giải thích từng thành phần thật mạch lạc nhé!',
+    ].join('\n');
+  }
 
   if (/(câu hỏi|quiz|trắc nghiệm|ôn nhanh|test)/i.test(lower)) {
     return buildQuickQuizFromDocument(doc);
@@ -135,14 +144,11 @@ function answerFromAttachedDocument(query: string, doc: string): string {
 
   if (/(tóm tắt|summary|ý chính|tổng hợp|phân tích)/i.test(lower) || query.length < 6) {
     const top = paragraphs.slice(0, 6);
-    if (top.length === 0) {
-      return `📄 **Nội dung trích xuất từ tệp đính kèm:**\n• ${doc.trim().slice(0, 600)}`;
-    }
     return [
-      '📚 **Tóm tắt có trích dẫn nguồn từ tài liệu đính kèm của bạn:**',
-      ...top.map((s, i) => `${i + 1}. ${s.slice(0, 250)}${s.length > 250 ? '…' : ''} \`[Nguồn: Đoạn ${i + 1}]\``),
+      '📚 **Tổng hợp nội dung sạch đã chuẩn hóa từ tài liệu / ảnh của bạn:**',
+      ...top.map((s, i) => `${i + 1}. ${s.slice(0, 240)}${s.length > 240 ? '…' : ''}`),
       '',
-      '💡 Bạn có thể hỏi chi tiết bất kỳ khái niệm nào trong tài liệu, hoặc nhắn **"Tạo 3 câu hỏi ôn nhanh"** để kiểm tra ngay!',
+      '💡 Bạn có thể hỏi sâu bất kỳ mục nào ở trên hoặc bấm **"Tạo 3 câu hỏi ôn nhanh"** để luyện phản xạ ngay!',
     ].join('\n');
   }
 

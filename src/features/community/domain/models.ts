@@ -9,7 +9,11 @@ export interface ScholarStory {
   text: string;
   subtext?: string;
   gradient: [string, string];
+  mediaType?: 'text' | 'image' | 'video';
   imageUri?: string | null;
+  videoUri?: string | null;
+  thumbnailUri?: string | null;
+  durationSec?: number;
   badgeLabel?: string;
   viewedByIds: string[];
   reactions: Record<string, string[]>;
@@ -109,13 +113,21 @@ export interface GroupChatMessage {
 
 export interface DailyKnowledgeArticle {
   id: string;
-  source: 'Wikipedia VI' | 'Wikipedia EN' | 'Dev.to Tech' | 'Hacker News' | 'Papyrus Học Thuật';
+  source:
+    | 'Google News'
+    | 'Wikipedia VI'
+    | 'Wikipedia EN'
+    | 'Dev.to Tech'
+    | 'Hacker News'
+    | 'OpenAlex Khoa Học'
+    | 'Papyrus Học Thuật';
   category: string;
   title: string;
   summary: string;
   url: string;
   thumbnailUrl?: string | null;
   publishedLabel: string;
+  publishedAtMs?: number;
 }
 
 export interface ViralThreadTemplate {

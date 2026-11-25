@@ -1,4 +1,5 @@
 import { unzlibSync, inflateSync, unzipSync, strFromU8 } from 'fflate';
+import { sanitizeOcrAndDocumentText } from '@/features/scan-ocr/domain/ocrCleaner';
 
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = '';
@@ -24,7 +25,12 @@ export function base64ToBytes(b64: string): Uint8Array {
 }
 
 function decodePdfEscapes(s: string): string {
-  return s
+  // Decode PDF octal escapes (\ddd) first so UTF-8 / Latin-ext bytes reconstruct cleanly
+  const withOctal = s.replace(/\\([0-7]{1,3})/g, (_, oct: string) => {
+    const code = parseInt(oct, 8);
+    return code >= 32 && code <= 255 ? String.fromCharCode(code) : ' ';
+  });
+  return withOctal
     .replace(/\\n/g, '\n')
     .replace(/\\r/g, ' ')
     .replace(/\\t/g, ' ')
@@ -45,12 +51,20 @@ function decodeHexPdfToken(hex: string): string {
     }
     return out;
   }
-  let ascii = '';
+  const bytes: number[] = [];
   for (let i = 0; i + 1 < clean.length; i += 2) {
     const code = parseInt(clean.slice(i, i + 2), 16);
-    if (!Number.isNaN(code) && code >= 32 && code <= 126) ascii += String.fromCharCode(code);
+    if (!Number.isNaN(code)) bytes.push(code);
   }
-  return ascii;
+  if (bytes.length === 0) return '';
+  try {
+    return new TextDecoder('utf-8', { fatal: false }).decode(new Uint8Array(bytes));
+  } catch {
+    return bytes
+      .filter((b) => b >= 32 && b <= 126)
+      .map((b) => String.fromCharCode(b))
+      .join('');
+  }
 }
 
 function collectPdfTextOperators(content: string, out: string[]) {
@@ -116,11 +130,7 @@ export function extractTextFromPdfBytes(bytes: Uint8Array): string {
   // Also scan uncompressed content
   collectPdfTextOperators(latin1, chunks);
 
-  return chunks
-    .join(' ')
-    .replace(/\s{2,}/g, ' ')
-    .trim()
-    .slice(0, 30000);
+  return sanitizeOcrAndDocumentText(chunks.join('\n')).slice(0, 30000);
 }
 
 export function extractTextFromPdfBase64(b64: string): string {

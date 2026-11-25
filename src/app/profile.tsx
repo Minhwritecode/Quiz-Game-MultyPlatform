@@ -1,6 +1,6 @@
 import { errorMessage } from '@/core/domain/failure';
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image,
   Modal,
@@ -23,8 +23,10 @@ import { useStreakStore } from '@/features/streak/state/useStreakStore';
 import { useMembershipStore } from '@/features/membership/state/useMembershipStore';
 import { useNotificationStore, type AdminGiftItem } from '@/features/notifications/state/useNotificationStore';
 import { useCommunityStore } from '@/features/community/state/useCommunityStore';
+import { CreateStoryCard916, StoryCard916 } from '@/features/community/presentation/StoryCard916';
 import { StoryComposerModal, StoryViewerModal } from '@/features/community/presentation/StoryModalViewer';
 import { ThreadPostCard } from '@/features/community/presentation/ThreadPostCard';
+import { FriendsDiscoveryHub } from '@/features/community/presentation/FriendsDiscoveryHub';
 import type { ScholarStory } from '@/features/community/domain/models';
 import { getScholarRankInfo, XP_PER_SCHOLAR_LEVEL } from '@/core/domain/scholarRank';
 import { getLocalDateString } from '@/features/streak/domain/models';
@@ -34,7 +36,11 @@ import {
   preferenceStorage,
   syncUserProgressToCloud,
 } from '@/composition/preferences';
-import { formatScholarCode, getOnlineScholarCandidates } from '@/composition/platform';
+import {
+  formatScholarCode,
+  pickAvatarImageDataUrl,
+  pickCoverImageDataUrl,
+} from '@/composition/platform';
 import { saveQuestionSet } from '@/features/question-sets/domain/saveQuestionSet';
 import { DUEL_CATEGORIES, getEloTier } from '@/features/room-battle/domain/elo';
 import { sfx } from '@/core/audio/sfx';
@@ -66,38 +72,13 @@ function createPresetAvatarDataUri(bg: string, letter: string): string {
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
-async function compressWebImageToDataUrl(uri: string, w: number, h: number): Promise<string> {
-  return new Promise((resolve, reject) => {
-    if (typeof document === 'undefined') {
-      reject(new Error('Unsupported platform'));
-      return;
-    }
-    const img = new window.Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        reject(new Error('Canvas unavailable'));
-        return;
-      }
-      ctx.drawImage(img, 0, 0, w, h);
-      resolve(canvas.toDataURL('image/jpeg', 0.8));
-    };
-    img.onerror = () => reject(new Error('Không đọc được ảnh đã chọn.'));
-    img.src = uri;
-  });
-}
-
 export default function ProfileScreen() {
   const user = useAuthStore((s) => s.user);
   const viewerId = user?.id ?? 'guest';
   const viewerName = user?.displayName ?? 'Người học khách';
   const palette = usePalette();
   const router = useRouter();
-  const params = useLocalSearchParams<{ composeStory?: string }>();
+  const params = useLocalSearchParams<{ composeStory?: string; tab?: string }>();
   const { width } = useWindowDimensions();
   const maxW = Math.min(width - spacing.lg * 2, 740);
 
@@ -129,6 +110,7 @@ export default function ProfileScreen() {
   const posts = useCommunityStore((s) => s.posts);
   const followingAuthorIds = useCommunityStore((s) => s.followingAuthorIds);
   const addStory = useCommunityStore((s) => s.addStory);
+  const markStoryViewed = useCommunityStore((s) => s.markStoryViewed);
   const reactToStory = useCommunityStore((s) => s.reactToStory);
   const addPost = useCommunityStore((s) => s.addPost);
   const togglePostReaction = useCommunityStore((s) => s.togglePostReaction);
@@ -138,7 +120,9 @@ export default function ProfileScreen() {
   const addComment = useCommunityStore((s) => s.addComment);
   const toggleFollowAuthor = useCommunityStore((s) => s.toggleFollowAuthor);
 
-  const [activeTab, setActiveTab] = useState<ProfileTab>('timeline');
+  const [activeTab, setActiveTab] = useState<ProfileTab>(() =>
+    params.tab === 'friends' ? 'friends' : params.tab === 'vault' ? 'vault' : params.tab === 'about' ? 'about' : 'timeline'
+  );
   const [name, setName] = useState(user?.displayName ?? '');
   const [university, setUniversity] = useState('');
   const [major, setMajor] = useState('');
@@ -147,6 +131,7 @@ export default function ProfileScreen() {
   const [customCoverUrl, setCustomCoverUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [avatarBusy, setAvatarBusy] = useState(false);
+  const [coverBusy, setCoverBusy] = useState(false);
   const [avatarModalOpen, setAvatarModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [storyComposerOpen, setStoryComposerOpen] = useState(() => params.composeStory === '1');
@@ -154,55 +139,57 @@ export default function ProfileScreen() {
   const [quickPostDraft, setQuickPostDraft] = useState('');
   const [message, setMessage] = useState('');
 
+  // Guard so async mount hydration never overwrites a cover photo just chosen by the user
+  const userEditedCoverRef = useRef(false);
   const currentUserId = user?.id ?? null;
 
   useEffect(() => {
+    userEditedCoverRef.current = false;
     let active = true;
+
+    void preferenceStorage.getItem(`${PROFILE_META_KEY}.${viewerId}`).then((raw) => {
+      if (!active) return;
+      setName(user?.displayName ?? '');
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw) as {
+            university?: string;
+            major?: string;
+            bio?: string;
+            coverPresetId?: string;
+            customCoverUrl?: string | null;
+          };
+          setUniversity(parsed.university ?? '');
+          setMajor(parsed.major ?? '');
+          setBio(parsed.bio ?? '');
+          if (parsed.coverPresetId) setCoverPresetId(parsed.coverPresetId);
+          if (!userEditedCoverRef.current && parsed.customCoverUrl !== undefined) {
+            setCustomCoverUrl(parsed.customCoverUrl ?? null);
+          }
+        } catch {
+          // Ignore
+        }
+      }
+    });
+
     if (currentUserId) {
       void hydrateCloudProfile();
       void syncCloudGifts(currentUserId);
       void fetchCloudProfileSnapshot().then((snap) => {
         if (!active || !snap) return;
-        if (snap.coverUrl) setCustomCoverUrl(snap.coverUrl);
-        if (snap.bio) setBio(snap.bio);
-        if (snap.university) setUniversity(snap.university);
-        if (snap.major) setMajor(snap.major);
+        if (snap.coverUrl && !userEditedCoverRef.current) {
+          setCustomCoverUrl(snap.coverUrl);
+        }
+        if (snap.bio) setBio((prev) => prev || snap.bio || '');
+        if (snap.university) setUniversity((prev) => prev || snap.university || '');
+        if (snap.major) setMajor((prev) => prev || snap.major || '');
       });
     }
 
-    void preferenceStorage.getItem(`${PROFILE_META_KEY}.${viewerId}`).then((raw) => {
-      if (!active) return;
-      setName(user?.displayName ?? '');
-      if (!raw) {
-        if (!currentUserId) {
-          setUniversity('');
-          setMajor('');
-          setBio('');
-          setCustomCoverUrl(null);
-        }
-        return;
-      }
-      try {
-        const parsed = JSON.parse(raw) as {
-          university?: string;
-          major?: string;
-          bio?: string;
-          coverPresetId?: string;
-          customCoverUrl?: string | null;
-        };
-        setUniversity(parsed.university ?? '');
-        setMajor(parsed.major ?? '');
-        setBio(parsed.bio ?? '');
-        if (parsed.coverPresetId) setCoverPresetId(parsed.coverPresetId);
-        setCustomCoverUrl(parsed.customCoverUrl ?? null);
-      } catch {
-        // Ignore
-      }
-    });
     return () => {
       active = false;
     };
-  }, [currentUserId, user?.displayName, viewerId, hydrateCloudProfile, syncCloudGifts]);
+  }, [currentUserId, viewerId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const myStories = useMemo(
     () => stories.filter((s) => s.authorId === viewerId || s.isHighlight),
@@ -240,7 +227,72 @@ export default function ProfileScreen() {
     return out;
   }, [historyDates]);
 
-  const onlineScholars = getOnlineScholarCandidates(user?.id);
+  const persistCoverSelection = async (nextCoverUrl: string | null, nextPresetId = coverPresetId) => {
+    userEditedCoverRef.current = true;
+    setCustomCoverUrl(nextCoverUrl);
+    setCoverPresetId(nextPresetId);
+    await preferenceStorage.setItem(
+      `${PROFILE_META_KEY}.${viewerId}`,
+      JSON.stringify({
+        university: university.trim(),
+        major: major.trim(),
+        bio: bio.trim(),
+        coverPresetId: nextPresetId,
+        customCoverUrl: nextCoverUrl,
+      })
+    );
+    if (user) {
+      void syncUserProgressToCloud({ coverUrl: nextCoverUrl });
+    }
+  };
+
+  async function handlePickCoverPhoto() {
+    if (coverBusy) return;
+    setCoverBusy(true);
+    try {
+      const dataUrl = await pickCoverImageDataUrl();
+      if (!dataUrl) return;
+      await persistCoverSelection(dataUrl);
+      setMessage('✅ Đã cập nhật ảnh bìa trang cá nhân thành công!');
+    } catch (error) {
+      setMessage(errorMessage(error, 'Không thể đổi ảnh bìa lúc này.'));
+    } finally {
+      setCoverBusy(false);
+    }
+  }
+
+  async function handlePickPhotoAvatar() {
+    if (!user || avatarBusy) return;
+    setAvatarBusy(true);
+    try {
+      const dataUrl = await pickAvatarImageDataUrl();
+      if (!dataUrl) return;
+      const updated = await dependencies.updateUserAvatar(dataUrl);
+      useAuthStore.getState().setUser(updated);
+      setAvatarModalOpen(false);
+      setMessage('✅ Đã cập nhật ảnh đại diện mới!');
+    } catch (error) {
+      setMessage(errorMessage(error, 'Không thể tải ảnh đại diện.'));
+    } finally {
+      setAvatarBusy(false);
+    }
+  }
+
+  async function handleSelectPresetAvatar(bg: string) {
+    if (!user || avatarBusy) return;
+    setAvatarBusy(true);
+    try {
+      const dataUri = createPresetAvatarDataUri(bg, initials);
+      const updated = await dependencies.updateUserAvatar(dataUri);
+      useAuthStore.getState().setUser(updated);
+      setAvatarModalOpen(false);
+      setMessage('✅ Đã đổi biểu tượng đại diện!');
+    } catch (error) {
+      setMessage(errorMessage(error, 'Không thể lưu ảnh đại diện.'));
+    } finally {
+      setAvatarBusy(false);
+    }
+  }
 
   async function saveProfileDetails() {
     if (busy) return;
@@ -275,63 +327,6 @@ export default function ProfileScreen() {
       setMessage(errorMessage(error, 'Không lưu được hồ sơ.'));
     } finally {
       setBusy(false);
-    }
-  }
-
-  async function handlePickPhotoAvatar() {
-    if (!user || avatarBusy) return;
-    setAvatarBusy(true);
-    try {
-      const picked = await dependencies.intake.pickSourceImages();
-      const firstUri = picked[0];
-      if (!firstUri) return;
-      const finalUri =
-        Platform.OS === 'web' ? await compressWebImageToDataUrl(firstUri, 240, 240) : firstUri;
-      const updated = await dependencies.updateUserAvatar(finalUri);
-      useAuthStore.getState().setUser(updated);
-      setAvatarModalOpen(false);
-      setMessage('✅ Đã cập nhật ảnh đại diện mới.');
-    } catch (error) {
-      setMessage(errorMessage(error, 'Không thể tải ảnh đại diện.'));
-    } finally {
-      setAvatarBusy(false);
-    }
-  }
-
-  async function handlePickCoverPhoto() {
-    try {
-      const picked = await dependencies.intake.pickSourceImages();
-      const firstUri = picked[0];
-      if (!firstUri) return;
-      const finalUri =
-        Platform.OS === 'web' ? await compressWebImageToDataUrl(firstUri, 760, 260) : firstUri;
-      setCustomCoverUrl(finalUri);
-      await preferenceStorage.setItem(
-        `${PROFILE_META_KEY}.${viewerId}`,
-        JSON.stringify({ university, major, bio, coverPresetId, customCoverUrl: finalUri })
-      );
-      if (user) {
-        void syncUserProgressToCloud({ coverUrl: finalUri });
-      }
-      setMessage('✅ Đã cập nhật ảnh bìa trang cá nhân!');
-    } catch {
-      setMessage('Không thể đổi ảnh bìa lúc này.');
-    }
-  }
-
-  async function handleSelectPresetAvatar(bg: string) {
-    if (!user || avatarBusy) return;
-    setAvatarBusy(true);
-    try {
-      const dataUri = createPresetAvatarDataUri(bg, initials);
-      const updated = await dependencies.updateUserAvatar(dataUri);
-      useAuthStore.getState().setUser(updated);
-      setAvatarModalOpen(false);
-      setMessage('✅ Đã đổi biểu tượng đại diện.');
-    } catch (error) {
-      setMessage(errorMessage(error, 'Không thể lưu ảnh đại diện.'));
-    } finally {
-      setAvatarBusy(false);
     }
   }
 
@@ -413,8 +408,8 @@ export default function ProfileScreen() {
                   styles.coverBanner,
                   Platform.OS === 'web' && !customCoverUrl
                     ? ({
-                        backgroundImage: `linear-gradient(135deg, ${activeCoverPreset.c1} 0%, ${activeCoverPreset.c2} 100%)`,
-                      } as object)
+                      backgroundImage: `linear-gradient(135deg, ${activeCoverPreset.c1} 0%, ${activeCoverPreset.c2} 100%)`,
+                    } as object)
                     : { backgroundColor: activeCoverPreset.c1 },
                 ]}
               >
@@ -427,10 +422,9 @@ export default function ProfileScreen() {
                   {COVER_PRESETS.map((cp) => (
                     <Pressable
                       key={cp.id}
-                      onPress={() => {
-                        setCustomCoverUrl(null);
-                        setCoverPresetId(cp.id);
-                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Màu bìa ${cp.label}`}
+                      onPress={() => void persistCoverSelection(null, cp.id)}
                       style={[
                         styles.coverColorDot,
                         {
@@ -440,14 +434,21 @@ export default function ProfileScreen() {
                       ]}
                     />
                   ))}
-                  <Pressable onPress={() => void handlePickCoverPhoto()} style={styles.changeCoverBtn}>
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={coverBusy}
+                    onPress={() => void handlePickCoverPhoto()}
+                    style={styles.changeCoverBtn}
+                  >
                     <Ionicons name="camera" size={14} color="#FFFFFF" />
-                    <Text style={{ color: '#FFFFFF', fontSize: 11.5, fontWeight: '800' }}>Đổi ảnh bìa</Text>
+                    <Text style={{ color: '#FFFFFF', fontSize: 11.5, fontWeight: '800' }}>
+                      {coverBusy ? 'Đang tải…' : 'Đổi ảnh bìa'}
+                    </Text>
                   </Pressable>
                 </View>
               </View>
 
-              {/* Overlapping Avatar + Identity */}
+              {/* Overlapping Avatar + Non-Overflowing Identity & Badges */}
               <View style={styles.fbIdentityBody}>
                 <View style={styles.avatarRow}>
                   <Pressable
@@ -469,16 +470,17 @@ export default function ProfileScreen() {
                       </View>
                     ) : null}
                   </Pressable>
-
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-                    <Badge tone="primary">
-                      {rankInfo.badge} Cấp {rankInfo.level} · {rankInfo.titleVi}
-                    </Badge>
-                    {membershipTier === 'archmage' && <Badge tone="reward">👑 VIP ARCHMAGE</Badge>}
-                  </View>
                 </View>
 
-                <Text style={[typography.heading, { color: palette.ink, marginTop: 8 }]}>{viewerName}</Text>
+                {/* Clean Wrapping Badges Row (Zero Right-Edge Clipping!) */}
+                <View style={styles.badgesWrapRow}>
+                  <Badge tone="primary">
+                    {rankInfo.badge} Cấp {rankInfo.level} · {rankInfo.titleVi}
+                  </Badge>
+                  {membershipTier === 'archmage' && <Badge tone="reward">👑 VIP ARCHMAGE</Badge>}
+                </View>
+
+                <Text style={[typography.heading, { color: palette.ink, marginTop: 6 }]}>{viewerName}</Text>
                 <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
                   {user ? `Mã Học Giả: ${formatScholarCode(user.id)}` : 'Chế độ Khách (Đăng nhập để đồng bộ đa thiết bị)'}
                   {major || university ? ` · ${[major, university].filter(Boolean).join(' tại ')}` : ''}
@@ -488,7 +490,7 @@ export default function ProfileScreen() {
                   <Text style={[typography.body, { color: palette.ink, marginTop: 6 }]}>{bio}</Text>
                 ) : null}
 
-                {/* Transparent Scholar Level & XP Bar (Clarifies Level 1..25+ explicitly!) */}
+                {/* Transparent Scholar Level & XP Bar */}
                 <View style={[styles.levelBox, { backgroundColor: palette.paper, borderColor: palette.paperMuted }]}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
                     <Text style={{ fontSize: 12, fontWeight: '800', color: palette.indigo }}>
@@ -504,16 +506,24 @@ export default function ProfileScreen() {
                   </Text>
                 </View>
 
-                {/* Facebook Action Buttons Row */}
+                {/* Clean Balanced Facebook Action Buttons Row */}
                 <View style={styles.fbActionRow}>
-                  <View style={{ flex: 1.2, minWidth: 145 }}>
+                  <View style={{ flex: 1, minWidth: 125 }}>
                     <Button icon="add-circle" onPress={() => setStoryComposerOpen(true)} fullWidth>
                       Thêm vào Tin
                     </Button>
                   </View>
-                  <View style={{ flex: 1, minWidth: 135 }}>
-                    <Button variant="secondary" icon="create-outline" onPress={() => setEditModalOpen(true)} fullWidth>
-                      Chỉnh sửa hồ sơ
+                  <View style={{ flex: 1, minWidth: 125 }}>
+                    <Button
+                      variant="secondary"
+                      icon="create-outline"
+                      onPress={() => {
+                        setName(user?.displayName ?? '');
+                        setEditModalOpen(true);
+                      }}
+                      fullWidth
+                    >
+                      Sửa hồ sơ
                     </Button>
                   </View>
                   <Pressable
@@ -521,7 +531,7 @@ export default function ProfileScreen() {
                     accessibilityLabel="Chia sẻ hồ sơ"
                     onPress={async () => {
                       if (!user) return;
-                      const url = `https://papyrus-lyart-five.vercel.app/leaderboard?addFriend=${user.id}`;
+                      const url = `https://papyrus-lyart-five.vercel.app/friends?addFriend=${user.id}`;
                       await Share.share({ message: `Kết bạn với ${viewerName} trên Papyrus: ${url}` }).catch(() => undefined);
                     }}
                     style={[styles.moreSquareBtn, { backgroundColor: palette.paper, borderColor: palette.paperMuted }]}
@@ -530,35 +540,27 @@ export default function ProfileScreen() {
                   </Pressable>
                 </View>
 
-                {/* Story Highlights Strip on Profile */}
+                {/* Facebook 9:16 Vertical Photo & Video Stories Strip on Profile */}
                 <View style={{ marginTop: spacing.md }}>
                   <Text style={[typography.label, { color: palette.inkMuted, marginBottom: 8 }]}>
-                    TIN 24H & TIN NỔI BẬT TRÊN TRANG CÁ NHÂN
+                    TIN 24H & TIN NỔI BẬT (ẢNH / VIDEO)
                   </Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
-                    <Pressable
+                    <CreateStoryCard916
+                      avatarUrl={user?.avatarUrl}
+                      displayName={viewerName}
                       onPress={() => setStoryComposerOpen(true)}
-                      style={[styles.highlightItem, { borderColor: palette.indigoBorder, backgroundColor: palette.paper }]}
-                    >
-                      <View style={[styles.highlightCircle, { backgroundColor: palette.indigoTint }]}>
-                        <Ionicons name="add" size={22} color={palette.indigo} />
-                      </View>
-                      <Text style={{ fontSize: 11, fontWeight: '700', color: palette.ink }}>Mới</Text>
-                    </Pressable>
-
+                    />
                     {myStories.map((st) => (
-                      <Pressable
+                      <StoryCard916
                         key={st.id}
-                        onPress={() => setViewingStory(st)}
-                        style={[styles.highlightItem, { borderColor: st.gradient[1], backgroundColor: palette.paper }]}
-                      >
-                        <View style={[styles.highlightCircle, { backgroundColor: st.gradient[0] }]}>
-                          <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 13 }}>✨</Text>
-                        </View>
-                        <Text style={{ fontSize: 11, fontWeight: '700', color: palette.ink }} numberOfLines={1}>
-                          {st.subtext?.replace('#', '') || 'Kỷ niệm'}
-                        </Text>
-                      </Pressable>
+                        story={st}
+                        seen={st.viewedByIds.includes(viewerId)}
+                        onPress={() => {
+                          markStoryViewed(st.id, viewerId);
+                          setViewingStory(st);
+                        }}
+                      />
                     ))}
                   </ScrollView>
                 </View>
@@ -569,7 +571,7 @@ export default function ProfileScreen() {
                     [
                       { id: 'timeline', label: 'Bài viết' },
                       { id: 'about', label: 'Giới thiệu & Cấp' },
-                      { id: 'friends', label: `Bạn bè (${onlineScholars.length})` },
+                      { id: 'friends', label: `Bạn bè (${followingAuthorIds.length})` },
                       { id: 'vault', label: `Kho quà (${myGifts.length})` },
                     ] as const
                   ).map((tb) => {
@@ -608,15 +610,14 @@ export default function ProfileScreen() {
             </Card>
           ) : null}
 
-          {/* ── TAB 1: FACEBOOK TIMELINE (COMPOSER + POSTS + THREADS) ── */}
+          {/* ── TAB 1: FACEBOOK TIMELINE ── */}
           {activeTab === 'timeline' && (
             <View style={{ marginTop: spacing.md, gap: spacing.sm }}>
-              {/* Intro Summary Card */}
               <Card style={{ gap: 6 }}>
                 <Text style={[typography.title, { color: palette.ink, fontSize: 16 }]}>Chi tiết học thuật</Text>
                 <View style={styles.introLine}>
                   <Ionicons name="flame" size={17} color="#F59E0B" />
-                  <Text style={[typography.caption, { color: palette.ink }]}>
+                  <Text style={[typography.caption, { color: palette.ink, flexShrink: 1 }]}>
                     Chuỗi học tập riêng của tài khoản: <Text style={{ fontWeight: '800' }}>{currentStreak} ngày</Text> (Kỷ lục {longestStreak} ngày)
                   </Text>
                   {!todayCompleted && (
@@ -637,21 +638,20 @@ export default function ProfileScreen() {
                 </View>
                 <View style={styles.introLine}>
                   <Ionicons name="trophy-outline" size={17} color={palette.indigo} />
-                  <Text style={[typography.caption, { color: palette.ink }]}>
+                  <Text style={[typography.caption, { color: palette.ink, flexShrink: 1 }]}>
                     Hạng Đấu Trường: <Text style={{ fontWeight: '800' }}>{eloTier.labelVi} ({eloRating} ELO)</Text> · Tỉ lệ thắng {winRate}
                   </Text>
                 </View>
                 {(university || major) && (
                   <View style={styles.introLine}>
                     <Ionicons name="school-outline" size={17} color={palette.mint} />
-                    <Text style={[typography.caption, { color: palette.ink }]}>
+                    <Text style={[typography.caption, { color: palette.ink, flexShrink: 1 }]}>
                       Học chuyên ngành {[major, university].filter(Boolean).join(' tại ')}
                     </Text>
                   </View>
                 )}
               </Card>
 
-              {/* Facebook "What's on your mind?" Post Composer */}
               <Card style={{ gap: 10 }}>
                 <Text style={[typography.label, { color: palette.indigo }]}>ĐĂNG BÀI LÊN DÒNG THỜI GIAN CÁ NHÂN</Text>
                 <TextInput
@@ -666,7 +666,7 @@ export default function ProfileScreen() {
                   ]}
                 />
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                  <View style={{ flex: 1 }}>
+                  <View style={{ flex: 1, minWidth: 140 }}>
                     <Button
                       icon="send"
                       disabled={!quickPostDraft.trim()}
@@ -736,14 +736,13 @@ export default function ProfileScreen() {
                     key={row.lv}
                     style={[styles.rankLadderRow, { backgroundColor: palette.paper, borderColor: palette.paperMuted }]}
                   >
-                    <Text style={{ fontSize: 12, fontWeight: '800', color: palette.indigo, width: 92 }}>{row.lv}</Text>
+                    <Text style={{ fontSize: 12, fontWeight: '800', color: palette.indigo, width: 88 }}>{row.lv}</Text>
                     <Text style={{ fontSize: 12.5, fontWeight: '700', color: palette.ink, flex: 1 }}>{row.name}</Text>
                     <Text style={{ fontSize: 11, color: palette.inkMuted }}>{row.xp}</Text>
                   </View>
                 ))}
               </Card>
 
-              {/* 7-Day Streak Chart */}
               <Card>
                 <Text style={[typography.label, { color: palette.gold }]}>
                   🔥 LỊCH SỬ ĐIỂM DANH 7 NGÀY GẦN NHẤT (RIÊNG TÀI KHOẢN NÀY)
@@ -768,7 +767,6 @@ export default function ProfileScreen() {
                 </View>
               </Card>
 
-              {/* Category ELOs */}
               <Card>
                 <Text style={[typography.label, { color: palette.indigo, marginBottom: spacing.sm }]}>
                   ⚔️ ELO ĐỐI KHÁNG 1V1 THEO CHUYÊN NGÀNH (ĐỈNH {eloPeak} ELO · KỶ LỤC {bestScore} ĐIỂM)
@@ -789,48 +787,11 @@ export default function ProfileScreen() {
             </View>
           )}
 
-          {/* ── TAB 3: FRIENDS & DIRECT MESSENGER ── */}
+          {/* ── TAB 3: SOCIAL NETWORK FRIENDS DISCOVERY & DIRECT MESSENGER ── */}
           {activeTab === 'friends' && (
-            <Card style={{ marginTop: spacing.md, gap: 10 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-                <Text style={[typography.title, { color: palette.ink }]}>
-                  Bạn bè & Học giả Trực tuyến ({onlineScholars.length})
-                </Text>
-                <Button variant="secondary" icon="person-add-outline" onPress={() => router.push('/leaderboard')}>
-                  Tìm thêm bạn bè
-                </Button>
-              </View>
-              {onlineScholars.length === 0 ? (
-                <Text style={[typography.caption, { color: palette.inkMuted }]}>
-                  Hiện chưa có học giả khác trực tuyến cùng lúc. Bấm «Tìm thêm bạn bè» để sao chép Link mời bạn bè!
-                </Text>
-              ) : (
-                onlineScholars.map((os) => (
-                  <View
-                    key={os.id}
-                    style={[styles.friendRow, { backgroundColor: palette.paper, borderColor: palette.paperMuted }]}
-                  >
-                    <View style={{ flex: 1 }}>
-                      <Text style={[typography.body, { color: palette.ink, fontWeight: '800' }]}>{os.displayName}</Text>
-                      <Text style={[typography.caption, { color: palette.inkMuted }]}>
-                        🟢 Trực tuyến · {os.eloRating} ELO · {os.totalScore} XP
-                      </Text>
-                    </View>
-                    <Button
-                      icon="chatbubble-ellipses-outline"
-                      onPress={() =>
-                        router.push({
-                          pathname: '/community',
-                          params: { tab: 'messenger', dmUserId: os.id, dmName: os.displayName },
-                        })
-                      }
-                    >
-                      Nhắn tin
-                    </Button>
-                  </View>
-                ))
-              )}
-            </Card>
+            <View style={{ marginTop: spacing.md }}>
+              <FriendsDiscoveryHub />
+            </View>
           )}
 
           {/* ── TAB 4: ADMIN GIFTS & USER QUESTION SETS ── */}
@@ -910,55 +871,153 @@ export default function ProfileScreen() {
         </View>
       </ScrollView>
 
-      {/* Edit Profile Modal */}
+      {/* ── FULL EDIT PROFILE MODAL (INCLUDES AVATAR + COVER PHOTO + PERSONAL DETAILS!) ── */}
       <Modal visible={editModalOpen} transparent animationType="fade" onRequestClose={() => setEditModalOpen(false)}>
         <View style={styles.modalBackdrop}>
-          <Card style={{ width: '100%', maxWidth: 460, gap: 10, backgroundColor: palette.paper }}>
+          <Card style={{ width: '100%', maxWidth: 480, maxHeight: '90%', gap: 12, backgroundColor: palette.paper }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <Text style={[typography.title, { color: palette.ink }]}>✏️ Chỉnh sửa Trang Cá Nhân</Text>
-              <Pressable onPress={() => setEditModalOpen(false)}>
+              <Pressable onPress={() => setEditModalOpen(false)} hitSlop={8}>
                 <Ionicons name="close" size={22} color={palette.inkMuted} />
               </Pressable>
             </View>
-            {user && (
-              <TextInput
-                value={name}
-                onChangeText={setName}
-                placeholder="Tên hiển thị..."
-                placeholderTextColor={palette.inkMuted}
-                style={[styles.input, { color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paperRaised }]}
-              />
-            )}
-            <TextInput
-              value={university}
-              onChangeText={setUniversity}
-              placeholder="Trường Đại học / Học viện..."
-              placeholderTextColor={palette.inkMuted}
-              style={[styles.input, { color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paperRaised }]}
-            />
-            <TextInput
-              value={major}
-              onChangeText={setMajor}
-              placeholder="Chuyên ngành học tập..."
-              placeholderTextColor={palette.inkMuted}
-              style={[styles.input, { color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paperRaised }]}
-            />
-            <TextInput
-              value={bio}
-              onChangeText={setBio}
-              multiline
-              placeholder="Tiểu sử / Châm ngôn học tập..."
-              placeholderTextColor={palette.inkMuted}
-              style={[styles.input, { minHeight: 70, color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paperRaised }]}
-            />
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
+              {/* 1. Edit Cover Photo right inside Edit Profile */}
+              <View style={{ gap: 6 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={[typography.label, { color: palette.indigo }]}>🖼️ ẢNH BÌA TRANG CÁ NHÂN</Text>
+                  <Pressable
+                    disabled={coverBusy}
+                    onPress={() => void handlePickCoverPhoto()}
+                    style={[styles.editMiniBtn, { backgroundColor: palette.indigoTint }]}
+                  >
+                    <Ionicons name="image-outline" size={14} color={palette.indigo} />
+                    <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.indigo }}>
+                      {coverBusy ? 'Đang tải…' : 'Tải ảnh bìa từ máy'}
+                    </Text>
+                  </Pressable>
+                </View>
+
+                <View
+                  style={[
+                    styles.editCoverPreview,
+                    Platform.OS === 'web' && !customCoverUrl
+                      ? ({
+                          backgroundImage: `linear-gradient(135deg, ${activeCoverPreset.c1} 0%, ${activeCoverPreset.c2} 100%)`,
+                        } as object)
+                      : { backgroundColor: activeCoverPreset.c1 },
+                  ]}
+                >
+                  {customCoverUrl ? (
+                    <Image source={{ uri: customCoverUrl }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+                  ) : null}
+                  <View style={styles.editCoverPresetBar}>
+                    {COVER_PRESETS.map((cp) => (
+                      <Pressable
+                        key={cp.id}
+                        onPress={() => void persistCoverSelection(null, cp.id)}
+                        style={[
+                          styles.coverPresetPill,
+                          {
+                            backgroundColor: cp.c2,
+                            borderColor: coverPresetId === cp.id && !customCoverUrl ? '#FFFFFF' : 'transparent',
+                          },
+                        ]}
+                      >
+                        <Text style={{ color: '#FFFFFF', fontSize: 10.5, fontWeight: '800' }}>{cp.label}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+              </View>
+
+              {/* 2. Edit Avatar Photo right inside Edit Profile */}
+              {user && (
+                <View style={{ gap: 8 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={[typography.label, { color: palette.indigo }]}>👤 ẢNH ĐẠI DIỆN</Text>
+                    <Pressable
+                      disabled={avatarBusy}
+                      onPress={() => void handlePickPhotoAvatar()}
+                      style={[styles.editMiniBtn, { backgroundColor: palette.indigoTint }]}
+                    >
+                      <Ionicons name="camera-outline" size={14} color={palette.indigo} />
+                      <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.indigo }}>
+                        {avatarBusy ? 'Đang tải…' : 'Tải ảnh đại diện'}
+                      </Text>
+                    </Pressable>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    {user.avatarUrl ? (
+                      <Image source={{ uri: user.avatarUrl }} style={styles.editAvatarPreview} />
+                    ) : (
+                      <View style={[styles.editAvatarPreview, { backgroundColor: palette.indigo, alignItems: 'center', justifyContent: 'center' }]}>
+                        <Text style={{ color: '#FFFFFF', fontSize: 20, fontWeight: '900' }}>{initials}</Text>
+                      </View>
+                    )}
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                      {AVATAR_PRESETS.map((preset) => (
+                        <Pressable
+                          key={preset.id}
+                          disabled={avatarBusy}
+                          onPress={() => void handleSelectPresetAvatar(preset.bg)}
+                          style={[styles.avatarMiniSwatch, { backgroundColor: preset.bg }]}
+                        >
+                          <Ionicons name={preset.icon} size={16} color={preset.fg} />
+                        </Pressable>
+                      ))}
+                    </ScrollView>
+                  </View>
+                </View>
+              )}
+
+              {/* 3. Personal Details Inputs */}
+              <View style={{ gap: 8 }}>
+                <Text style={[typography.label, { color: palette.indigo }]}>📝 THÔNG TIN GIỚI THIỆU</Text>
+                {user && (
+                  <TextInput
+                    value={name}
+                    onChangeText={setName}
+                    placeholder="Tên hiển thị..."
+                    placeholderTextColor={palette.inkMuted}
+                    style={[styles.input, { color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paperRaised }]}
+                  />
+                )}
+                <TextInput
+                  value={university}
+                  onChangeText={setUniversity}
+                  placeholder="Trường Đại học / Học viện..."
+                  placeholderTextColor={palette.inkMuted}
+                  style={[styles.input, { color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paperRaised }]}
+                />
+                <TextInput
+                  value={major}
+                  onChangeText={setMajor}
+                  placeholder="Chuyên ngành học tập..."
+                  placeholderTextColor={palette.inkMuted}
+                  style={[styles.input, { color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paperRaised }]}
+                />
+                <TextInput
+                  value={bio}
+                  onChangeText={setBio}
+                  multiline
+                  placeholder="Tiểu sử / Châm ngôn học tập..."
+                  placeholderTextColor={palette.inkMuted}
+                  style={[styles.input, { minHeight: 70, color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paperRaised }]}
+                />
+              </View>
+            </ScrollView>
+
             <Button disabled={busy} onPress={() => void saveProfileDetails()} fullWidth>
-              {busy ? 'Đang lưu & đồng bộ…' : 'Lưu thay đổi'}
+              {busy ? 'Đang lưu & đồng bộ…' : 'Lưu toàn bộ hồ sơ'}
             </Button>
           </Card>
         </View>
       </Modal>
 
-      {/* Avatar Picker Modal */}
+      {/* Quick Avatar Picker Modal (when tapping camera badge directly on Avatar) */}
       <Modal visible={avatarModalOpen} transparent animationType="fade" onRequestClose={() => setAvatarModalOpen(false)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setAvatarModalOpen(false)}>
           <Pressable style={{ width: '100%', maxWidth: 420 }} onPress={() => undefined}>
@@ -1026,17 +1085,18 @@ const styles = StyleSheet.create({
   container: { paddingTop: spacing.xs, paddingBottom: spacing.xxl },
   fbHeaderCard: { padding: 0, overflow: 'hidden' },
   coverBanner: {
-    height: 176,
+    height: 178,
     width: '100%',
     justifyContent: 'flex-end',
     alignItems: 'flex-end',
     padding: 12,
+    position: 'relative',
   },
   coverTopControls: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: 'rgba(6, 10, 36, 0.62)',
+    backgroundColor: 'rgba(6, 10, 36, 0.68)',
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: radii.pill,
@@ -1059,11 +1119,15 @@ const styles = StyleSheet.create({
   },
   avatarRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'flex-end',
-    flexWrap: 'wrap',
     marginTop: -46,
-    gap: 8,
+  },
+  badgesWrapRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 10,
+    maxWidth: '100%',
   },
   overlappingAvatarWrap: { position: 'relative' },
   fbAvatarImg: {
@@ -1105,21 +1169,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  highlightItem: {
-    width: 74,
-    paddingVertical: 8,
-    borderRadius: radii.md,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    gap: 5,
-  },
-  highlightCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   fbTabsBar: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1153,31 +1202,31 @@ const styles = StyleSheet.create({
   rankLadderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 7,
+    padding: 9,
     borderRadius: radii.sm,
     borderWidth: 1,
+    gap: 8,
   },
   weekRow: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'flex-end',
-    justifyContent: 'space-around',
-    marginTop: spacing.md,
-    height: 60,
+    height: 62,
+    marginTop: 10,
   },
-  weekCol: { alignItems: 'center', gap: 6, flex: 1 },
+  weekCol: { alignItems: 'center', gap: 4, flex: 1 },
   weekBar: { width: 18, borderRadius: 6 },
   catEloGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   catEloChip: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 10,
+    gap: 10,
+    paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 10,
-    flexBasis: '47%',
-    flexGrow: 1,
-    minWidth: 130,
+    borderRadius: radii.sm,
+    minWidth: 148,
+    flex: 1,
   },
   friendRow: {
     flexDirection: 'row',
@@ -1187,29 +1236,82 @@ const styles = StyleSheet.create({
     borderRadius: radii.sm,
     borderWidth: 1,
   },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(4, 8, 24, 0.82)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.md,
+  },
+  editMiniBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radii.pill,
+  },
+  editCoverPreview: {
+    height: 108,
+    borderRadius: radii.md,
+    overflow: 'hidden',
+    justifyContent: 'flex-end',
+    padding: 8,
+    position: 'relative',
+  },
+  editCoverPresetBar: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  coverPresetPill: {
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: radii.pill,
+    borderWidth: 1.5,
+  },
+  editAvatarPreview: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    borderWidth: 2,
+    borderColor: '#818CF8',
+  },
+  avatarMiniSwatch: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   input: {
     minHeight: 46,
     borderWidth: 1,
     borderRadius: radii.sm,
     paddingHorizontal: 12,
+    paddingVertical: 8,
     fontSize: 14,
   },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(4, 8, 24, 0.78)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: spacing.md,
+  presetGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: spacing.md,
   },
-  presetGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: spacing.md },
   presetItem: {
-    flexBasis: '30%',
-    flexGrow: 1,
-    alignItems: 'center',
-    gap: 5,
-    paddingVertical: 8,
+    width: '31%',
+    minWidth: 96,
+    padding: 10,
     borderRadius: radii.sm,
     borderWidth: 1,
+    alignItems: 'center',
+    gap: 6,
   },
-  presetCircle: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
+  presetCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });

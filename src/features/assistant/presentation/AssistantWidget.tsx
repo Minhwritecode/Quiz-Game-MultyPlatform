@@ -1,11 +1,13 @@
 import { errorMessage } from '@/core/domain/failure';
 import { dependencies } from '@/composition/dependencies';
 import {
+  encodeImageUriToJpegBase64,
   extractTextFromPdfBase64,
   resolveHistoryConflict,
   type ChatConflictResolution,
 } from '@/composition/platform';
-import type { ChatMessage, Conversation, PdfAttachment } from '../domain/repository';
+import { sanitizeOcrAndDocumentText } from '@/features/scan-ocr/domain/ocrCleaner';
+import type { ChatMessage, Conversation, ImageAttachment, PdfAttachment } from '../domain/repository';
 import * as Crypto from 'expo-crypto';
 import { useAuthStore } from '@/core/state/useAuthStore';
 import { useAssistantUiStore } from '@/core/state/useAssistantUiStore';
@@ -130,6 +132,7 @@ export function AssistantWidget() {
   const scroll = useRef<ElementRef<typeof ScrollView>>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [pdf, setPdf] = useState<PdfAttachment | null>(null);
+  const [attachedImagePayload, setAttachedImagePayload] = useState<ImageAttachment | null>(null);
   const [documentText, setDocumentText] = useState<string>();
   const [attachedLabel, setAttachedLabel] = useState<string>('');
   const [attachedImageUri, setAttachedImageUri] = useState<string | null>(null);
@@ -214,6 +217,7 @@ export function AssistantWidget() {
 
   const clearAttachments = () => {
     setPdf(null);
+    setAttachedImagePayload(null);
     setDocumentText(undefined);
     setAttachedLabel('');
     setAttachedImageUri(null);
@@ -275,7 +279,8 @@ export function AssistantWidget() {
             setPartial(text);
           }
         },
-        pdf ?? undefined
+        pdf ?? undefined,
+        attachedImagePayload ?? undefined
       );
       if (!controller.signal.aborted) {
         const completed: ChatMessage[] = [...historyForUi, { role: 'assistant', content: answer }];
@@ -366,24 +371,29 @@ export function AssistantWidget() {
       setPdf(null);
       setAttachedImageUri(uri);
       setAttachedLabel(fromCamera ? 'Ảnh chụp Camera' : 'Ảnh từ Thư viện');
-      setNotice('🔍 Đang nhận diện chữ & công thức trong ảnh…');
+      setNotice('🔍 Đang phân tích hình ảnh & nhận diện chữ độ nét cao…');
 
-      const ocrText = (
-        await dependencies.intake.recognizeLocalImage(uri, {
+      const [jpegBase64, rawOcr] = await Promise.all([
+        encodeImageUriToJpegBase64(uri),
+        dependencies.intake.recognizeLocalImage(uri, {
           language: 'vie+eng',
-        })
-      ).trim();
+        }),
+      ]);
+      const ocrText = sanitizeOcrAndDocumentText(rawOcr);
 
       if (owner.current !== account) return;
+      if (jpegBase64) {
+        setAttachedImagePayload({ mimeType: 'image/jpeg', data: jpegBase64 });
+      }
       setDocumentText(
         ocrText.length > 0
-          ? `[Nội dung nhận diện từ ảnh đính kèm]:\n${ocrText}`
-          : '[Ảnh bài học đính kèm — hãy nhập thêm yêu cầu nếu ảnh chứa hình vẽ không chữ]'
+          ? ocrText
+          : undefined
       );
       setNotice(
         ocrText.length > 0
-          ? `✅ Đã đọc được ${ocrText.length.toLocaleString('vi-VN')} ký tự từ ảnh! Nhập câu hỏi hoặc bấm Gửi ngay.`
-          : 'Đã đính kèm ảnh. Hãy mô tả ngắn câu hỏi để Papybot hỗ trợ.'
+          ? `✅ Đã đọc sạch ${ocrText.length.toLocaleString('vi-VN')} ký tự từ ảnh! Nhập câu hỏi hoặc bấm Gửi ngay.`
+          : '✅ Đã nạp ảnh chất lượng cao vào Papybot Vision. Hãy nhập yêu cầu hoặc bấm Gửi ngay!'
       );
     } catch (error) {
       if (owner.current === account) {
@@ -721,7 +731,7 @@ export function AssistantWidget() {
                           <Ionicons name="sparkles" size={28} color={palette.indigo} />
                         </View>
                         <Text style={[typography.title, { color: palette.ink, textAlign: 'center', marginTop: spacing.sm }]}>
-                          Gia sư Papybot Đa Phương Thức
+                          Gia sư Papybot AI
                         </Text>
                         <Text style={[typography.caption, { color: palette.inkMuted, textAlign: 'center', marginTop: 4 }]}>
                           Chụp ảnh đề bài, chọn ảnh từ thư viện, đính kèm PDF/DOCX, nhập giọng nói 🎤 hoặc giải toán tức thì!

@@ -3,27 +3,31 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack, usePathname, useRouter, type ErrorBoundaryProps } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, StyleSheet, Text, View, useColorScheme } from 'react-native';
+import { AccessibilityInfo, AppState, Platform, StyleSheet, Text, View, useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { dependencies } from '@/composition/dependencies';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { useAuthStore } from '@/core/state/useAuthStore';
 import { useOnboardingStore } from '@/core/state/useOnboardingStore';
+import { useRouteRefreshStore } from '@/core/state/useRouteRefreshStore';
 import { useStreakStore } from '@/features/streak/state/useStreakStore';
 import { useMembershipStore } from '@/features/membership/state/useMembershipStore';
 import { useCommunityStore } from '@/features/community/state/useCommunityStore';
 import { wrapRoot, reportFailure } from '@/core/observability/monitoring';
 import { ReleaseGate } from '@/shared/ReleaseGate';
 import { AppUpdateBanner } from '@/shared/AppUpdateBanner';
+import { InAppNotificationBanner } from '@/shared/InAppNotificationBanner';
 import { Button, Card, Screen } from '@/shared/ui';
-import { PapyrusPageSkeleton, type SkeletonVariant } from '@/shared/PapyrusLoader';
+import { PapyrusMorphLoader } from '@/shared/PapyrusLoader';
 import { PapyrusSplash3D } from '@/shared/visuals/PapyrusSplash3D';
 import { OnboardingIllusionModal } from '@/features/onboarding/presentation/OnboardingIllusionModal';
 import {
+  dispatchExternalNotification,
   registerScholarPresence,
   subscribeCommunityRealtime,
   subscribeRealtimeAdminGifts,
+  touchCurrentDeviceSession,
 } from '@/composition/platform';
 import { useNotificationStore } from '@/features/notifications/state/useNotificationStore';
 import { palettes, spacing } from '@/core/theme/tokens';
@@ -35,21 +39,16 @@ const PRIMARY_TAB_PATHS = new Set([
   '/community',
   '/battle',
   '/leaderboard',
+  '/friends',
   '/profile',
   '/settings',
 ]);
 
-function variantForPath(pathname: string): SkeletonVariant {
-  if (pathname.startsWith('/study') || pathname.startsWith('/battle') || pathname.startsWith('/games')) {
-    return 'study';
+function isAppActivelyForegrounded(): boolean {
+  if (Platform.OS === 'web' && typeof document !== 'undefined') {
+    return document.visibilityState === 'visible' && document.hasFocus();
   }
-  if (pathname.startsWith('/leaderboard') || pathname.startsWith('/community')) {
-    return 'leaderboard';
-  }
-  if (pathname === '/' || pathname.startsWith('/admin') || pathname.startsWith('/profile')) {
-    return 'dashboard';
-  }
-  return 'library';
+  return AppState.currentState === 'active';
 }
 
 export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
@@ -71,6 +70,9 @@ export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
 function RootLayout() {
   const router = useRouter();
   const pathname = usePathname();
+  const pathnameRef = useRef(pathname);
+  pathnameRef.current = pathname;
+
   const authUser = useAuthStore((s) => s.user);
   const authStatus = useAuthStore((s) => s.status);
   const guestEntered = useAuthStore((s) => s.guestEntered);
@@ -87,8 +89,21 @@ function RootLayout() {
   const reduceMotion = usePapyrusStore((s) => s.reduceMotion);
   const [systemMotion, setSystemMotion] = useState(false);
   const [splashDone, setSplashDone] = useState(process.env.NODE_ENV === 'test');
-  const [navSkeletonActive, setNavSkeletonActive] = useState(false);
+  const [navLoadingActive, setNavLoadingActive] = useState(false);
   const prevPathRef = useRef(pathname);
+
+  // Track global Online/Offline state so PapyrusPageSkeleton renders ONLY on weak/offline network
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const onUp = () => useRouteRefreshStore.getState().setOnline(true);
+    const onDown = () => useRouteRefreshStore.getState().setOnline(false);
+    window.addEventListener('online', onUp);
+    window.addEventListener('offline', onDown);
+    return () => {
+      window.removeEventListener('online', onUp);
+      window.removeEventListener('offline', onDown);
+    };
+  }, []);
 
   useEffect(() => {
     void AccessibilityInfo.isReduceMotionEnabled().then(setSystemMotion);
@@ -96,7 +111,7 @@ function RootLayout() {
     return () => listener.remove();
   }, []);
 
-  // Show sleek Morph Loader + Contextual Shimmer Skeleton when switching main navigation tabs (eliminates white flashes)
+  // STRICT SEPARATION: Tab & Route transitions use ONLY the sleek Astral Prism Loader (NEVER Skeleton!)
   useEffect(() => {
     if (process.env.NODE_ENV === 'test' || !splashDone) {
       prevPathRef.current = pathname;
@@ -105,8 +120,8 @@ function RootLayout() {
     const prev = prevPathRef.current;
     prevPathRef.current = pathname;
     if (prev !== pathname && PRIMARY_TAB_PATHS.has(pathname)) {
-      setNavSkeletonActive(true);
-      const t = setTimeout(() => setNavSkeletonActive(false), 230);
+      setNavLoadingActive(true);
+      const t = setTimeout(() => setNavLoadingActive(false), 185);
       return () => clearTimeout(t);
     }
     return undefined;
@@ -123,8 +138,7 @@ function RootLayout() {
   const totalScore = usePapyrusStore((state) => state.totalScore);
   const questionSets = usePapyrusStore((state) => state.questionSets);
 
-  // STRICT PER-ACCOUNT ISOLATION & BIDIRECTIONAL CLOUD SYNC:
-  // Every user account gets isolated Streak, Check-In, XP, Level, ELO & VIP state, hydrated from Supabase Cloud on login!
+  // Per-account isolation + Cloud hydration + Active Device Session check
   useEffect(() => {
     usePapyrusStore.getState().switchAccountScope(authScope);
     useStreakStore.getState().switchAccountScope(authScope);
@@ -134,27 +148,60 @@ function RootLayout() {
       void usePapyrusStore.getState().hydrateCloudProfile();
       void useStreakStore.getState().hydrateFromCloud();
       void useMembershipStore.getState().hydrateFromCloud();
+      void touchCurrentDeviceSession().then((res) => {
+        if (res.revoked) {
+          useAuthStore.getState().clear();
+          void dependencies.auth.signOut();
+          router.replace('/auth');
+        }
+      });
     }
-  }, [authScope, authUser?.id]);
+  }, [authScope, authUser?.id, router]);
 
-  // Live Community Realtime Sync (Threads, 24h Stories, Messenger/Zalo Study Group messages)
+  // Live Community Realtime Sync + Smart Sound/Banner Policy:
+  // - Outgoing messages: silent.
+  // - Incoming message/notification while OUTSIDE app (backgrounded): play chime + OS push.
+  // - Incoming message/notification while INSIDE app on another screen: NO sound, drop down sleek banner!
   useEffect(() => {
     if (process.env.NODE_ENV === 'test') return;
     return subscribeCommunityRealtime((ev) => {
       const store = useCommunityStore.getState();
-      if (ev.type === 'new-post') store.ingestRealtimePost(ev.post);
-      else if (ev.type === 'new-story') store.ingestRealtimeStory(ev.story);
-      else if (ev.type === 'new-message') store.ingestRealtimeMessage(ev.message);
+      if (ev.type === 'new-post') {
+        store.ingestRealtimePost(ev.post);
+      } else if (ev.type === 'new-story') {
+        store.ingestRealtimeStory(ev.story);
+      } else if (ev.type === 'new-message') {
+        store.ingestRealtimeMessage(ev.message);
+        const myId = useAuthStore.getState().user?.id ?? 'guest';
+        if (ev.message.senderId === myId) return;
+
+        const foreground = isAppActivelyForegrounded();
+        const onCommunity = pathnameRef.current.startsWith('/community');
+        if (!foreground) {
+          sfx.playIncomingAlert();
+          void dispatchExternalNotification(
+            `💬 Tin nhắn mới từ ${ev.message.senderName}`,
+            ev.message.text.slice(0, 120)
+          );
+        } else if (!onCommunity) {
+          // Inside app on another tab -> silent drop-down banner!
+          useRouteRefreshStore.getState().showDropBanner({
+            kind: 'message',
+            title: `💬 ${ev.message.senderName}`,
+            body: ev.message.text,
+            actionRoute: '/community',
+            actionParams: { tab: 'messenger' },
+          });
+        }
+      }
     });
   }, []);
 
-  // 1. Live Online Scholar Directory Presence
   useEffect(() => {
     if (process.env.NODE_ENV === 'test') return;
     registerScholarPresence(authUser, eloRating, totalScore);
   }, [authUser, eloRating, totalScore]);
 
-  // 2. Duolingo-style 20h Inactivity Check + Realtime Admin Push (ONLY for regular User accounts, NEVER on /admin!)
   useEffect(() => {
     if (process.env.NODE_ENV === 'test') return;
     if (pathname.startsWith('/admin') || authUser?.role === 'admin' || authUser?.role === 'superadmin') {
@@ -176,7 +223,7 @@ function RootLayout() {
             if (!authUser?.id) return;
             useNotificationStore.getState().pushNotification(
               { recipientId: authUser.id, kind: 'streak', title, body, actionRoute: '/' },
-              false
+              !isAppActivelyForegrounded()
             );
           }
         );
@@ -193,6 +240,7 @@ function RootLayout() {
       (gift) => {
         if (window?.location?.pathname?.startsWith?.('/admin')) return;
         void useNotificationStore.getState().syncCloudGifts(authUser.id);
+        const foreground = isAppActivelyForegrounded();
         useNotificationStore.getState().pushNotification(
           {
             recipientId: authUser.id,
@@ -201,11 +249,22 @@ function RootLayout() {
             body: gift.message,
             actionRoute: '/profile',
           },
-          true
+          !foreground
         );
+        if (!foreground) {
+          sfx.playIncomingAlert();
+        } else if (!pathnameRef.current.startsWith('/profile')) {
+          useRouteRefreshStore.getState().showDropBanner({
+            kind: 'gift',
+            title: `🎁 Quà tặng mới: ${gift.title}`,
+            body: gift.message || 'Chạm để mở Kho quà trên Trang cá nhân!',
+            actionRoute: '/profile',
+          });
+        }
       },
       (notif) => {
         if (window?.location?.pathname?.startsWith?.('/admin')) return;
+        const foreground = isAppActivelyForegrounded();
         useNotificationStore.getState().pushNotification(
           {
             recipientId: notif.recipientId,
@@ -214,8 +273,18 @@ function RootLayout() {
             body: notif.body,
             actionRoute: notif.actionRoute ?? '/',
           },
-          true
+          !foreground
         );
+        if (!foreground) {
+          sfx.playIncomingAlert();
+        } else {
+          useRouteRefreshStore.getState().showDropBanner({
+            kind: 'notification',
+            title: notif.title,
+            body: notif.body,
+            actionRoute: notif.actionRoute ?? '/',
+          });
+        }
       }
     );
 
@@ -265,7 +334,7 @@ function RootLayout() {
               <Suspense
                 fallback={
                   <View style={[styles.suspenseWrap, { backgroundColor: activeBg }]}>
-                    <PapyrusPageSkeleton variant={variantForPath(pathname)} />
+                    <PapyrusMorphLoader label="Đang mở trang…" />
                   </View>
                 }
               >
@@ -279,18 +348,17 @@ function RootLayout() {
                 />
               </Suspense>
 
-              {/* Tab Navigation Morph & Shimmer Skeleton Overlay */}
-              {navSkeletonActive && (
+              {/* Sleek Astral Prism Page/Tab Loader Overlay (strictly separated from network skeletons) */}
+              {navLoadingActive && (
                 <View
                   pointerEvents="none"
-                  style={[styles.navOverlay, { backgroundColor: activeBg }]}
+                  style={[styles.navOverlay, { backgroundColor: 'rgba(6, 10, 36, 0.42)' }]}
                 >
-                  <View style={styles.navOverlayInner}>
-                    <PapyrusPageSkeleton variant={variantForPath(pathname)} />
-                  </View>
+                  <PapyrusMorphLoader compact />
                 </View>
               )}
 
+              <InAppNotificationBanner />
               <AssistantWidget />
               <AppUpdateBanner />
             </ReleaseGate>
@@ -320,8 +388,9 @@ const styles = StyleSheet.create({
   },
   suspenseWrap: {
     flex: 1,
+    alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: spacing.lg,
+    padding: spacing.lg,
   },
   navOverlay: {
     position: 'absolute',
@@ -329,13 +398,8 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     left: 0,
-    zIndex: 65,
+    zIndex: 80,
     alignItems: 'center',
-    paddingTop: spacing.xl,
-    paddingHorizontal: spacing.lg,
-  },
-  navOverlayInner: {
-    width: '100%',
-    maxWidth: 960,
+    justifyContent: 'center',
   },
 });

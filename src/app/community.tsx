@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Image,
   Linking,
@@ -18,12 +18,14 @@ import { PapyrusPageSkeleton } from '@/shared/PapyrusLoader';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { useAuthStore } from '@/core/state/useAuthStore';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
+import { useRouteRefreshStore } from '@/core/state/useRouteRefreshStore';
 import { getScholarRankInfo } from '@/core/domain/scholarRank';
-import { dependencies } from '@/composition/dependencies';
+import { extractCompleteSentences } from '@/features/scan-ocr/domain/ocrCleaner';
 import { seedQuestionSets } from '@/composition/preferences';
 import {
   fetchDailyUpdatedKnowledgeFeed,
   getOnlineScholarCandidates,
+  pickCoverImageDataUrl,
   searchAcademicKnowledgeLive,
 } from '@/composition/platform';
 import {
@@ -32,11 +34,13 @@ import {
   type ScholarStory,
 } from '@/features/community/domain/models';
 import { useCommunityStore } from '@/features/community/state/useCommunityStore';
+import { CreateStoryCard916, StoryCard916 } from '@/features/community/presentation/StoryCard916';
 import { StoryComposerModal, StoryViewerModal } from '@/features/community/presentation/StoryModalViewer';
 import { ThreadPostCard } from '@/features/community/presentation/ThreadPostCard';
+import { FriendsDiscoveryHub } from '@/features/community/presentation/FriendsDiscoveryHub';
 import { sfx } from '@/core/audio/sfx';
 
-type CommunityMainTab = 'feed' | 'messenger' | 'search';
+type CommunityMainTab = 'feed' | 'messenger' | 'friends' | 'search';
 type FeedFilter = 'all' | 'following' | 'bookmarks';
 
 export default function CommunityScreen() {
@@ -45,6 +49,7 @@ export default function CommunityScreen() {
   const palette = usePalette();
   const { width } = useWindowDimensions();
   const isWide = width >= 880;
+  const refreshTick = useRouteRefreshStore((s) => s.refreshTick);
 
   const user = useAuthStore((s) => s.user);
   const viewerId = user?.id ?? 'guest';
@@ -82,6 +87,8 @@ export default function CommunityScreen() {
   const [mainTab, setMainTab] = useState<CommunityMainTab>(() =>
     params.tab === 'messenger' || params.dmUserId
       ? 'messenger'
+      : params.tab === 'friends'
+      ? 'friends'
       : params.tab === 'search'
       ? 'search'
       : 'feed'
@@ -89,9 +96,14 @@ export default function CommunityScreen() {
   const [feedFilter, setFeedFilter] = useState<FeedFilter>('all');
   const [tagFilter, setTagFilter] = useState<string>('ALL');
 
-  // Story Modals
+  // Story Modals + Pre-populated Draft (for sharing Search/News to Story with complete sentences!)
   const [activeStory, setActiveStory] = useState<ScholarStory | null>(null);
   const [storyComposerOpen, setStoryComposerOpen] = useState(false);
+  const [storyDraft, setStoryDraft] = useState<{
+    text?: string;
+    subtext?: string;
+    imageUri?: string | null;
+  } | null>(null);
 
   // Thread / Post Composer State
   const [composerOpen, setComposerOpen] = useState(false);
@@ -108,10 +120,11 @@ export default function CommunityScreen() {
   const [pollOpt2, setPollOpt2] = useState('');
   const [citationDraft, setCitationDraft] = useState<{ title: string; url: string; sourceName: string } | null>(null);
 
-  // Messenger / Zalo Group Chat State
+  // Messenger / Zalo Group Chat State (Mobile Dedicated Room vs Channel List — Zero Overlap!)
   const [selectedChannelId, setSelectedChannelId] = useState<string>(() =>
     params.dmUserId ? `dm-${params.dmUserId.slice(0, 12)}` : channels[0]?.id ?? 'grp-it-algo'
   );
+  const [mobileChatOpen, setMobileChatOpen] = useState<boolean>(() => Boolean(params.dmUserId));
   const [chatText, setChatText] = useState('');
   const [replyTarget, setReplyTarget] = useState<{ id: string; senderName: string; preview: string } | null>(null);
   const [newGroupModal, setNewGroupModal] = useState(false);
@@ -122,7 +135,7 @@ export default function CommunityScreen() {
   const [groupPollA, setGroupPollA] = useState('');
   const [groupPollB, setGroupPollB] = useState('');
 
-  // Academic Search Engine & Daily Feed State
+  // Live Real-Time Search Engine & Synchronized Trending News State
   const [searchQuery, setSearchQuery] = useState('');
   const [searching, setSearching] = useState(false);
   const [liveResults, setLiveResults] = useState<DailyKnowledgeArticle[]>([]);
@@ -130,10 +143,28 @@ export default function CommunityScreen() {
   const [loadingDaily, setLoadingDaily] = useState(true);
 
   useEffect(() => {
-    if (params.dmUserId && params.dmName) {
-      ensureDirectChannel({ id: params.dmUserId, name: params.dmName });
-    }
+    if (!params.dmUserId || !params.dmName) return;
+    const dm = ensureDirectChannel({ id: params.dmUserId, name: params.dmName });
+    let active = true;
+    void Promise.resolve().then(() => {
+      if (!active) return;
+      setSelectedChannelId(dm.id);
+      setMobileChatOpen(true);
+    });
+    return () => {
+      active = false;
+    };
   }, [ensureDirectChannel, params.dmName, params.dmUserId]);
+
+  const reloadDailyTrending = useCallback(async () => {
+    setLoadingDaily(true);
+    try {
+      const items = await fetchDailyUpdatedKnowledgeFeed();
+      setDailyFeed(items);
+    } finally {
+      setLoadingDaily(false);
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -147,7 +178,35 @@ export default function CommunityScreen() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [refreshTick]);
+
+  // Debounced live search-as-you-type for true real-time Search Engine feel!
+  useEffect(() => {
+    const clean = searchQuery.trim();
+    if (clean.length < 2) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      setSearching(true);
+      void searchAcademicKnowledgeLive(clean)
+        .then((res) => setLiveResults(res))
+        .finally(() => setSearching(false));
+    }, 450);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const runLiveSearchNow = async (overrideQuery?: string) => {
+    const clean = (overrideQuery ?? searchQuery).trim();
+    if (clean.length < 2) return;
+    if (overrideQuery !== undefined) setSearchQuery(overrideQuery);
+    setSearching(true);
+    try {
+      const res = await searchAcademicKnowledgeLive(clean);
+      setLiveResults(res);
+    } finally {
+      setSearching(false);
+    }
+  };
 
   const allTags = useMemo(() => {
     const s = new Set<string>(['ALL', 'CNTT', 'ÔnThi', 'ToánLýHóa', 'VănSử', 'StudyWithMe']);
@@ -190,26 +249,10 @@ export default function CommunityScreen() {
   const localMatchedSets = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (q.length < 2) return [];
-    return allSets.filter((s) => `${s.title} ${s.subject} ${(s.tags ?? []).join(' ')}`.toLowerCase().includes(q)).slice(0, 4);
+    return allSets
+      .filter((s) => `${s.title} ${s.subject} ${(s.tags ?? []).join(' ')}`.toLowerCase().includes(q))
+      .slice(0, 4);
   }, [allSets, searchQuery]);
-
-  const localMatchedPosts = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (q.length < 2) return [];
-    return posts.filter((p) => `${p.threadParts.join(' ')} ${p.tags.join(' ')}`.toLowerCase().includes(q)).slice(0, 4);
-  }, [posts, searchQuery]);
-
-  const runLiveSearch = async () => {
-    const clean = searchQuery.trim();
-    if (clean.length < 2) return;
-    setSearching(true);
-    try {
-      const res = await searchAcademicKnowledgeLive(clean);
-      setLiveResults(res);
-    } finally {
-      setSearching(false);
-    }
-  };
 
   const applyViralTemplate = (tplId: string) => {
     const tpl = VIRAL_THREAD_TEMPLATES.find((t) => t.id === tplId);
@@ -281,6 +324,7 @@ export default function CommunityScreen() {
     setComposerOpen(false);
   };
 
+  // SILENT OUTGOING SEND: Sending messages in group/DM chat plays NO sound!
   const handleSendChatMessage = () => {
     if (!activeChannel || !chatText.trim()) return;
     sendGroupMessage({
@@ -293,7 +337,6 @@ export default function CommunityScreen() {
     });
     setChatText('');
     setReplyTarget(null);
-    sfx.playCorrect();
   };
 
   const handleShareQuizToGroup = () => {
@@ -335,16 +378,43 @@ export default function CommunityScreen() {
     setGroupPollOpen(false);
   };
 
+  // Share any Search / Trending News item into Story OR Thread using strictly COMPLETE grammatical sentences!
+  const shareArticleToStory = (art: DailyKnowledgeArticle) => {
+    const completeSentence = extractCompleteSentences(art.summary, 1, art.title);
+    setStoryDraft({
+      text: `📰 ${art.title} — ${completeSentence}`,
+      subtext: `${art.source} · #TriThứcMớiNhất`,
+      imageUri: art.thumbnailUrl ?? null,
+    });
+    setStoryComposerOpen(true);
+  };
+
+  const shareArticleToThread = (art: DailyKnowledgeArticle) => {
+    const completeBody = extractCompleteSentences(art.summary, 2, art.title);
+    setThreadParts([
+      `🗞️ Tiêu điểm mới nhất từ ${art.source}: "${art.title}".`,
+      `${completeBody}\n\nMọi người nghĩ sao về chủ đề này? Cùng thảo luận bên dưới nhé! 👇`,
+    ]);
+    setPostImageUri(art.thumbnailUrl ?? null);
+    setCitationDraft({ title: art.title, url: art.url, sourceName: art.source });
+    setComposerOpen(true);
+  };
+
   const onlineScholars = getOnlineScholarCandidates(user?.id);
+  const showChannelListPane = isWide || !mobileChatOpen;
+  const showChatRoomPane = isWide || mobileChatOpen;
 
   return (
-    <Screen bottomNav>
+    <Screen bottomNav onPullRefresh={reloadDailyTrending}>
       <TopBar
         title="Cộng đồng Học thuật"
         action={
           <Pressable
             accessibilityRole="button"
-            onPress={() => setComposerOpen(true)}
+            onPress={() => {
+              setCitationDraft(null);
+              setComposerOpen(true);
+            }}
             style={[styles.composePillBtn, { backgroundColor: palette.indigo }]}
           >
             <Ionicons name="add" size={16} color="#FFFFFF" />
@@ -353,13 +423,14 @@ export default function CommunityScreen() {
         }
       />
 
-      {/* 3-Module Super-Hub Switcher: Feed & Threads | Messenger/Zalo | Search & Daily News */}
+      {/* 4-Module Social Super-Hub Switcher: Feed | Messenger/Zalo | Friends | Live Search Engine */}
       <View style={[styles.hubTabs, { backgroundColor: palette.paperRaised, borderColor: palette.paperMuted }]}>
         {(
           [
-            { id: 'feed', label: '📰 Bảng Tin & Threads', short: 'Bảng tin' },
-            { id: 'messenger', label: '💬 Nhóm Chat (Zalo/Msg)', short: 'Nhắn tin' },
-            { id: 'search', label: '🔎 Tra Cứu & Tin Mới', short: 'Tra cứu' },
+            { id: 'feed', label: '📰 Bảng Tin', short: 'Bảng tin' },
+            { id: 'messenger', label: '💬 Nhóm Chat', short: 'Nhắn tin' },
+            { id: 'friends', label: '👥 Bạn Bè', short: 'Bạn bè' },
+            { id: 'search', label: '🔎 Search Engine', short: 'Tra cứu' },
           ] as const
         ).map((tb) => {
           const active = mainTab === tb.id;
@@ -373,13 +444,13 @@ export default function CommunityScreen() {
             >
               <Text
                 style={{
-                  fontSize: 12.5,
+                  fontSize: 12,
                   fontWeight: '800',
                   color: active ? '#FFFFFF' : palette.inkMuted,
                 }}
                 numberOfLines={1}
               >
-                {width >= 520 ? tb.label : tb.short}
+                {width >= 560 ? tb.label : tb.short}
               </Text>
             </Pressable>
           );
@@ -387,58 +458,32 @@ export default function CommunityScreen() {
       </View>
 
       {/* ═══════════════════════════════════════════════════════════════════════
-          MODULE 1: FACEBOOK + THREADS HYBRID FEED & 24H STORIES
+          MODULE 1: FACEBOOK 9:16 STORIES + THREADS HYBRID FEED
       ═══════════════════════════════════════════════════════════════════════ */}
       {mainTab === 'feed' && (
         <SmoothReveal>
-          {/* 24h Stories Carousel */}
+          {/* Facebook-Exact 9:16 Stories Carousel (Full Photo & Video First-Frame Thumbnail!) */}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.storiesRow}>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setStoryComposerOpen(true)}
-              style={[styles.createStoryCard, { backgroundColor: palette.paperRaised, borderColor: palette.indigoBorder }]}
-            >
-              <View style={[styles.storyPlusIcon, { backgroundColor: palette.indigo }]}>
-                <Ionicons name="add" size={22} color="#FFFFFF" />
-              </View>
-              <Text style={[typography.caption, { color: palette.ink, fontWeight: '800', textAlign: 'center' }]}>
-                Tạo Tin Story 24h
-              </Text>
-            </Pressable>
+            <CreateStoryCard916
+              avatarUrl={user?.avatarUrl}
+              displayName={viewerName}
+              onPress={() => {
+                setStoryDraft(null);
+                setStoryComposerOpen(true);
+              }}
+            />
 
-            {stories.map((st) => {
-              const seen = st.viewedByIds.includes(viewerId);
-              return (
-                <Pressable
-                  key={st.id}
-                  onPress={() => {
-                    markStoryViewed(st.id, viewerId);
-                    setActiveStory(st);
-                  }}
-                  style={[
-                    styles.storyCard,
-                    {
-                      backgroundColor: st.gradient[0],
-                      borderColor: seen ? palette.paperMuted : '#FBBF24',
-                    },
-                  ]}
-                >
-                  <View style={[styles.storyAvatarRing, { borderColor: seen ? '#94A3B8' : '#FDE68A' }]}>
-                    <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 12 }}>
-                      {(st.authorName[0] || 'S').toUpperCase()}
-                    </Text>
-                  </View>
-                  <View>
-                    <Text style={{ color: '#FFF', fontSize: 11.5, fontWeight: '800' }} numberOfLines={1}>
-                      {st.authorName}
-                    </Text>
-                    <Text style={{ color: '#E0E7FF', fontSize: 10.5, marginTop: 2 }} numberOfLines={2}>
-                      {st.text}
-                    </Text>
-                  </View>
-                </Pressable>
-              );
-            })}
+            {stories.map((st) => (
+              <StoryCard916
+                key={st.id}
+                story={st}
+                seen={st.viewedByIds.includes(viewerId)}
+                onPress={() => {
+                  markStoryViewed(st.id, viewerId);
+                  setActiveStory(st);
+                }}
+              />
+            ))}
           </ScrollView>
 
           {/* Facebook + Threads Quick Composer Trigger Card */}
@@ -461,8 +506,8 @@ export default function CommunityScreen() {
                 <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.ink }}>10 Mẫu Viral Thread</Text>
               </View>
               <View style={styles.composeChip}>
-                <Ionicons name="image-outline" size={15} color="#10B981" />
-                <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.ink }}>Ảnh / Code</Text>
+                <Ionicons name="videocam-outline" size={15} color="#E11D48" />
+                <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.ink }}>Story Ảnh/Video</Text>
               </View>
               <View style={styles.composeChip}>
                 <Ionicons name="stats-chart-outline" size={14} color="#6366F1" />
@@ -554,9 +599,10 @@ export default function CommunityScreen() {
                       senderId: viewerId,
                       senderName: viewerName,
                       senderAvatar: user?.avatarUrl ?? null,
-                      text: `🔗 Chia sẻ Thread từ ${sharedPost.authorName}: "${sharedPost.threadParts[0]?.slice(0, 120)}..."`,
+                      text: `🔗 Chia sẻ Thread từ ${sharedPost.authorName}: "${extractCompleteSentences(sharedPost.threadParts[0] || '', 1)}"`,
                     });
                     setMainTab('messenger');
+                    setMobileChatOpen(true);
                   }
                 }}
               />
@@ -566,106 +612,125 @@ export default function CommunityScreen() {
       )}
 
       {/* ═══════════════════════════════════════════════════════════════════════
-          MODULE 2: MESSENGER + ZALO STUDY GROUPS & 1-ON-1 DIRECT CHAT
+          MODULE 2: MESSENGER + ZALO STUDY GROUPS & 1-ON-1 CHAT (ZERO OVERLAP!)
       ═══════════════════════════════════════════════════════════════════════ */}
       {mainTab === 'messenger' && (
         <SmoothReveal>
           <View style={[styles.messengerSplit, !isWide && { flexDirection: 'column' }]}>
-            {/* Left / Top Channels & Online Friends Strip */}
-            <Card style={[styles.channelPane, isWide && { width: 310 }]}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                <Text style={[typography.label, { color: palette.indigo }]}>
-                  NHÓM HỌC TẬP & TIN NHẮN ({channels.length})
-                </Text>
-                <Pressable
-                  onPress={() => setNewGroupModal(true)}
-                  style={[styles.smallNewGrpBtn, { backgroundColor: palette.indigoTint }]}
-                >
-                  <Ionicons name="add-circle" size={15} color={palette.indigo} />
-                  <Text style={{ fontSize: 11, fontWeight: '800', color: palette.indigo }}>Tạo nhóm</Text>
-                </Pressable>
-              </View>
+            {/* Channel List Pane (On mobile: cleanly hidden while inside an open chat room!) */}
+            {showChannelListPane && (
+              <Card style={[styles.channelPane, isWide && { width: 310 }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <Text style={[typography.label, { color: palette.indigo }]}>
+                    NHÓM HỌC TẬP & TIN NHẮN ({channels.length})
+                  </Text>
+                  <Pressable
+                    onPress={() => setNewGroupModal(true)}
+                    style={[styles.smallNewGrpBtn, { backgroundColor: palette.indigoTint }]}
+                  >
+                    <Ionicons name="add-circle" size={15} color={palette.indigo} />
+                    <Text style={{ fontSize: 11, fontWeight: '800', color: palette.indigo }}>Tạo nhóm</Text>
+                  </Pressable>
+                </View>
 
-              {/* Online Scholars 1-Tap Direct Chat */}
-              {onlineScholars.length > 0 && (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, marginBottom: 10 }}>
-                  {onlineScholars.map((os) => (
-                    <Pressable
-                      key={os.id}
-                      onPress={() => {
-                        const dm = ensureDirectChannel({ id: os.id, name: os.displayName });
-                        setSelectedChannelId(dm.id);
-                      }}
-                      style={[styles.onlinePeerChip, { backgroundColor: palette.paper, borderColor: palette.mint }]}
-                    >
-                      <View style={styles.greenDot} />
-                      <Text style={{ fontSize: 11.5, fontWeight: '700', color: palette.ink }} numberOfLines={1}>
-                        {os.displayName}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </ScrollView>
-              )}
-
-              <View style={{ gap: 6 }}>
-                {channels.map((ch) => {
-                  const active = ch.id === activeChannel?.id;
-                  return (
-                    <Pressable
-                      key={ch.id}
-                      onPress={() => setSelectedChannelId(ch.id)}
-                      style={[
-                        styles.channelRow,
-                        {
-                          backgroundColor: active ? palette.indigoTint : palette.paper,
-                          borderColor: active ? palette.indigo : palette.paperMuted,
-                        },
-                      ]}
-                    >
-                      <View style={[styles.chIconCircle, { backgroundColor: ch.accentColor }]}>
-                        <Ionicons name={(ch.icon as 'people') || 'people'} size={17} color="#FFFFFF" />
-                      </View>
-                      <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text style={[typography.caption, { color: palette.ink, fontWeight: '800' }]} numberOfLines={1}>
-                          {ch.name}
+                {onlineScholars.length > 0 && (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, marginBottom: 10 }}>
+                    {onlineScholars.map((os) => (
+                      <Pressable
+                        key={os.id}
+                        onPress={() => {
+                          const dm = ensureDirectChannel({ id: os.id, name: os.displayName });
+                          setSelectedChannelId(dm.id);
+                          setMobileChatOpen(true);
+                        }}
+                        style={[styles.onlinePeerChip, { backgroundColor: palette.paper, borderColor: palette.mint }]}
+                      >
+                        <View style={styles.greenDot} />
+                        <Text style={{ fontSize: 11.5, fontWeight: '700', color: palette.ink }} numberOfLines={1}>
+                          {os.displayName}
                         </Text>
-                        <Text style={{ fontSize: 11, color: palette.inkMuted }} numberOfLines={1}>
-                          {ch.memberCount} thành viên · {ch.topic}
-                        </Text>
-                      </View>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </Card>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                )}
 
-            {/* Right / Main Active Chat Room (Messenger + Zalo Rich Features) */}
-            {activeChannel && (
+                <View style={{ gap: 8 }}>
+                  {channels.map((ch) => {
+                    const active = isWide && ch.id === activeChannel?.id;
+                    const lastMsg = [...messages].reverse().find((m) => m.channelId === ch.id);
+                    return (
+                      <Pressable
+                        key={ch.id}
+                        onPress={() => {
+                          setSelectedChannelId(ch.id);
+                          setMobileChatOpen(true);
+                        }}
+                        style={[
+                          styles.channelRow,
+                          {
+                            backgroundColor: active ? palette.indigoTint : palette.paper,
+                            borderColor: active ? palette.indigo : palette.paperMuted,
+                          },
+                        ]}
+                      >
+                        <View style={[styles.chIconCircle, { backgroundColor: ch.accentColor }]}>
+                          <Ionicons name={(ch.icon as 'people') || 'people'} size={18} color="#FFFFFF" />
+                        </View>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text style={[typography.body, { color: palette.ink, fontWeight: '800', fontSize: 14 }]} numberOfLines={1}>
+                            {ch.name}
+                          </Text>
+                          <Text style={{ fontSize: 11.5, color: palette.inkMuted, marginTop: 1 }} numberOfLines={1}>
+                            {lastMsg ? `${lastMsg.senderName}: ${lastMsg.text}` : `${ch.memberCount} thành viên · ${ch.topic}`}
+                          </Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={16} color={palette.inkMuted} />
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </Card>
+            )}
+
+            {/* Dedicated Active Chat Room Pane */}
+            {showChatRoomPane && activeChannel && (
               <Card style={[styles.chatRoomCard, { flex: 1 }]}>
-                {/* Chat Header */}
+                {/* Chat Header with Mobile Back-to-List Button */}
                 <View style={[styles.chatRoomHeader, { borderBottomColor: palette.paperMuted }]}>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={[typography.title, { color: palette.ink, fontSize: 16 }]} numberOfLines={1}>
+                  {!isWide && (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Quay lại danh sách nhóm"
+                      onPress={() => setMobileChatOpen(false)}
+                      style={[styles.backToListBtn, { backgroundColor: palette.paper }]}
+                    >
+                      <Ionicons name="arrow-back" size={18} color={palette.indigo} />
+                    </Pressable>
+                  )}
+                  <View style={{ flex: 1, minWidth: 120 }}>
+                    <Text style={[typography.title, { color: palette.ink, fontSize: 15.5 }]} numberOfLines={1}>
                       {activeChannel.name}
                     </Text>
-                    <Text style={[typography.caption, { color: palette.inkMuted, fontSize: 11.5 }]} numberOfLines={1}>
-                      🟢 {activeChannel.memberCount} học giả · {activeChannel.subtitle}
+                    <Text style={[typography.caption, { color: palette.inkMuted, fontSize: 11 }]} numberOfLines={1}>
+                      🟢 {activeChannel.memberCount} học giả · {activeChannel.topic}
                     </Text>
                   </View>
-                  <Pressable
-                    onPress={() => setGroupPollOpen((v) => !v)}
-                    style={[styles.chatToolChip, { backgroundColor: palette.indigoTint }]}
-                  >
-                    <Ionicons name="stats-chart" size={14} color={palette.indigo} />
-                    <Text style={{ fontSize: 11, fontWeight: '800', color: palette.indigo }}>Bình chọn Zalo</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={handleShareQuizToGroup}
-                    style={[styles.chatToolChip, { backgroundColor: palette.goldTint }]}
-                  >
-                    <Ionicons name="school" size={14} color={palette.gold} />
-                    <Text style={{ fontSize: 11, fontWeight: '800', color: palette.gold }}>Gửi Đề</Text>
-                  </Pressable>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                    <Pressable
+                      onPress={() => setGroupPollOpen((v) => !v)}
+                      style={[styles.chatToolChip, { backgroundColor: palette.indigoTint }]}
+                    >
+                      <Ionicons name="stats-chart" size={13} color={palette.indigo} />
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: palette.indigo }}>Bình chọn</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={handleShareQuizToGroup}
+                      style={[styles.chatToolChip, { backgroundColor: palette.goldTint }]}
+                    >
+                      <Ionicons name="school" size={13} color={palette.gold} />
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: palette.gold }}>Gửi Đề</Text>
+                    </Pressable>
+                  </View>
                 </View>
 
                 {/* Zalo-Style Pinned Announcement Banner */}
@@ -686,7 +751,7 @@ export default function CommunityScreen() {
                   </View>
                 )}
 
-                {/* Inline Zalo Group Poll Creator */}
+                {/* Non-Overflowing Zalo Group Poll Creator (`minWidth: 0` prevents right-edge overflow!) */}
                 {groupPollOpen && (
                   <View style={[styles.inlinePollBuilder, { backgroundColor: palette.paper, borderColor: palette.indigo }]}>
                     <Text style={{ fontSize: 12, fontWeight: '800', color: palette.indigo }}>
@@ -699,28 +764,36 @@ export default function CommunityScreen() {
                       placeholderTextColor={palette.inkMuted}
                       style={[styles.pollSmallInput, { color: palette.ink, borderColor: palette.paperMuted }]}
                     />
-                    <View style={{ flexDirection: 'row', gap: 6 }}>
+                    <View style={{ flexDirection: width < 390 ? 'column' : 'row', gap: 6 }}>
                       <TextInput
                         value={groupPollA}
                         onChangeText={setGroupPollA}
                         placeholder="Lựa chọn 1"
                         placeholderTextColor={palette.inkMuted}
-                        style={[styles.pollSmallInput, { flex: 1, color: palette.ink, borderColor: palette.paperMuted }]}
+                        style={[
+                          styles.pollSmallInput,
+                          { flex: 1, minWidth: 0, color: palette.ink, borderColor: palette.paperMuted },
+                        ]}
                       />
                       <TextInput
                         value={groupPollB}
                         onChangeText={setGroupPollB}
                         placeholder="Lựa chọn 2"
                         placeholderTextColor={palette.inkMuted}
-                        style={[styles.pollSmallInput, { flex: 1, color: palette.ink, borderColor: palette.paperMuted }]}
+                        style={[
+                          styles.pollSmallInput,
+                          { flex: 1, minWidth: 0, color: palette.ink, borderColor: palette.paperMuted },
+                        ]}
                       />
                     </View>
-                    <Button onPress={handleCreateZaloPollInChat}>Đăng bình chọn vào nhóm</Button>
+                    <Button onPress={handleCreateZaloPollInChat} fullWidth>
+                      Đăng bình chọn vào nhóm
+                    </Button>
                   </View>
                 )}
 
                 {/* Messages Stream */}
-                <ScrollView style={{ maxHeight: 420 }} contentContainerStyle={{ gap: 10, paddingVertical: 8 }}>
+                <ScrollView style={{ maxHeight: 430 }} contentContainerStyle={{ gap: 10, paddingVertical: 8 }}>
                   {channelMessages.map((msg) => {
                     const isMine = msg.senderId === viewerId;
                     return (
@@ -771,7 +844,7 @@ export default function CommunityScreen() {
                               style={styles.chatQuizCard}
                             >
                               <Ionicons name="play-circle" size={22} color="#FDE68A" />
-                              <View style={{ flex: 1 }}>
+                              <View style={{ flex: 1, minWidth: 0 }}>
                                 <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 12.5 }} numberOfLines={1}>
                                   {msg.quizCard.title}
                                 </Text>
@@ -800,7 +873,6 @@ export default function CommunityScreen() {
                           )}
                         </View>
 
-                        {/* Quick Reactions + Reply + Pin Row */}
                         <View style={styles.msgActionStrip}>
                           {(['❤️', '🔥', '👍'] as const).map((emo) => {
                             const cnt = msg.reactions[emo]?.length ?? 0;
@@ -837,7 +909,6 @@ export default function CommunityScreen() {
                   })}
                 </ScrollView>
 
-                {/* Active Reply Banner */}
                 {replyTarget && (
                   <View style={[styles.activeReplyBar, { backgroundColor: palette.indigoTint }]}>
                     <Text style={{ fontSize: 11.5, color: palette.indigoDeep, flex: 1 }} numberOfLines={1}>
@@ -849,7 +920,6 @@ export default function CommunityScreen() {
                   </View>
                 )}
 
-                {/* Messenger Input Bar */}
                 <View style={styles.chatInputRow}>
                   <TextInput
                     value={chatText}
@@ -880,43 +950,93 @@ export default function CommunityScreen() {
       )}
 
       {/* ═══════════════════════════════════════════════════════════════════════
-          MODULE 3: ACADEMIC SEARCH ENGINE & DAILY UPDATED KNOWLEDGE FEED
+          MODULE 3: SOCIAL NETWORK FRIENDS DISCOVERY HUB
+      ═══════════════════════════════════════════════════════════════════════ */}
+      {mainTab === 'friends' && (
+        <SmoothReveal>
+          <FriendsDiscoveryHub
+            onOpenDirectChat={(peer) => {
+              const dm = ensureDirectChannel(peer);
+              setSelectedChannelId(dm.id);
+              setMobileChatOpen(true);
+              setMainTab('messenger');
+            }}
+          />
+        </SmoothReveal>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════════
+          MODULE 4: LIVE REAL-TIME SEARCH ENGINE & SYNCHRONIZED LATEST NEWS
       ═══════════════════════════════════════════════════════════════════════ */}
       {mainTab === 'search' && (
         <SmoothReveal>
-          <Card style={{ marginBottom: spacing.md, borderColor: palette.indigoBorder, borderWidth: 1.5 }}>
-            <Badge tone="primary">🔎 CÔNG CỤ TRA CỨU HỌC THUẬT ĐA NGUỒN (SEARCH ENGINE)</Badge>
-            <Text style={[typography.title, { color: palette.ink, marginTop: 6 }]}>
-              Tra cứu Bách khoa Toàn thư, Khoa học, Công nghệ & Kho Đề Đại Học
+          <Card style={{ marginBottom: spacing.md, borderColor: palette.indigoBorder, borderWidth: 1.5, gap: 8 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+              <Badge tone="primary">🔎 SEARCH ENGINE THỜI GIAN THỰC</Badge>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: palette.mint }}>
+                🟢 Google News · Wikipedia · OpenAlex · Hacker News
+              </Text>
+            </View>
+            <Text style={[typography.title, { color: palette.ink }]}>
+              Tìm Kiếm Mọi Tin Mới Nhất, Công Nghệ & Học Thuật
             </Text>
-            <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
-              Tìm kiếm trực tiếp theo thời gian thực trên Wikipedia Tiếng Việt, Quốc tế, Hacker News, Dev.to và toàn bộ Cộng đồng Papyrus!
+            <Text style={[typography.caption, { color: palette.inkMuted }]}>
+              Gõ bất kỳ chủ đề nào (vd: Google Neon, Gemini AI, Lượng tử, kinh tế, sự kiện vừa diễn ra...) để lấy tin tức & tài liệu cập nhật mới nhất ngay tức thì!
             </Text>
 
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
-              <TextInput
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                onSubmitEditing={() => void runLiveSearch()}
-                returnKeyType="search"
-                placeholder="Nhập thuật ngữ, định lý, nhân vật lịch sử, công nghệ..."
-                placeholderTextColor={palette.inkMuted}
-                style={[
-                  styles.searchEngineInput,
-                  { color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paper },
-                ]}
-              />
-              <Button icon="search" disabled={searching || searchQuery.trim().length < 2} onPress={() => void runLiveSearch()}>
-                {searching ? 'Đang tìm…' : 'Tra cứu'}
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+              <View style={[styles.searchBoxWrap, { borderColor: palette.paperMuted, backgroundColor: palette.paper }]}>
+                <Ionicons name="search" size={18} color={palette.indigo} />
+                <TextInput
+                  value={searchQuery}
+                  onChangeText={(v) => {
+                    setSearchQuery(v);
+                    if (v.trim().length < 2) setLiveResults([]);
+                  }}
+                  onSubmitEditing={() => void runLiveSearchNow()}
+                  returnKeyType="search"
+                  placeholder="Tìm kiếm bất kỳ tin mới hoặc khái niệm nào..."
+                  placeholderTextColor={palette.inkMuted}
+                  style={[styles.searchEngineInput, { color: palette.ink }]}
+                />
+                {searchQuery.length > 0 && (
+                  <Pressable
+                    onPress={() => {
+                      setSearchQuery('');
+                      setLiveResults([]);
+                    }}
+                    hitSlop={8}
+                  >
+                    <Ionicons name="close-circle" size={18} color={palette.inkMuted} />
+                  </Pressable>
+                )}
+              </View>
+              <Button icon="search" disabled={searching || searchQuery.trim().length < 2} onPress={() => void runLiveSearchNow()}>
+                {searching ? 'Đang tìm…' : 'Tìm'}
               </Button>
             </View>
+
+            {/* Quick Live Trending Topic Chips synced directly with Search Engine */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingTop: 2 }}>
+              {['Trí tuệ nhân tạo AI', 'Google Gemini', 'Bán dẫn & Lượng tử', 'Kỹ thuật Phần mềm', 'Khoa học Vũ trụ', 'Lịch sử Việt Nam'].map(
+                (kw) => (
+                  <Pressable
+                    key={kw}
+                    onPress={() => void runLiveSearchNow(kw)}
+                    style={[styles.tagChip, { backgroundColor: palette.paper, borderColor: palette.paperMuted }]}
+                  >
+                    <Text style={{ fontSize: 11.5, fontWeight: '700', color: palette.indigo }}>⚡ {kw}</Text>
+                  </Pressable>
+                )
+              )}
+            </ScrollView>
           </Card>
 
-          {/* Local Papyrus University Sets & Community Threads Matches */}
+          {/* Local Papyrus University Sets Matches */}
           {localMatchedSets.length > 0 && (
             <View style={{ marginBottom: spacing.md, gap: 6 }}>
               <Text style={[typography.label, { color: palette.indigo }]}>
-                📜 BỘ ĐỀ ĐẠI HỌC TRONG PAPYRUS ({localMatchedSets.length})
+                📜 BỘ ĐỀ ĐẠI HỌC TRONG KHO PAPYRUS ({localMatchedSets.length})
               </Text>
               {localMatchedSets.map((s) => (
                 <Card
@@ -925,8 +1045,10 @@ export default function CommunityScreen() {
                   style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: spacing.md }}
                 >
                   <Ionicons name="school" size={22} color={palette.indigo} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={[typography.body, { color: palette.ink, fontWeight: '800' }]}>{s.title}</Text>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={[typography.body, { color: palette.ink, fontWeight: '800' }]} numberOfLines={1}>
+                      {s.title}
+                    </Text>
                     <Text style={[typography.caption, { color: palette.inkMuted }]}>
                       {s.subject} · {s.questions.length} câu hỏi
                     </Text>
@@ -937,93 +1059,86 @@ export default function CommunityScreen() {
             </View>
           )}
 
-          {localMatchedPosts.length > 0 && (
-            <View style={{ marginBottom: spacing.md, gap: 6 }}>
-              <Text style={[typography.label, { color: palette.mint }]}>
-                🧵 THẢO LUẬN TRÊN CỘNG ĐỒNG ({localMatchedPosts.length})
+          {/* Live Search Engine Web & News Results */}
+          {searching ? (
+            <PapyrusPageSkeleton variant="library" label={`Đang tìm kết quả mới nhất cho "${searchQuery}"…`} />
+          ) : searchQuery.trim().length >= 2 ? (
+            <View style={{ marginBottom: spacing.lg, gap: 10 }}>
+              <Text style={[typography.label, { color: palette.gold }]}>
+                🌐 KẾT QUẢ MỚI NHẤT CHO «{searchQuery.toUpperCase()}» ({liveResults.length})
               </Text>
-              {localMatchedPosts.map((p) => (
-                <Card key={p.id} onPress={() => setMainTab('feed')} style={{ padding: spacing.md }}>
-                  <Text style={{ fontSize: 12, fontWeight: '800', color: palette.indigo }}>{p.authorName}</Text>
-                  <Text style={[typography.caption, { color: palette.ink, marginTop: 2 }]} numberOfLines={2}>
-                    {p.threadParts[0]}
+              {liveResults.length === 0 ? (
+                <Card style={{ alignItems: 'center', paddingVertical: spacing.xl }}>
+                  <Text style={[typography.caption, { color: palette.inkMuted }]}>
+                    Không tìm thấy bài viết khớp chính xác với từ khóa này. Hãy thử từ khóa cụ thể hơn!
                   </Text>
                 </Card>
-              ))}
-            </View>
-          )}
-
-          {/* Live Search Engine Web Knowledge Results */}
-          {searching ? (
-            <PapyrusPageSkeleton variant="library" label="Đang truy xuất nguồn học thuật trực tiếp…" />
-          ) : liveResults.length > 0 ? (
-            <View style={{ marginBottom: spacing.lg, gap: 8 }}>
-              <Text style={[typography.label, { color: palette.gold }]}>
-                🌐 KẾT QUẢ TRA CỨU TRỰC TIẾP ({liveResults.length} NGUỒN UY TÍN)
-              </Text>
-              {liveResults.map((art) => (
-                <Card key={art.id} style={{ gap: 8, padding: spacing.md }}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Badge tone="primary">{art.source}</Badge>
-                    <Text style={{ fontSize: 11, color: palette.inkMuted }}>{art.category}</Text>
-                  </View>
-                  <Text style={[typography.title, { color: palette.ink }]}>{art.title}</Text>
-                  <Text style={[typography.caption, { color: palette.inkMuted, lineHeight: 19 }]}>{art.summary}</Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
-                    <Button
-                      variant="reward"
-                      icon="sparkles"
-                      onPress={() => {
-                        usePapyrusStore.getState().saveSourceDocument({
-                          id: `search-${Date.now()}`,
-                          title: art.title,
-                          text: `${art.title}\n\n${art.summary}\nNguồn: ${art.url}`,
-                          createdAt: new Date().toISOString(),
-                        });
-                        router.push('/create/generate');
-                      }}
-                    >
-                      Tạo Quiz AI từ mục này
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      icon="share-social-outline"
-                      onPress={() => {
-                        setThreadParts([
-                          `💡 Kiến thức hay vừa tra cứu được về "${art.title}":`,
-                          art.summary,
-                          'Mọi người cùng thảo luận thêm dưới bình luận nhé! 👇',
-                        ]);
-                        setCitationDraft({ title: art.title, url: art.url, sourceName: art.source });
-                        setComposerOpen(true);
-                      }}
-                    >
-                      Đăng Thread thảo luận
-                    </Button>
-                    <Pressable onPress={() => void Linking.openURL(art.url)} style={styles.readOriginalBtn}>
-                      <Text style={{ fontSize: 12, fontWeight: '800', color: palette.indigo }}>Đọc bài gốc ↗</Text>
-                    </Pressable>
-                  </View>
-                </Card>
-              ))}
+              ) : (
+                liveResults.map((art) => (
+                  <Card key={art.id} style={{ gap: 8, padding: spacing.md }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                      <Badge tone={art.source === 'Google News' ? 'fire' : art.source === 'OpenAlex Khoa Học' ? 'success' : 'primary'}>
+                        {art.source} · {art.category}
+                      </Badge>
+                      <Text style={{ fontSize: 11, color: palette.inkMuted, fontWeight: '700' }}>{art.publishedLabel}</Text>
+                    </View>
+                    {art.thumbnailUrl ? (
+                      <Image source={{ uri: art.thumbnailUrl }} style={styles.newsThumb} resizeMode="cover" />
+                    ) : null}
+                    <Text style={[typography.title, { color: palette.ink }]}>{art.title}</Text>
+                    <Text style={[typography.caption, { color: palette.inkMuted, lineHeight: 19 }]}>{art.summary}</Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+                      <Button
+                        variant="reward"
+                        icon="sparkles"
+                        onPress={() => {
+                          usePapyrusStore.getState().saveSourceDocument({
+                            id: `search-${Date.now()}`,
+                            title: art.title,
+                            text: `${art.title}\n\n${art.summary}\nNguồn: ${art.url}`,
+                            createdAt: new Date().toISOString(),
+                          });
+                          router.push('/create/generate');
+                        }}
+                      >
+                        Tạo Quiz AI
+                      </Button>
+                      <Button variant="primary" icon="add-circle-outline" onPress={() => shareArticleToStory(art)}>
+                        Đăng lên Story
+                      </Button>
+                      <Button variant="secondary" icon="share-social-outline" onPress={() => shareArticleToThread(art)}>
+                        Đăng Thread
+                      </Button>
+                      <Pressable onPress={() => void Linking.openURL(art.url)} style={styles.readOriginalBtn}>
+                        <Text style={{ fontSize: 12, fontWeight: '800', color: palette.indigo }}>Đọc bài gốc ↗</Text>
+                      </Pressable>
+                    </View>
+                  </Card>
+                ))
+              )}
             </View>
           ) : null}
 
-          {/* Daily Auto-Updated Knowledge Digest */}
-          <Text style={[typography.title, { color: palette.ink, marginBottom: spacing.sm }]}>
-            🗞️ Nguồn Tin Tri Thức & Khoa Học Cập Nhật Mới Nhất Hôm Nay
-          </Text>
+          {/* Real-Time Latest News Stream (Synchronized with Search Engine) */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm }}>
+            <Text style={[typography.title, { color: palette.ink, flex: 1 }]}>
+              🗞️ Tin Tức Khoa Học, AI & Công Nghệ Mới Nhất Hôm Nay
+            </Text>
+            <Pressable onPress={() => void reloadDailyTrending()} style={{ padding: 6 }}>
+              <Text style={{ fontSize: 12, fontWeight: '800', color: palette.indigo }}>Làm mới</Text>
+            </Pressable>
+          </View>
           {loadingDaily ? (
-            <PapyrusPageSkeleton variant="library" label="Đang tải bản tin học thuật hôm nay…" />
+            <PapyrusPageSkeleton variant="library" label="Đang đồng bộ tin tức thời gian thực…" />
           ) : (
             <View style={{ gap: 10 }}>
               {dailyFeed.map((item) => (
                 <Card key={item.id} style={{ gap: 8, padding: spacing.md }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                    <Badge tone={item.source === 'Wikipedia VI' ? 'primary' : item.source === 'Dev.to Tech' ? 'success' : 'reward'}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+                    <Badge tone={item.source === 'Google News' ? 'fire' : item.source === 'Dev.to Tech' ? 'success' : 'primary'}>
                       {item.source} · {item.category}
                     </Badge>
-                    <Text style={{ fontSize: 11, color: palette.inkMuted }}>{item.publishedLabel}</Text>
+                    <Text style={{ fontSize: 11, color: palette.inkMuted, fontWeight: '700' }}>{item.publishedLabel}</Text>
                   </View>
                   {item.thumbnailUrl ? (
                     <Image source={{ uri: item.thumbnailUrl }} style={styles.newsThumb} resizeMode="cover" />
@@ -1032,7 +1147,7 @@ export default function CommunityScreen() {
                   <Text style={[typography.caption, { color: palette.inkMuted, lineHeight: 19 }]}>{item.summary}</Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                     <Button
-                      variant="secondary"
+                      variant="reward"
                       icon="sparkles-outline"
                       onPress={() => {
                         usePapyrusStore.getState().saveSourceDocument({
@@ -1044,21 +1159,13 @@ export default function CommunityScreen() {
                         router.push('/create/generate');
                       }}
                     >
-                      Biến thành Bộ Quiz
+                      Biến thành Quiz
                     </Button>
-                    <Button
-                      variant="ghost"
-                      icon="chatbubbles-outline"
-                      onPress={() => {
-                        setThreadParts([
-                          `🗞️ Tiêu điểm tri thức hôm nay: "${item.title}"`,
-                          item.summary,
-                        ]);
-                        setCitationDraft({ title: item.title, url: item.url, sourceName: item.source });
-                        setComposerOpen(true);
-                      }}
-                    >
-                      Chia sẻ lên Bảng tin
+                    <Button variant="primary" icon="add-circle-outline" onPress={() => shareArticleToStory(item)}>
+                      Đăng Story
+                    </Button>
+                    <Button variant="secondary" icon="chatbubbles-outline" onPress={() => shareArticleToThread(item)}>
+                      Đăng Thread
                     </Button>
                     <Pressable onPress={() => void Linking.openURL(item.url)} style={styles.readOriginalBtn}>
                       <Text style={{ fontSize: 12, fontWeight: '800', color: palette.indigo }}>Mở nguồn ↗</Text>
@@ -1076,7 +1183,7 @@ export default function CommunityScreen() {
         <View style={styles.modalBackdrop}>
           <Card style={[styles.composerModalCard, { backgroundColor: palette.paper }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Text style={[typography.title, { color: palette.ink }]}>
+              <Text style={[typography.title, { color: palette.ink, flex: 1 }]}>
                 🧵 Đăng Bài Viết & Chuỗi Thread (+30 XP)
               </Text>
               <Pressable onPress={() => setComposerOpen(false)} hitSlop={8}>
@@ -1084,8 +1191,7 @@ export default function CommunityScreen() {
               </Pressable>
             </View>
 
-            <ScrollView style={{ maxHeight: 500 }} showsVerticalScrollIndicator={false}>
-              {/* 10 ViralSky-Inspired Academic Thread Templates */}
+            <ScrollView style={{ maxHeight: 490 }} showsVerticalScrollIndicator={false}>
               <Text style={[typography.label, { color: palette.gold, marginBottom: 6 }]}>
                 ⚡ CHỌN NHANH 1 TRONG 10 MẪU VIRAL THREAD HỌC THUẬT:
               </Text>
@@ -1111,7 +1217,6 @@ export default function CommunityScreen() {
                 ))}
               </ScrollView>
 
-              {/* Multi-Part Connected Thread Editor */}
               {threadParts.map((val, idx) => (
                 <View key={idx} style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
                   <View style={{ alignItems: 'center', width: 22, paddingTop: 8 }}>
@@ -1122,7 +1227,7 @@ export default function CommunityScreen() {
                       <View style={{ width: 2, flex: 1, backgroundColor: palette.indigoBorder, marginTop: 4 }} />
                     )}
                   </View>
-                  <View style={{ flex: 1 }}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
                     <TextInput
                       value={val}
                       onChangeText={(txt) =>
@@ -1162,12 +1267,11 @@ export default function CommunityScreen() {
                 </Text>
               </Pressable>
 
-              {/* Rich Attachments Toolbar */}
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
                 <Pressable
                   onPress={async () => {
-                    const uris = await dependencies.intake.pickSourceImages().catch(() => []);
-                    if (uris[0]) setPostImageUri(uris[0]);
+                    const img = await pickCoverImageDataUrl().catch(() => null);
+                    if (img) setPostImageUri(img);
                   }}
                   style={[styles.attachPill, { borderColor: palette.paperMuted }]}
                 >
@@ -1326,6 +1430,7 @@ export default function CommunityScreen() {
                       accentColor: '#8B5CF6',
                     });
                     setSelectedChannelId(created.id);
+                    setMobileChatOpen(true);
                     setNewGroupName('');
                     setNewGroupModal(false);
                   }}
@@ -1347,13 +1452,27 @@ export default function CommunityScreen() {
         onReact={(sid, emo) => reactToStory(sid, emo, viewerId)}
         onDirectMessage={(author) => {
           const dm = ensureDirectChannel(author);
+          if (author.replyText) {
+            sendGroupMessage({
+              channelId: dm.id,
+              senderId: viewerId,
+              senderName: viewerName,
+              senderAvatar: user?.avatarUrl ?? null,
+              text: `💬 Phản hồi tin Story của bạn: "${author.replyText}"`,
+            });
+          }
           setSelectedChannelId(dm.id);
+          setMobileChatOpen(true);
           setMainTab('messenger');
         }}
       />
       <StoryComposerModal
         visible={storyComposerOpen}
-        onClose={() => setStoryComposerOpen(false)}
+        initialDraft={storyDraft}
+        onClose={() => {
+          setStoryComposerOpen(false);
+          setStoryDraft(null);
+        }}
         onPublish={(data) => {
           addStory({
             authorId: viewerId,
@@ -1394,43 +1513,9 @@ const styles = StyleSheet.create({
     borderRadius: radii.sm,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 6,
+    paddingHorizontal: 4,
   },
   storiesRow: { gap: 10, paddingBottom: spacing.md },
-  createStoryCard: {
-    width: 108,
-    height: 138,
-    borderRadius: radii.md,
-    borderWidth: 1.5,
-    padding: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  storyPlusIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  storyCard: {
-    width: 112,
-    height: 138,
-    borderRadius: radii.md,
-    borderWidth: 2,
-    padding: 10,
-    justifyContent: 'space-between',
-  },
-  storyAvatarRing: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 2,
-    backgroundColor: 'rgba(15,23,42,0.55)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   quickComposeCard: { padding: spacing.md, marginBottom: spacing.md, gap: 10 },
   miniAvatar: {
     width: 38,
@@ -1493,14 +1578,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    padding: 9,
+    padding: 11,
     borderRadius: radii.sm,
     borderWidth: 1,
   },
   chIconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
+    width: 40,
+    height: 40,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1512,6 +1597,13 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingBottom: 10,
     borderBottomWidth: 1,
+  },
+  backToListBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   chatToolChip: {
     flexDirection: 'row',
@@ -1533,10 +1625,10 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: radii.sm,
     borderWidth: 1,
-    gap: 6,
+    gap: 8,
   },
   pollSmallInput: {
-    minHeight: 40,
+    minHeight: 42,
     borderWidth: 1,
     borderRadius: radii.sm,
     paddingHorizontal: 10,
@@ -1589,6 +1681,7 @@ const styles = StyleSheet.create({
   chatInputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
   chatInput: {
     flex: 1,
+    minWidth: 0,
     minHeight: 44,
     borderWidth: 1,
     borderRadius: radii.pill,
@@ -1602,13 +1695,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  searchEngineInput: {
+  searchBoxWrap: {
     flex: 1,
+    minWidth: 0,
     minHeight: 46,
     borderWidth: 1,
     borderRadius: radii.sm,
     paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  searchEngineInput: {
+    flex: 1,
+    minWidth: 0,
     fontSize: 14,
+    paddingVertical: 8,
   },
   readOriginalBtn: {
     justifyContent: 'center',
@@ -1617,7 +1719,7 @@ const styles = StyleSheet.create({
   },
   newsThumb: {
     width: '100%',
-    height: 150,
+    height: 156,
     borderRadius: radii.sm,
   },
   modalBackdrop: {

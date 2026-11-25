@@ -84,6 +84,59 @@
           animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
         }
       }
+
+      /* Indeterminate accessible conic-gradient spinner (<progress>) */
+      progress.papyrus-spinner:indeterminate::-webkit-progress-bar,
+      progress.papyrus-spinner:indeterminate::-webkit-progress-value,
+      progress.papyrus-spinner:indeterminate::-moz-progress-bar {
+        display: none;
+        background: none;
+      }
+      @keyframes papyrus-spin {
+        to {
+          transform: rotate(1turn);
+        }
+      }
+      progress.papyrus-spinner:indeterminate {
+        --size: 64px;
+        --thickness: 3px;
+        --spinner-color: #818cf8;
+        --track-color: rgba(148, 163, 184, 0.16);
+        --_used-spinner-duration: 1.15s;
+        width: var(--size);
+        height: var(--size);
+        border-radius: 50%;
+        border: 0;
+        appearance: none;
+        -webkit-appearance: none;
+        background: conic-gradient(from 90deg, transparent 0deg, rgba(6, 182, 212, 0.45) 110deg, var(--spinner-color) 310deg, transparent 360deg) var(--track-color);
+        -webkit-mask-image: radial-gradient(farthest-side, transparent calc(100% - var(--thickness)), #000 calc(100% - var(--thickness)));
+        mask-image: radial-gradient(farthest-side, transparent calc(100% - var(--thickness)), #000 calc(100% - var(--thickness)));
+        animation: papyrus-spin var(--_used-spinner-duration) linear infinite;
+      }
+      @media (forced-colors: active) {
+        progress.papyrus-spinner:indeterminate {
+          forced-color-adjust: none;
+          --spinner-color: CanvasText;
+          --track-color: Canvas;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        progress.papyrus-spinner:indeterminate {
+          --_used-spinner-duration: 6s;
+        }
+      }
+
+      /* Native <dialog> scroll containment */
+      dialog:modal {
+        overscroll-behavior: contain;
+      }
+      dialog::backdrop {
+        overflow: hidden;
+        overscroll-behavior: contain;
+        background: rgba(4, 8, 28, 0.72);
+        backdrop-filter: blur(8px);
+      }
     </style>
   </head>
 

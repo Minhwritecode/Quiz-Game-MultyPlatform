@@ -48,7 +48,7 @@
   ],
   "rewrites": [
     {
-      "source": "/((?!_expo/|assets/|icons/|manifest\\.webmanifest|sw\\.js|version\\.json|favicon\\.png).*)",
+      "source": "/((?!api/|_expo/|assets/|icons/|manifest\\.webmanifest|sw\\.js|version\\.json|favicon\\.png).*)",
       "destination": "/index.html"
     }
   ]

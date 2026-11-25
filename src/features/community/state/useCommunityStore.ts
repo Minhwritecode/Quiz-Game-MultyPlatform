@@ -11,16 +11,24 @@ import {
   type ThreadPost,
 } from '../domain/models';
 
+function makeStoryPosterSvg(c1: string, c2: string, emoji: string, title: string): string {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="540" height="960" viewBox="0 0 540 960"><defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${c1}"/><stop offset="100%" stop-color="${c2}"/></linearGradient><radialGradient id="gl" cx="50%" cy="38%" r="52%"><stop offset="0%" stop-color="rgba(255,255,255,0.28)"/><stop offset="100%" stop-color="rgba(255,255,255,0)"/></radialGradient></defs><rect width="540" height="960" fill="url(#bg)"/><circle cx="270" cy="360" r="240" fill="url(#gl)"/><circle cx="440" cy="180" r="90" fill="rgba(255,255,255,0.08)"/><circle cx="95" cy="760" r="130" fill="rgba(0,0,0,0.16)"/><text x="50%" y="37%" dominant-baseline="middle" text-anchor="middle" font-size="112">${emoji}</text><text x="50%" y="52%" dominant-baseline="middle" text-anchor="middle" fill="#FFFFFF" font-family="system-ui,sans-serif" font-size="34" font-weight="800">${title}</text></svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
 const SEED_STORIES: ScholarStory[] = [
   {
     id: 'story-seed-1',
     authorId: 'scholar-khanh',
-    authorName: 'Khánh Linh · CNTT',
+    authorName: 'Khánh Linh',
     authorAvatar: null,
     authorLevel: 12,
     text: 'Cày xong bộ Cấu trúc Dữ liệu & Giải thuật đạt 98% chính xác trên Cung Thủ 3D! 🏹🔥',
     subtext: '#StudyWithMe · Chuỗi 14 ngày',
     gradient: ['#312E81', '#7C3AED'],
+    mediaType: 'image',
+    imageUri: makeStoryPosterSvg('#1E1B4B', '#7C3AED', '🏹', '98% Thuật Toán 3D'),
+    thumbnailUri: makeStoryPosterSvg('#1E1B4B', '#7C3AED', '🏹', '98% Thuật Toán 3D'),
     badgeLabel: '🔮 Pháp Sư Hàn Lâm',
     viewedByIds: [],
     reactions: { '🔥': ['u1', 'u2'], '❤️': ['u3'] },
@@ -30,12 +38,15 @@ const SEED_STORIES: ScholarStory[] = [
   {
     id: 'story-seed-2',
     authorId: 'scholar-minhquan',
-    authorName: 'Minh Quân · Bách Khoa',
+    authorName: 'Minh Quân',
     authorAvatar: null,
     authorLevel: 16,
     text: 'Mẹo phân biệt TCP vs UDP trong 15 giây: TCP có bắt tay 3 bước, UDP bắn tốc độ ánh sáng! ⚡',
     subtext: 'Mạng Máy Tính Đại Cương',
     gradient: ['#065F46', '#0284C7'],
+    mediaType: 'image',
+    imageUri: makeStoryPosterSvg('#064E3B', '#0284C7', '⚡', 'TCP vs UDP 15s'),
+    thumbnailUri: makeStoryPosterSvg('#064E3B', '#0284C7', '⚡', 'TCP vs UDP 15s'),
     badgeLabel: '👑 Đại Học Sĩ',
     viewedByIds: [],
     reactions: { '👏': ['u1'] },
@@ -45,12 +56,15 @@ const SEED_STORIES: ScholarStory[] = [
   {
     id: 'story-seed-3',
     authorId: 'scholar-haianh',
-    authorName: 'Hải Anh · Sư Phạm',
+    authorName: 'Hải Anh',
     authorAvatar: null,
     authorLevel: 8,
     text: 'Ba mốc vàng Lịch sử Thế giới hiện đại không thể nhầm trước ngày thi cuối kỳ 📜✨',
     subtext: 'Lịch Sử & Văn Chương',
     gradient: ['#9A3412', '#E11D48'],
+    mediaType: 'image',
+    imageUri: makeStoryPosterSvg('#7C2D12', '#E11D48', '🏛️', 'Mốc Vàng Lịch Sử'),
+    thumbnailUri: makeStoryPosterSvg('#7C2D12', '#E11D48', '🏛️', 'Mốc Vàng Lịch Sử'),
     badgeLabel: '⚔️ Hiệp Sĩ Tri Thức',
     viewedByIds: [],
     reactions: { '❤️': ['u1', 'u4'] },

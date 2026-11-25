@@ -9,54 +9,65 @@ import {
   Linking,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
+  type ViewStyle,
 } from 'react-native';
-import { BrandMark, Button, Card, Screen, usePalette } from '@/shared/ui';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BrandMark, Button } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { dependencies } from '@/composition/dependencies';
-import { sendMagicLinkEmail } from '@/composition/platform';
+import {
+  authenticateWithPasskeyButton,
+  checkSignInRequires2FA,
+  isPlatformPasskeyAvailable,
+  sendMagicLinkEmail,
+  verifySignIn2FACode,
+} from '@/composition/platform';
 import { useI18n } from '@/core/i18n';
 import { useAuthStore } from '@/core/state/useAuthStore';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { useStreakStore } from '@/features/streak/state/useStreakStore';
 import { AuthCosmicBackdrop } from '@/shared/visuals/AuthCosmicBackdrop';
 
-type AuthMode = 'signIn' | 'signUp' | 'forgot' | 'resetPassword';
+type AuthMode = 'signIn' | 'signUp' | 'forgot' | 'resetPassword' | 'twoFactor';
 
-const MODE_STAGE_META: Record<
+const MODE_MORPH_STYLE: Record<
   AuthMode,
-  { badge: string; accent: string; glowBg: string; captionVi: string; captionEn: string }
+  { accent: string; borderGlow: string; radius: number; flipDir: number }
 > = {
   signIn: {
-    badge: '🔓 CỔNG TINH VÂN HỌC VIỆN',
     accent: '#818CF8',
-    glowBg: 'rgba(99, 102, 241, 0.18)',
-    captionVi: 'Mở khóa kho bộ đề, chuỗi Streak & tiến trình 3D riêng của bạn',
-    captionEn: 'Unlock your personal library, streak, and 3D arena rank',
+    borderGlow: 'rgba(129, 140, 248, 0.42)',
+    radius: 26,
+    flipDir: -1,
   },
   signUp: {
-    badge: '✨ VƯƠNG MIỆN KHỞI TẠO HỌC GIẢ',
     accent: '#34D399',
-    glowBg: 'rgba(16, 185, 129, 0.18)',
-    captionVi: 'Khởi tạo hồ sơ đám mây độc lập · Nhận ngay +50 XP Tân Học Giả',
-    captionEn: 'Create your cloud scholar profile & earn +50 starter XP',
+    borderGlow: 'rgba(52, 211, 153, 0.42)',
+    radius: 32,
+    flipDir: 1,
   },
   forgot: {
-    badge: '🧭 LA BÀN KHÔI PHỤC TÀI KHOẢN',
     accent: '#38BDF8',
-    glowBg: 'rgba(6, 182, 212, 0.18)',
-    captionVi: 'Gửi liên kết đặt lại mật khẩu bảo mật trực tiếp tới hộp thư của bạn',
-    captionEn: 'Receive a secure password recovery link in your inbox',
+    borderGlow: 'rgba(56, 189, 248, 0.42)',
+    radius: 22,
+    flipDir: 1,
   },
   resetPassword: {
-    badge: '🛡️ THIẾT LẬP MẬT KHẨU MỚI',
     accent: '#C084FC',
-    glowBg: 'rgba(168, 85, 247, 0.18)',
-    captionVi: 'Hoàn tất đặt mật khẩu mới để quay lại Học viện Papyrus',
-    captionEn: 'Set your new password to re-enter Papyrus Academy',
+    borderGlow: 'rgba(192, 132, 252, 0.45)',
+    radius: 28,
+    flipDir: -1,
+  },
+  twoFactor: {
+    accent: '#FBBF24',
+    borderGlow: 'rgba(251, 191, 36, 0.45)',
+    radius: 30,
+    flipDir: 1,
   },
 };
 
@@ -70,12 +81,12 @@ function computePasswordStrength(pw: string): { score: number; label: string; co
   if (s <= 1) return { score: 1, label: 'Yếu (nên ≥ 8 ký tự)', color: '#EF4444' };
   if (s === 2) return { score: 2, label: 'Khá an toàn', color: '#F59E0B' };
   if (s === 3) return { score: 3, label: 'Mạnh', color: '#10B981' };
-  return { score: 4, label: 'Rất mạnh · Tuyệt vời', color: '#34D399' };
+  return { score: 4, label: 'Rất mạnh', color: '#34D399' };
 }
 
 export default function AuthScreen() {
   const router = useRouter();
-  const palette = usePalette();
+  const insets = useSafeAreaInsets();
   const { language, toggleLanguage, t } = useI18n();
 
   const [mode, setMode] = useState<AuthMode>('signIn');
@@ -83,6 +94,10 @@ export default function AuthScreen() {
   const [password, setPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [mfaFactorId, setMfaFactorId] = useState<string | undefined>(undefined);
+  const [passkeySupported, setPasskeySupported] = useState(false);
+
   const [busy, setBusy] = useState(false);
   const [visible, setVisible] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -92,9 +107,12 @@ export default function AuthScreen() {
   const enterGuestMode = useAuthStore((state) => state.enterGuestMode);
   const reduceMotion = usePapyrusStore((state) => state.reduceMotion);
 
-  // Smooth compositor-thread morph animation on card & stage whenever mode switches
-  const morphAnim = useRef(new Animated.Value(1)).current;
-  const triggerCardMorph = (next: AuthMode) => {
+  // 3D Flip + Spring Scale & Radius Morph directly on the Centered Modal Card
+  const modalFlip = useRef(new Animated.Value(0)).current;
+  const modalScale = useRef(new Animated.Value(1)).current;
+  const modalOpacity = useRef(new Animated.Value(1)).current;
+
+  const morphToMode = (next: AuthMode) => {
     if (next === mode) return;
     setErrorMsg(null);
     setInfoMsg(null);
@@ -102,18 +120,60 @@ export default function AuthScreen() {
       setMode(next);
       return;
     }
-    morphAnim.setValue(0.86);
-    setMode(next);
-    Animated.timing(morphAnim, {
-      toValue: 1,
-      duration: 320,
-      easing: Easing.bezier(0.22, 1, 0.36, 1),
-      useNativeDriver: true,
-    }).start();
+    const dir = MODE_MORPH_STYLE[next].flipDir;
+    Animated.parallel([
+      Animated.timing(modalOpacity, {
+        toValue: 0.35,
+        duration: 115,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+      Animated.timing(modalScale, {
+        toValue: 0.94,
+        duration: 115,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+      Animated.timing(modalFlip, {
+        toValue: dir * 0.5,
+        duration: 115,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setMode(next);
+      modalFlip.setValue(-dir * 0.5);
+      Animated.parallel([
+        Animated.timing(modalOpacity, {
+          toValue: 1,
+          duration: 260,
+          easing: Easing.bezier(0.22, 1, 0.36, 1),
+          useNativeDriver: true,
+        }),
+        Animated.spring(modalScale, {
+          toValue: 1,
+          damping: 15,
+          stiffness: 190,
+          mass: 0.8,
+          useNativeDriver: true,
+        }),
+        Animated.spring(modalFlip, {
+          toValue: 0,
+          damping: 16,
+          stiffness: 180,
+          mass: 0.8,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
   };
 
   useEffect(() => {
-    if (user && mode !== 'resetPassword') {
+    void isPlatformPasskeyAvailable().then(setPasskeySupported);
+  }, []);
+
+  useEffect(() => {
+    if (user && mode !== 'resetPassword' && mode !== 'twoFactor') {
       router.replace('/');
     }
   }, [user, mode, router]);
@@ -131,21 +191,73 @@ export default function AuthScreen() {
       if (event === 'PASSWORD_RECOVERY') {
         setMode('resetPassword');
       } else if (nextUser && event === 'SIGNED_IN') {
-        router.replace('/');
+        void checkSignInRequires2FA().then((mfa) => {
+          if (mfa.required) {
+            setMfaFactorId(mfa.factorId);
+            morphToMode('twoFactor');
+          } else {
+            router.replace('/');
+          }
+        });
       }
     });
 
     return () => {
       unsubscribe();
     };
-  }, [router]);
+  }, [router]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pwStrength = useMemo(
     () => computePasswordStrength(mode === 'resetPassword' ? newPassword : password),
     [mode, newPassword, password]
   );
 
+  const handleVerify2FA = async () => {
+    setErrorMsg(null);
+    setBusy(true);
+    try {
+      const res = await verifySignIn2FACode(otpCode, mfaFactorId);
+      if (!res.ok) {
+        setErrorMsg(res.message || 'Mã xác thực 2FA chưa chính xác.');
+        return;
+      }
+      router.replace('/');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handlePasskeySignIn = async () => {
+    setErrorMsg(null);
+    setInfoMsg(null);
+    setBusy(true);
+    try {
+      const res = await authenticateWithPasskeyButton();
+      if (!res.ok || !res.user) {
+        if (res.message && res.message !== 'Đã hủy xác thực Passkey.') {
+          setErrorMsg(res.message);
+        }
+        return;
+      }
+      useAuthStore.getState().setUser({
+        id: res.user.id,
+        email: res.user.email,
+        displayName: res.user.displayName,
+        avatarUrl: null,
+        role: 'user',
+      });
+      router.replace('/');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleSubmit = async () => {
+    if (mode === 'twoFactor') {
+      await handleVerify2FA();
+      return;
+    }
+
     setErrorMsg(null);
     setInfoMsg(null);
     setBusy(true);
@@ -167,7 +279,7 @@ export default function AuthScreen() {
         setErrorMsg(err);
       } else {
         setInfoMsg(t.auth.passwordUpdatedSuccess);
-        setTimeout(() => router.replace('/'), 1400);
+        setTimeout(() => router.replace('/'), 1200);
       }
       setBusy(false);
       return;
@@ -211,14 +323,20 @@ export default function AuthScreen() {
         usePapyrusStore.getState().addBonusXp(50);
         useStreakStore.getState().recordActivity('daily_checkin');
         setInfoMsg(t.auth.signUpSuccess);
-        setTimeout(() => router.replace('/'), 1000);
+        setTimeout(() => router.replace('/'), 900);
       }
     } else {
       const error = await dependencies.auth.signInWithPassword(cleanEmail, password);
       if (error) {
         setErrorMsg(error);
       } else {
-        router.replace('/');
+        const mfa = await checkSignInRequires2FA();
+        if (mfa.required) {
+          setMfaFactorId(mfa.factorId);
+          morphToMode('twoFactor');
+        } else {
+          router.replace('/');
+        }
       }
     }
     setBusy(false);
@@ -234,7 +352,7 @@ export default function AuthScreen() {
         if (result.error.startsWith('PROVIDER_NOT_ENABLED:')) {
           setErrorMsg(
             provider === 'google'
-              ? 'Google Login chưa được bật trên Supabase Dashboard. Hãy dùng nút "✨ Email Magic Link" bên dưới hoặc Email + Mật khẩu!'
+              ? 'Google Login chưa được bật trên Supabase Dashboard. Hãy dùng Email + Mật khẩu, Passkey hoặc Magic Link!'
               : t.auth.providerNotEnabledFacebook
           );
         } else {
@@ -259,8 +377,8 @@ export default function AuthScreen() {
     if (!cleanEmail) {
       setErrorMsg(
         language === 'vi'
-          ? 'Nhập địa chỉ Email ở ô phía trên rồi bấm nút Magic Link để nhận liên kết đăng nhập 1 chạm!'
-          : 'Enter your email address above first to receive a one-tap Magic Link!'
+          ? 'Nhập địa chỉ Email ở ô trên rồi bấm Magic Link để nhận liên kết đăng nhập 1 chạm!'
+          : 'Enter your email address above first!'
       );
       return;
     }
@@ -274,8 +392,8 @@ export default function AuthScreen() {
       } else {
         setInfoMsg(
           language === 'vi'
-            ? `✨ Đã gửi liên kết đăng nhập 1 chạm tới ${cleanEmail}! Hãy mở hộp thư để vào thẳng Papyrus.`
-            : `✨ Magic sign-in link sent to ${cleanEmail}! Check your inbox.`
+            ? `✨ Đã gửi liên kết đăng nhập 1 chạm tới ${cleanEmail}!`
+            : `✨ Magic sign-in link sent to ${cleanEmail}!`
         );
       }
     } finally {
@@ -283,99 +401,87 @@ export default function AuthScreen() {
     }
   };
 
-  const stageMeta = MODE_STAGE_META[mode];
+  const morphMeta = MODE_MORPH_STYLE[mode];
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: '#060A24' }}
+      style={styles.screenRoot}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <AuthCosmicBackdrop mode={mode} reduceMotion={reduceMotion} />
 
-      <Screen transparent>
-        {/* Top Bar: Brand + Language Pill */}
-        <View style={styles.topRow}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <BrandMark size={40} />
-            <View>
-              <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '900', letterSpacing: -0.3 }}>
-                Papyrus
-              </Text>
-              <Text style={{ color: '#94A3B8', fontSize: 11, fontWeight: '600' }}>
-                AI · 3D RPG · Scholar Social
-              </Text>
-            </View>
-          </View>
-
-          <Pressable
-            onPress={toggleLanguage}
-            accessibilityRole="button"
-            accessibilityLabel="Switch language"
-            style={[
-              styles.langPill,
-              { backgroundColor: 'rgba(15, 23, 66, 0.78)', borderColor: 'rgba(165, 180, 252, 0.38)' },
-            ]}
-          >
-            <Text style={{ fontSize: 15 }}>{language === 'vi' ? '🇻🇳' : '🇬🇧'}</Text>
-            <Text style={[typography.caption, { color: '#E0E7FF', fontWeight: '800' }]}>
-              {language === 'vi' ? 'VI' : 'EN'}
-            </Text>
-          </Pressable>
-        </View>
-
-        {/* Clear Open Hero Viewport Showcase so the 3D Sacred Geometry Morphing Stage shines unobstructed! */}
-        <View style={styles.morphStageWindow}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.centeredScroll,
+          {
+            paddingTop: Math.max(spacing.lg, insets.top + 12),
+            paddingBottom: Math.max(spacing.xl, insets.bottom + 16),
+          },
+        ]}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Centered Morphing Modal Card */}
+        <Animated.View
+          style={[
+            styles.modalOuter,
+            {
+              opacity: modalOpacity,
+              transform: [
+                { perspective: 1100 },
+                {
+                  rotateY: modalFlip.interpolate({
+                    inputRange: [-1, 0, 1],
+                    outputRange: ['-22deg', '0deg', '22deg'],
+                  }),
+                },
+                { scale: modalScale },
+              ],
+            },
+          ]}
+        >
           <View
             style={[
-              styles.morphBadgePill,
-              { backgroundColor: stageMeta.glowBg, borderColor: stageMeta.accent },
-            ]}
-          >
-            <Text style={{ color: stageMeta.accent, fontSize: 11, fontWeight: '900', letterSpacing: 0.5 }}>
-              {stageMeta.badge}
-            </Text>
-          </View>
-          <Text style={styles.morphStageHint} numberOfLines={2}>
-            {language === 'vi' ? stageMeta.captionVi : stageMeta.captionEn}
-          </Text>
-        </View>
-
-        {/* Translucent Frosted Glass Morphing Auth Card */}
-        <Animated.View
-          style={{
-            opacity: morphAnim,
-            transform: [
+              styles.modalCard,
               {
-                translateY: morphAnim.interpolate({
-                  inputRange: [0.86, 1],
-                  outputRange: [14, 0],
-                }),
+                borderRadius: morphMeta.radius,
+                borderColor: morphMeta.borderGlow,
               },
-              {
-                scale: morphAnim.interpolate({
-                  inputRange: [0.86, 1],
-                  outputRange: [0.985, 1],
-                }),
-              },
-            ],
-          }}
-        >
-          <Card
-            color="rgba(12, 18, 52, 0.84)"
-            style={[
-              styles.formCard,
-              { borderColor: stageMeta.accent },
               Platform.OS === 'web'
                 ? ({
-                    backdropFilter: 'blur(22px)',
-                    WebkitBackdropFilter: 'blur(22px)',
-                    boxShadow: `0 20px 50px rgba(4, 8, 28, 0.72), 0 0 28px ${stageMeta.glowBg}`,
-                  } as object)
+                    backdropFilter: 'blur(26px)',
+                    WebkitBackdropFilter: 'blur(26px)',
+                    boxShadow: `0 24px 64px rgba(2, 6, 23, 0.78), 0 0 0 1px ${morphMeta.borderGlow}`,
+                    transition: 'border-radius 380ms cubic-bezier(0.22, 1, 0.36, 1), border-color 380ms ease, box-shadow 380ms ease',
+                  } as unknown as ViewStyle)
                 : undefined,
             ]}
           >
-            {/* 3-Tab Segmented Morph Switcher */}
-            {mode !== 'resetPassword' && (
+            {/* Compact Clean Brand Header inside the Centered Modal */}
+            <View style={styles.modalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <BrandMark size={38} />
+                <View>
+                  <Text style={styles.brandName}>Papyrus</Text>
+                  <Text style={styles.brandSub}>Học viện AI & Đấu trường 3D</Text>
+                </View>
+              </View>
+
+              <Pressable
+                onPress={toggleLanguage}
+                accessibilityRole="button"
+                accessibilityLabel="Switch language"
+                style={styles.langPill}
+              >
+                <Text style={{ fontSize: 13 }}>{language === 'vi' ? '🇻🇳' : '🇬🇧'}</Text>
+                <Text style={{ color: '#E2E8F0', fontSize: 11.5, fontWeight: '800' }}>
+                  {language === 'vi' ? 'VI' : 'EN'}
+                </Text>
+              </Pressable>
+            </View>
+
+            {/* 3-Mode Morph Switcher */}
+            {mode !== 'resetPassword' && mode !== 'twoFactor' && (
               <View style={styles.modeSegmented}>
                 {(
                   [
@@ -390,22 +496,22 @@ export default function AuthScreen() {
                       key={tab.id}
                       accessibilityRole="tab"
                       accessibilityState={{ selected: active }}
-                      onPress={() => triggerCardMorph(tab.id)}
+                      onPress={() => morphToMode(tab.id)}
                       style={[
                         styles.modeSegmentBtn,
-                        active && { backgroundColor: stageMeta.accent },
+                        active && { backgroundColor: morphMeta.accent },
                       ]}
                     >
                       <Ionicons
                         name={tab.icon}
                         size={14}
-                        color={active ? '#060A24' : '#CBD5E1'}
+                        color={active ? '#050818' : '#CBD5E1'}
                       />
                       <Text
                         style={{
                           fontSize: 12.5,
                           fontWeight: active ? '900' : '700',
-                          color: active ? '#060A24' : '#CBD5E1',
+                          color: active ? '#050818' : '#CBD5E1',
                         }}
                         numberOfLines={1}
                       >
@@ -417,9 +523,12 @@ export default function AuthScreen() {
               </View>
             )}
 
+            {/* Dynamic Modal Heading */}
             <View>
-              <Text style={[typography.heading, { color: '#FFFFFF', fontSize: 22 }]}>
-                {mode === 'signUp'
+              <Text nativeID="auth-modal-heading" style={styles.headingText}>
+                {mode === 'twoFactor'
+                  ? '🛡️ Xác thực Bảo mật 2 lớp (2FA)'
+                  : mode === 'signUp'
                   ? t.auth.signUpTitle
                   : mode === 'forgot'
                   ? t.auth.forgotTitle
@@ -427,8 +536,10 @@ export default function AuthScreen() {
                   ? t.auth.setNewPasswordTitle
                   : t.auth.signInTitle}
               </Text>
-              <Text style={[typography.caption, { color: '#CBD5E1', marginTop: 4 }]}>
-                {mode === 'signUp'
+              <Text style={styles.subText}>
+                {mode === 'twoFactor'
+                  ? 'Nhập mã gồm 6 chữ số từ ứng dụng Google Authenticator / Authy hoặc mã dự phòng của bạn.'
+                  : mode === 'signUp'
                   ? t.auth.signUpSub
                   : mode === 'forgot'
                   ? t.auth.forgotSub
@@ -439,20 +550,58 @@ export default function AuthScreen() {
             </View>
 
             {errorMsg ? (
-              <View style={[styles.banner, { backgroundColor: 'rgba(239,68,68,0.16)', borderColor: '#EF4444' }]}>
-                <Ionicons name="alert-circle" size={19} color="#FCA5A5" />
+              <View style={[styles.banner, { backgroundColor: 'rgba(239,68,68,0.14)', borderColor: 'rgba(239,68,68,0.6)' }]}>
+                <Ionicons name="alert-circle" size={18} color="#FCA5A5" />
                 <Text style={[typography.caption, { color: '#FECACA', flex: 1 }]}>{errorMsg}</Text>
               </View>
             ) : null}
 
             {infoMsg ? (
-              <View style={[styles.banner, { backgroundColor: 'rgba(16,185,129,0.16)', borderColor: '#10B981' }]}>
-                <Ionicons name="checkmark-circle" size={19} color="#6EE7B7" />
+              <View style={[styles.banner, { backgroundColor: 'rgba(16,185,129,0.14)', borderColor: 'rgba(16,185,129,0.6)' }]}>
+                <Ionicons name="checkmark-circle" size={18} color="#6EE7B7" />
                 <Text style={[typography.caption, { color: '#A7F3D0', flex: 1 }]}>{infoMsg}</Text>
               </View>
             ) : null}
 
-            {mode === 'resetPassword' ? (
+            {/* 2FA TOTP Single-Input Verification Step */}
+            {mode === 'twoFactor' ? (
+              <View style={{ gap: 12 }}>
+                <Text style={{ fontSize: 12, color: '#94A3B8', fontWeight: '600' }}>
+                  Mã xác thực một lần (6 chữ số)
+                </Text>
+                <TextInput
+                  value={otpCode}
+                  onChangeText={(v) => setOtpCode(v.replace(/[^0-9]/g, '').slice(0, 6))}
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  placeholder="000000"
+                  placeholderTextColor="#475569"
+                  style={styles.otpSingleInput}
+                />
+                <Button
+                  variant="reward"
+                  icon="shield-checkmark"
+                  disabled={busy || otpCode.length < 6}
+                  onPress={() => void handleVerify2FA()}
+                  fullWidth
+                >
+                  {busy ? 'Đang kiểm tra…' : 'Xác nhận & Vào Papyrus'}
+                </Button>
+                <Pressable
+                  onPress={() => {
+                    void dependencies.auth.signOut();
+                    useAuthStore.getState().clear();
+                    morphToMode('signIn');
+                  }}
+                  style={{ alignSelf: 'center', paddingVertical: 6 }}
+                >
+                  <Text style={{ color: '#94A3B8', fontSize: 12.5, fontWeight: '700' }}>
+                    ← Quay lại đăng nhập tài khoản khác
+                  </Text>
+                </Pressable>
+              </View>
+            ) : mode === 'resetPassword' ? (
               <>
                 <View style={styles.darkFieldRow}>
                   <Ionicons name="lock-closed-outline" size={18} color="#94A3B8" />
@@ -503,6 +652,7 @@ export default function AuthScreen() {
                     }}
                     autoCapitalize="none"
                     keyboardType="email-address"
+                    autoComplete={mode === 'signIn' ? ('username webauthn' as 'email') : 'email'}
                     placeholder={t.auth.emailPlaceholder}
                     placeholderTextColor="#64748B"
                     style={styles.darkTextInput}
@@ -520,6 +670,8 @@ export default function AuthScreen() {
                           setErrorMsg(null);
                         }}
                         secureTextEntry={!visible}
+                        autoComplete={mode === 'signUp' ? 'new-password' : 'current-password'}
+                        onSubmitEditing={() => void handleSubmit()}
                         placeholder={t.auth.passwordPlaceholder}
                         placeholderTextColor="#64748B"
                         style={styles.darkTextInput}
@@ -529,7 +681,6 @@ export default function AuthScreen() {
                       </Pressable>
                     </View>
 
-                    {/* Live 4-Bar Password Strength Meter on Sign-Up */}
                     {mode === 'signUp' && password.length > 0 && (
                       <View style={{ gap: 4 }}>
                         <View style={{ flexDirection: 'row', gap: 5 }}>
@@ -541,7 +692,7 @@ export default function AuthScreen() {
                                 height: 4,
                                 borderRadius: 2,
                                 backgroundColor:
-                                  lvl <= pwStrength.score ? pwStrength.color : 'rgba(148,163,184,0.25)',
+                                  lvl <= pwStrength.score ? pwStrength.color : 'rgba(148,163,184,0.22)',
                               }}
                             />
                           ))}
@@ -574,11 +725,29 @@ export default function AuthScreen() {
                     : t.auth.signInBtn}
                 </Button>
 
+                {/* Passkey Biometric Sign-In + OAuth + Magic Link */}
                 {mode !== 'forgot' && (
                   <>
+                    {mode === 'signIn' && passkeySupported && (
+                      <Pressable
+                        accessibilityRole="button"
+                        disabled={busy}
+                        onPress={() => void handlePasskeySignIn()}
+                        style={({ pressed }) => [
+                          styles.passkeyBtn,
+                          { opacity: pressed ? 0.84 : 1 },
+                        ]}
+                      >
+                        <Ionicons name="finger-print-outline" size={18} color="#A5B4FC" />
+                        <Text style={{ color: '#E0E7FF', fontSize: 13, fontWeight: '800' }}>
+                          Đăng nhập bằng Passkey (Face ID / Touch ID)
+                        </Text>
+                      </Pressable>
+                    )}
+
                     <View style={styles.divider}>
                       <View style={styles.line} />
-                      <Text style={{ fontSize: 11.5, color: '#94A3B8', fontWeight: '700' }}>
+                      <Text style={{ fontSize: 11.5, color: '#64748B', fontWeight: '700' }}>
                         {t.auth.orContinueWith}
                       </Text>
                       <View style={styles.line} />
@@ -613,116 +782,94 @@ export default function AuthScreen() {
                       accessibilityRole="button"
                       disabled={busy}
                       onPress={() => void handleMagicLink()}
-                      style={styles.magicBtn}
+                      style={styles.magicLinkBtn}
                     >
-                      <Ionicons name="sparkles" size={16} color="#FDE68A" />
-                      <Text style={{ color: '#FDE68A', fontSize: 13, fontWeight: '800' }}>
-                        {language === 'vi'
-                          ? 'Đăng nhập 1 chạm bằng Email Magic Link'
-                          : 'One-tap Email Magic Link'}
-                      </Text>
-                    </Pressable>
-
-                    <Pressable
-                      onPress={() => {
-                        enterGuestMode();
-                        router.replace('/');
-                      }}
-                      style={styles.guest}
-                      accessibilityRole="button"
-                    >
-                      <Ionicons name="compass-outline" size={18} color="#A5B4FC" />
-                      <Text style={{ color: '#C7D2FE', fontSize: 13.5, fontWeight: '800' }}>
-                        {t.auth.guestBtn}
+                      <Ionicons name="sparkles-outline" size={15} color="#FBBF24" />
+                      <Text style={{ color: '#FDE68A', fontSize: 12, fontWeight: '800' }}>
+                        Đăng nhập 1 chạm bằng Email Magic Link
                       </Text>
                     </Pressable>
                   </>
                 )}
               </>
             )}
-          </Card>
-        </Animated.View>
 
-        <View style={styles.bottomLinks}>
-          <Pressable
-            onPress={() => {
-              enterGuestMode();
-              router.replace('/');
-            }}
-            style={styles.back}
-          >
-            <Text style={[typography.caption, { color: '#94A3B8' }]}>
-              {palette ? t.auth.backToDemo : 'Demo'}
-            </Text>
-          </Pressable>
-          <Pressable onPress={() => router.push('/admin')} style={styles.back}>
-            <Text style={[typography.caption, { color: '#FDE68A', fontWeight: '800' }]}>
-              🛡️ Quản trị viên
-            </Text>
-          </Pressable>
-        </View>
-      </Screen>
+            {/* Clean Guest Mode Footer inside Modal */}
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => {
+                enterGuestMode();
+                router.replace('/');
+              }}
+              style={styles.guestFooterBtn}
+            >
+              <Text style={{ color: '#94A3B8', fontSize: 12.5, fontWeight: '700' }}>
+                {language === 'vi' ? 'Trải nghiệm nhanh với tư cách Khách →' : 'Continue as Guest →'}
+              </Text>
+            </Pressable>
+          </View>
+        </Animated.View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  topRow: {
+  screenRoot: {
+    flex: 1,
+    backgroundColor: '#050818',
+  },
+  centeredScroll: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  modalOuter: {
+    width: '100%',
+    maxWidth: 432,
+  },
+  modalCard: {
+    backgroundColor: 'rgba(13, 19, 46, 0.88)',
+    borderWidth: 1.5,
+    padding: spacing.xl,
+    gap: 14,
+  },
+  modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: spacing.xs,
-    width: '100%',
-    maxWidth: 500,
-    alignSelf: 'center',
+    gap: 8,
+  },
+  brandName: {
+    color: '#F8FAFC',
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: -0.3,
+  },
+  brandSub: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontWeight: '600',
   },
   langPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: spacing.md,
+    gap: 5,
+    paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: radii.pill,
-    borderWidth: 1.5,
-  },
-  morphStageWindow: {
-    height: 158,
-    width: '100%',
-    maxWidth: 500,
-    alignSelf: 'center',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    paddingBottom: spacing.md,
-  },
-  morphBadgePill: {
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: radii.pill,
+    backgroundColor: 'rgba(30, 41, 59, 0.65)',
     borderWidth: 1,
-  },
-  morphStageHint: {
-    color: '#E0E7FF',
-    fontSize: 12.5,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginTop: 6,
-    maxWidth: 380,
-  },
-  formCard: {
-    gap: spacing.md,
-    maxWidth: 500,
-    alignSelf: 'center',
-    width: '100%',
-    borderWidth: 1.5,
-    borderRadius: 24,
+    borderColor: 'rgba(148, 163, 184, 0.25)',
   },
   modeSegmented: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(6, 10, 36, 0.75)',
-    borderRadius: radii.pill,
+    backgroundColor: 'rgba(6, 10, 28, 0.72)',
     padding: 4,
+    borderRadius: radii.pill,
     borderWidth: 1,
-    borderColor: 'rgba(148, 163, 184, 0.22)',
+    borderColor: 'rgba(148, 163, 184, 0.16)',
     gap: 4,
   },
   modeSegmentBtn: {
@@ -735,60 +882,99 @@ const styles = StyleSheet.create({
     gap: 5,
     paddingHorizontal: 6,
   },
-  darkFieldRow: {
-    minHeight: 50,
-    borderWidth: 1.5,
-    borderColor: 'rgba(148, 163, 184, 0.3)',
-    backgroundColor: 'rgba(6, 10, 36, 0.65)',
+  headingText: {
+    color: '#F8FAFC',
+    fontSize: 21,
+    fontWeight: '900',
+    letterSpacing: -0.3,
+  },
+  subText: {
+    color: '#94A3B8',
+    fontSize: 12.5,
+    lineHeight: 18,
+    marginTop: 3,
+  },
+  banner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 10,
     borderRadius: radii.sm,
-    paddingHorizontal: spacing.md,
+    borderWidth: 1,
+  },
+  darkFieldRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    minHeight: 50,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    backgroundColor: 'rgba(6, 10, 28, 0.78)',
+    borderWidth: 1,
+    borderColor: 'rgba(148, 163, 184, 0.24)',
   },
   darkTextInput: {
     flex: 1,
+    minWidth: 0,
     color: '#F8FAFC',
     fontSize: 15,
     paddingVertical: 10,
   },
-  banner: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.sm,
-    padding: spacing.sm,
-    borderRadius: radii.sm,
-    borderWidth: 1,
+  otpSingleInput: {
+    minHeight: 54,
+    borderRadius: 14,
+    backgroundColor: 'rgba(6, 10, 28, 0.85)',
+    borderWidth: 1.5,
+    borderColor: '#FBBF24',
+    color: '#F8FAFC',
+    fontSize: 22,
+    fontWeight: '900',
+    letterSpacing: 10,
+    textAlign: 'center',
+    paddingHorizontal: 16,
   },
-  divider: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginVertical: 2 },
-  line: { flex: 1, height: 1, backgroundColor: 'rgba(148, 163, 184, 0.25)' },
-  oauthRow: { flexDirection: 'row', gap: spacing.sm },
-  magicBtn: {
-    minHeight: 44,
-    borderRadius: radii.sm,
+  passkeyBtn: {
+    minHeight: 46,
+    borderRadius: 14,
+    backgroundColor: 'rgba(99, 102, 241, 0.16)',
     borderWidth: 1,
-    borderColor: 'rgba(253, 230, 138, 0.45)',
-    backgroundColor: 'rgba(245, 158, 11, 0.14)',
+    borderColor: 'rgba(129, 140, 248, 0.45)',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: 12,
   },
-  guest: {
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginVertical: 2,
+  },
+  line: {
+    flex: 1,
+    height: 1,
+    backgroundColor: 'rgba(148, 163, 184, 0.18)',
+  },
+  oauthRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  magicLinkBtn: {
     minHeight: 42,
+    borderRadius: 12,
+    backgroundColor: 'rgba(245, 158, 11, 0.11)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.35)',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.xs,
+    gap: 6,
+    paddingHorizontal: 10,
   },
-  bottomLinks: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: spacing.lg,
-    flexWrap: 'wrap',
-    marginTop: spacing.sm,
+  guestFooterBtn: {
+    alignSelf: 'center',
+    paddingTop: 4,
+    paddingVertical: 6,
   },
-  back: { alignSelf: 'center', padding: spacing.sm },
 });

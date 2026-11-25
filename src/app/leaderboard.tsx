@@ -422,7 +422,7 @@ export default function LeaderboardScreen() {
               ))}
             </View>
 
-             {/* Search & Add Friend Bar inside Friends tab */}
+            {/* Search & Add Friend Bar inside Friends tab */}
             {scope === 'friends' && (
               <Card style={{ marginBottom: spacing.md, padding: spacing.md }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: spacing.xs }}>
@@ -657,10 +657,10 @@ export default function LeaderboardScreen() {
                       {item.outcome === 'win'
                         ? `Thắng${item.eloDelta ? ` (+${item.eloDelta})` : ''}`
                         : item.outcome === 'forfeit'
-                        ? 'Bỏ cuộc'
-                        : item.outcome === 'draw'
-                        ? 'Hòa'
-                        : `Thua${item.eloDelta ? ` (${item.eloDelta})` : ''}`}
+                          ? 'Bỏ cuộc'
+                          : item.outcome === 'draw'
+                            ? 'Hòa'
+                            : `Thua${item.eloDelta ? ` (${item.eloDelta})` : ''}`}
                     </Badge>
                   </View>
                 ))}

@@ -1,5 +1,5 @@
 {
-  "version": "2.6.0",
-  "build": "20261125-1700",
-  "notes": "Papyrus v2.6: Scholar Social Community (Threads + Messenger/Zalo + Live Academic Search), Facebook-Style Profile, Per-Account Cloud Sync & 3D Auth Morph"
+  "version": "2.7.0",
+  "build": "20261125-2130",
+  "notes": "Papyrus v2.7: Passkey & 2FA + Active Devices, Facebook 9:16 Photo/Video Stories, Live Real-Time Search Engine, Centered 3D-Morphing Auth Modal, Clean OCR Vision & Dedicated Friends Hub"
 }

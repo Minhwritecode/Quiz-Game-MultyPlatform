@@ -4,6 +4,7 @@ import { AppError, errorMessage, serviceFailure } from '@/core/domain/failure';
 import { supabase } from '@/core/network/supabase';
 import type { AppUser, UserRole } from '@/core/domain/models';
 import { recordKnownUserAccount } from '@/features/profile/data/profileCloudSync';
+import { syncCurrentUserDetailsSignal, toUnpaddedBase64Url, touchCurrentDeviceSession } from './securityCenter';
 import type { AuthProvider, AuthRepository } from '../domain/repository';
 
 const VALID_ROLES = new Set<UserRole>(['user', 'moderator', 'admin', 'superadmin']);
@@ -110,7 +111,13 @@ export async function getCurrentUser(): Promise<AppUser | null> {
 }
 
 export async function signOut(): Promise<void> {
-  if (supabase) await supabase.auth.signOut();
+  if (!supabase) return;
+  // Fast local session wipe + bounded remote revoke so slow network NEVER delays Sign Out!
+  const remoteSignOut = supabase.auth.signOut({ scope: 'local' }).catch(() => undefined);
+  await Promise.race([
+    remoteSignOut,
+    new Promise<void>((resolve) => setTimeout(resolve, 1200)),
+  ]);
 }
 
 export async function signInWithPassword(email: string, password: string): Promise<string | null> {
@@ -227,6 +234,7 @@ export function onAuthStateChange(listener: (user: AppUser | null, event?: strin
     const baseUser = mapUser(session?.user ?? null);
     listener(baseUser, event);
     if (session?.user) {
+      void touchCurrentDeviceSession().catch(() => undefined);
       void hydrateProfileFields(session.user).then((enriched) => {
         if (enriched) listener(enriched, event);
       });
@@ -264,6 +272,13 @@ export async function updateDisplayName(name: string): Promise<AppUser> {
   }
   const user = await hydrateProfileFields(data.user);
   if (!user) throw new AppError('unavailable', 'Vui lòng đăng nhập lại.');
+  const secMeta = (data.user?.user_metadata?.papyrus_security as { rpId?: string } | undefined) ?? {};
+  void syncCurrentUserDetailsSignal(
+    secMeta.rpId || 'papyrus-lyart-five.vercel.app',
+    toUnpaddedBase64Url(user.id),
+    user.email || user.displayName,
+    trimmed
+  );
   return user;
 }
 
