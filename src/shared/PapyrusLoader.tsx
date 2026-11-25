@@ -44,10 +44,19 @@ export const PapyrusMorphLoader = memo(function PapyrusMorphLoader({
 
   useEffect(() => {
     if (reduceMotion) {
-      spinAnim.setValue(0);
+      // Slow down rotation significantly (8s) rather than stopping completely so users still perceive active progress
       morphScale.setValue(1);
-      ringPulse.setValue(0.6);
-      return;
+      ringPulse.setValue(0.65);
+      const slowSpin = Animated.loop(
+        Animated.timing(spinAnim, {
+          toValue: 1,
+          duration: 8000,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        })
+      );
+      slowSpin.start();
+      return () => slowSpin.stop();
     }
     const spinLoop = Animated.loop(
       Animated.timing(spinAnim, {

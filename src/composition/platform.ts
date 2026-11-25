@@ -27,6 +27,7 @@ export {
 export { pickRichSourceDocument } from '@/features/scan-ocr/data/documentSource';
 export { checkWebAppVersionUpdate } from '@/features/release/data/webVersionCheck';
 export {
+  broadcastAdminNotificationToCloud,
   dispatchExternalNotification,
   fetchCloudGiftsForCurrentUser,
   getExternalNotificationPermission,
@@ -48,3 +49,10 @@ export {
   resolveHistoryConflict,
   type ChatConflictResolution,
 } from '@/features/assistant/data/historySync';
+export {
+  broadcastCommunityEvent,
+  fetchDailyUpdatedKnowledgeFeed,
+  searchAcademicKnowledgeLive,
+  subscribeCommunityRealtime,
+  type CommunityRealtimeEvent,
+} from '@/features/community/data/communityRealtimeAndSearch';

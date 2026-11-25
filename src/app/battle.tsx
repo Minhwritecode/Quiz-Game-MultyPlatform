@@ -311,46 +311,6 @@ export default function BattleScreen() {
     <Screen bottomNav>
       <TopBar title={t.battle.title} />
       <GameEnvironment gameMode="battle" enable3DToggle={false}>
-        {/* Instant Kahoot Party Live Banner (Zero-Login Join for Classrooms & Friends!) */}
-        {!roomId && !turnPvpActive && (
-          <Card color="#1E1B4B" style={{ marginBottom: spacing.md, borderColor: '#818CF8', borderWidth: 1.5 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <IconTile icon="flash" tint="reward" />
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Badge tone="reward">⚡ KAHOOT PARTY LIVE · KHÔNG CẦN ĐĂNG NHẬP</Badge>
-                <Text style={[typography.title, { color: '#FFFFFF', marginTop: 6 }]}>
-                  Chơi Nhóm Tức Thì Bằng Mã PIN & Biệt Danh
-                </Text>
-                <Text style={[typography.caption, { color: '#C7D2FE', marginTop: 2 }]}>
-                  Bạn bè chỉ cần nhập mã PIN 6 ký tự + Biệt danh là vào đấu bảng màu Tam giác / Thoi / Tròn / Vuông ngay!
-                </Text>
-              </View>
-            </View>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: spacing.md }}>
-              <Button
-                variant="reward"
-                icon="megaphone-outline"
-                onPress={async () => {
-                  const sourcePool = localQuestionSets.length > 0 ? localQuestionSets : seedQuestionSets;
-                  const firstSet = sourcePool[0];
-                  if (!firstSet) return;
-                  const created = await roomApi.create(firstSet.id, user?.displayName || 'Chủ phòng');
-                  router.push({ pathname: '/multiplayer/host/[roomCode]', params: { roomCode: created.roomCode } });
-                }}
-              >
-                Mở Phòng Kahoot Nhanh
-              </Button>
-              <Button
-                variant="secondary"
-                icon="enter-outline"
-                onPress={() => router.push('/multiplayer/join')}
-              >
-                Nhập PIN Vào Chơi Ngay
-              </Button>
-            </View>
-          </Card>
-        )}
-
         {/* Connection & 30s Seat-Hold Status Banner */}
         {roomId && connectionBanner !== 'connected' && (
           <View
@@ -539,45 +499,25 @@ export default function BattleScreen() {
           />
         ) : null}
 
-        {/* Not Signed In */}
-        {!turnPvpActive && arenaTab === 'rooms' && !user && (
-          <Card style={styles.notAuthCard}>
-            <IconTile icon="lock-closed-outline" tint="primary" />
-            <Text style={[typography.title, { color: palette.ink, marginTop: spacing.md }]}>
-              {language === 'vi' ? 'Đăng nhập để vào phòng đấu' : 'Sign in to join battles'}
-            </Text>
-            <Text style={[typography.body, { color: palette.inkMuted, textAlign: 'center', marginTop: 4 }]}>
-              {language === 'vi'
-                ? 'Phòng đấu thời gian thực cần tài khoản để đồng bộ bảng điểm. Bạn vẫn có thể chơi ngay các chế độ 3D.'
-                : 'Realtime rooms require sign-in to record scores. You can still play 3D Arena modes right away.'}
-            </Text>
-            <View style={{ marginTop: spacing.lg, width: '100%', gap: spacing.sm }}>
-              <Button icon="log-in-outline" onPress={() => router.push('/auth')} fullWidth>
-                {language === 'vi' ? 'Đăng nhập ngay' : 'Sign in now'}
-              </Button>
-              <Button variant="secondary" icon="cube-outline" onPress={() => setArenaTab('arcade')} fullWidth>
-                {language === 'vi' ? 'Mở các chế độ Đấu trường 3D' : 'Open 3D Arena Modes'}
-              </Button>
-            </View>
-          </Card>
-        )}
-
-        {/* Lobby - Join or Create */}
-        {!turnPvpActive && arenaTab === 'rooms' && user && !roomId && (
+        {/* Unified Smart Room PIN Hub (Works for Guests via Kahoot Live AND Signed-in Colosseum Rooms — Zero Duplicate PIN Boxes!) */}
+        {!turnPvpActive && arenaTab === 'rooms' && !roomId && (
           <View style={styles.lobbySections}>
-            {/* Join Room + Camera QR Scanner */}
-            <Card style={styles.cardSection}>
-              <Text style={[typography.title, { color: palette.ink }]}>{t.battle.enterPin}</Text>
+            <Card style={[styles.cardSection, { borderColor: palette.indigoBorder, borderWidth: 1.5 }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                <Badge tone="reward">⚡ CỔNG MÃ PIN HỢP NHẤT · QR & 6 KÝ TỰ</Badge>
+                {!user && <Badge tone="primary">Chơi ngay không cần đăng nhập</Badge>}
+              </View>
+              <Text style={[typography.title, { color: palette.ink, marginTop: 8 }]}>
+                Tham gia Phòng Đấu bằng Mã PIN hoặc Quét QR
+              </Text>
               <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
-                {language === 'vi'
-                  ? 'Quét mã QR hoặc nhập mã PIN 6 ký tự do bạn bè chia sẻ để tham gia ngay:'
-                  : 'Scan QR or enter the 6-character room PIN code shared by your host:'}
+                Chỉ cần nhập duy nhất 1 mã PIN 6 ký tự — hệ thống tự động nhận diện Phòng Kahoot Live (Biệt danh nhanh) hoặc Phòng Colosseum tính điểm ELO!
               </Text>
               <ScanRoomQr onCode={setCode} />
               <TextInput
                 accessibilityLabel="Room code"
                 value={code}
-                onChangeText={setCode}
+                onChangeText={(v) => setCode(v.replace(/[^a-z0-9]/gi, '').slice(0, 6).toUpperCase())}
                 autoCapitalize="characters"
                 maxLength={6}
                 placeholder={t.battle.pinPlaceholder}
@@ -587,23 +527,80 @@ export default function BattleScreen() {
                   { color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paper },
                 ]}
               />
-              <Button
-                icon="arrow-forward"
-                disabled={busy || !/^[a-z0-9]{6}$/i.test(code.trim())}
-                onPress={() =>
-                  void run(async () => {
-                    const room = await dependencies.rooms.join(code.trim().toUpperCase());
-                    await enter(room.id);
-                  })
-                }
-                fullWidth
-              >
-                {t.battle.joinRoom}
-              </Button>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                <View style={{ flex: 1, minWidth: 150 }}>
+                  <Button
+                    icon="flash-outline"
+                    variant="reward"
+                    disabled={code.trim().length < 4}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/multiplayer/join',
+                        params: { room: code.trim().toUpperCase() },
+                      })
+                    }
+                    fullWidth
+                  >
+                    Vào Phòng Kahoot Live
+                  </Button>
+                </View>
+                {user ? (
+                  <View style={{ flex: 1, minWidth: 150 }}>
+                    <Button
+                      icon="shield-checkmark-outline"
+                      disabled={busy || !/^[a-z0-9]{6}$/i.test(code.trim())}
+                      onPress={() =>
+                        void run(async () => {
+                          const room = await dependencies.rooms.join(code.trim().toUpperCase());
+                          await enter(room.id);
+                        })
+                      }
+                      fullWidth
+                    >
+                      Vào Phòng Colosseum
+                    </Button>
+                  </View>
+                ) : null}
+              </View>
+
+              <View style={{ borderTopWidth: 1, borderTopColor: palette.paperMuted, marginTop: spacing.md, paddingTop: spacing.sm, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                <Text style={[typography.caption, { color: palette.inkMuted, flex: 1 }]}>
+                  Muốn làm Chủ phòng phát mã PIN/QR cho cả lớp vào chơi ngay?
+                </Text>
+                <Button
+                  variant="secondary"
+                  icon="megaphone-outline"
+                  onPress={async () => {
+                    const sourcePool = localQuestionSets.length > 0 ? localQuestionSets : seedQuestionSets;
+                    const firstSet = sourcePool[0];
+                    if (!firstSet) return;
+                    const created = await roomApi.create(firstSet.id, user?.displayName || 'Chủ phòng');
+                    router.push({ pathname: '/multiplayer/host/[roomCode]', params: { roomCode: created.roomCode } });
+                  }}
+                >
+                  Mở Kahoot 1 Chạm
+                </Button>
+              </View>
             </Card>
 
-            {/* Create Room */}
-            <Card style={styles.cardSection}>
+            {!user ? (
+              <Card style={styles.notAuthCard}>
+                <IconTile icon="lock-closed-outline" tint="primary" />
+                <Text style={[typography.title, { color: palette.ink, marginTop: spacing.md }]}>
+                  Đăng nhập để tạo Phòng Colosseum Cloud (2–12 người)
+                </Text>
+                <Text style={[typography.caption, { color: palette.inkMuted, textAlign: 'center', marginTop: 4 }]}>
+                  Bạn đã có thể vào và mở Phòng Kahoot Live ở ngay thẻ trên! Đăng nhập thêm nếu muốn lưu lịch sử trận đấu & bảng điểm ELO.
+                </Text>
+                <View style={{ marginTop: spacing.md, width: '100%' }}>
+                  <Button icon="log-in-outline" onPress={() => router.push('/auth')} fullWidth>
+                    {language === 'vi' ? 'Đăng nhập tài khoản' : 'Sign in'}
+                  </Button>
+                </View>
+              </Card>
+            ) : (
+              /* Create Cloud Colosseum Room */
+              <Card style={styles.cardSection}>
               <Text style={[typography.title, { color: palette.ink }]}>{t.battle.createRoom}</Text>
               <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
                 {language === 'vi'
@@ -833,6 +830,7 @@ export default function BattleScreen() {
                 </View>
               )}
             </Card>
+            )}
           </View>
         )}
 

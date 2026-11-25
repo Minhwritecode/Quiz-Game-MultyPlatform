@@ -9,22 +9,47 @@ import {
 import type { QuestionSet, SourceDocument } from '@/core/domain/models';
 import { computeNextElo, ELO_INITIAL, type EloMatchOutcome } from '@/features/room-battle/domain/elo';
 
+export interface PerUserStatsSlice {
+  gamesPlayed: number;
+  totalScore: number;
+  bestScore: number;
+  wins: number;
+  eloRating: number;
+  eloPeak: number;
+  lastEloDelta: number;
+  categoryElos: Record<string, number>;
+}
+
+const DEFAULT_USER_STATS: PerUserStatsSlice = {
+  gamesPlayed: 0,
+  totalScore: 0,
+  bestScore: 0,
+  wins: 0,
+  eloRating: ELO_INITIAL,
+  eloPeak: ELO_INITIAL,
+  lastEloDelta: 0,
+  categoryElos: {},
+};
+
 type PapyrusState = {
+  activeUserId: string;
+  statsByUser: Record<string, PerUserStatsSlice>;
   questionSets: QuestionSet[];
   deletedSetIds: string[];
   sourceDocument: SourceDocument | null;
   hydrated: boolean;
   syncMessage: string;
-  setSyncMessage: (message:string) => void;
-  replaceQuestionSets: (sets:QuestionSet[]) => void;
+  setSyncMessage: (message: string) => void;
+  replaceQuestionSets: (sets: QuestionSet[]) => void;
   resetAccountView: () => void;
+  switchAccountScope: (userId: string) => void;
   haptics: boolean;
   reduceMotion: boolean;
   language: 'vi' | 'en';
   theme: 'system' | 'light' | 'dark';
   render3DMode: boolean;
   bgmMuted: boolean;
-  /** Persistent game stats & competitive ELO rating */
+  /** Per-account game stats & competitive ELO rating */
   gamesPlayed: number;
   totalScore: number;
   bestScore: number;
@@ -34,6 +59,7 @@ type PapyrusState = {
   lastEloDelta: number;
   categoryElos: Record<string, number>;
   recordGameResult: (score: number, isWin: boolean, opponentElo?: number) => void;
+  addBonusXp: (xp: number) => void;
   recordCategoryElo: (categoryId: string, outcome: EloMatchOutcome, opponentElo: number, rated: boolean) => number;
   hydrateCloudProfile: () => Promise<void>;
   setTheme: (theme: 'system' | 'light' | 'dark') => void;
@@ -54,6 +80,8 @@ type PapyrusState = {
 export const usePapyrusStore = create<PapyrusState>()(
   persist(
     (set, get) => ({
+      activeUserId: 'guest',
+      statsByUser: {},
       questionSets: seedQuestionSets,
       deletedSetIds: [],
       sourceDocument: null,
@@ -61,21 +89,41 @@ export const usePapyrusStore = create<PapyrusState>()(
       syncMessage: '',
       setSyncMessage: (syncMessage) => set({ syncMessage }),
       replaceQuestionSets: (questionSets) => set({ questionSets, hydrated: true }),
-      resetAccountView: () => set({ questionSets: [], sourceDocument: null, hydrated: false, syncMessage: '' }),
+      resetAccountView: () => set({ questionSets: seedQuestionSets, sourceDocument: null, hydrated: false, syncMessage: '' }),
+      switchAccountScope: (nextUserId) => {
+        const cleanId = nextUserId || 'guest';
+        const state = get();
+        if (state.activeUserId === cleanId) return;
+
+        // Save current user's stats slice before switching
+        const currentSlice: PerUserStatsSlice = {
+          gamesPlayed: state.gamesPlayed,
+          totalScore: state.totalScore,
+          bestScore: state.bestScore,
+          wins: state.wins,
+          eloRating: state.eloRating,
+          eloPeak: state.eloPeak,
+          lastEloDelta: state.lastEloDelta,
+          categoryElos: state.categoryElos,
+        };
+        const updatedMap = {
+          ...state.statsByUser,
+          [state.activeUserId]: currentSlice,
+        };
+        const targetSlice = updatedMap[cleanId] ?? DEFAULT_USER_STATS;
+        set({
+          activeUserId: cleanId,
+          statsByUser: updatedMap,
+          ...targetSlice,
+        });
+      },
       haptics: true,
       reduceMotion: false,
       language: 'vi',
       theme: 'system',
       render3DMode: false,
       bgmMuted: false,
-      gamesPlayed: 0,
-      totalScore: 0,
-      bestScore: 0,
-      wins: 0,
-      eloRating: ELO_INITIAL,
-      eloPeak: ELO_INITIAL,
-      lastEloDelta: 0,
-      categoryElos: {},
+      ...DEFAULT_USER_STATS,
       recordGameResult: (score, isWin, opponentElo) => {
         set((state) => {
           const opp = opponentElo ?? state.eloRating;
@@ -86,23 +134,65 @@ export const usePapyrusStore = create<PapyrusState>()(
             state.gamesPlayed
           );
           const nextGames = state.gamesPlayed + 1;
-          const nextTotal = state.totalScore + score;
+          const nextTotal = state.totalScore + Math.max(0, score);
           const nextBest = Math.max(state.bestScore, score);
           const nextWins = state.wins + (isWin ? 1 : 0);
-          void syncUserProgressToCloud({
-            gamesPlayed: nextGames,
-            totalScore: nextTotal,
-            bestScore: nextBest,
-            wins: nextWins,
-          });
-          return {
+          const nextPeak = Math.max(state.eloPeak, nextRating);
+
+          const nextSlice: PerUserStatsSlice = {
             gamesPlayed: nextGames,
             totalScore: nextTotal,
             bestScore: nextBest,
             wins: nextWins,
             eloRating: nextRating,
-            eloPeak: Math.max(state.eloPeak, nextRating),
+            eloPeak: nextPeak,
             lastEloDelta: delta,
+            categoryElos: state.categoryElos,
+          };
+
+          if (state.activeUserId !== 'guest') {
+            void syncUserProgressToCloud({
+              gamesPlayed: nextGames,
+              totalScore: nextTotal,
+              bestScore: nextBest,
+              wins: nextWins,
+              eloRating: nextRating,
+              eloPeak: nextPeak,
+            });
+          }
+
+          return {
+            ...nextSlice,
+            statsByUser: {
+              ...state.statsByUser,
+              [state.activeUserId]: nextSlice,
+            },
+          };
+        });
+      },
+      addBonusXp: (xp) => {
+        if (xp <= 0) return;
+        set((state) => {
+          const nextTotal = state.totalScore + Math.round(xp);
+          const nextSlice: PerUserStatsSlice = {
+            gamesPlayed: state.gamesPlayed,
+            totalScore: nextTotal,
+            bestScore: state.bestScore,
+            wins: state.wins,
+            eloRating: state.eloRating,
+            eloPeak: state.eloPeak,
+            lastEloDelta: state.lastEloDelta,
+            categoryElos: state.categoryElos,
+          };
+          if (state.activeUserId !== 'guest') {
+            void syncUserProgressToCloud({ totalScore: nextTotal });
+          }
+          return {
+            totalScore: nextTotal,
+            statsByUser: {
+              ...state.statsByUser,
+              [state.activeUserId]: nextSlice,
+            },
           };
         });
       },
@@ -111,26 +201,52 @@ export const usePapyrusStore = create<PapyrusState>()(
         const state = get();
         const current = state.categoryElos[categoryId] ?? state.eloRating;
         const { nextRating, delta } = computeNextElo(current, opponentElo, outcome, state.gamesPlayed);
-        set({
-          categoryElos: { ...state.categoryElos, [categoryId]: nextRating },
+        const nextCatElos = { ...state.categoryElos, [categoryId]: nextRating };
+        const nextPeak = Math.max(state.eloPeak, nextRating);
+        const nextSlice: PerUserStatsSlice = {
+          gamesPlayed: state.gamesPlayed,
+          totalScore: state.totalScore,
+          bestScore: state.bestScore,
+          wins: state.wins,
           eloRating: nextRating,
-          eloPeak: Math.max(state.eloPeak, nextRating),
+          eloPeak: nextPeak,
           lastEloDelta: delta,
+          categoryElos: nextCatElos,
+        };
+        set({
+          ...nextSlice,
+          statsByUser: {
+            ...state.statsByUser,
+            [state.activeUserId]: nextSlice,
+          },
         });
+        if (state.activeUserId !== 'guest') {
+          void syncUserProgressToCloud({ eloRating: nextRating, eloPeak: nextPeak });
+        }
         return delta;
       },
       hydrateCloudProfile: async () => {
         const snapshot = await fetchCloudProfileSnapshot();
         if (!snapshot) return;
-        set((state) => ({
-          eloRating: snapshot.eloRating,
-          eloPeak: Math.max(state.eloPeak, snapshot.eloPeak),
-          gamesPlayed: Math.max(state.gamesPlayed, snapshot.gamesPlayed),
-          totalScore: Math.max(state.totalScore, snapshot.totalScore),
-          bestScore: Math.max(state.bestScore, snapshot.bestScore),
-          wins: Math.max(state.wins, snapshot.wins),
-          categoryElos: { ...state.categoryElos, ...snapshot.categoryElos },
-        }));
+        set((state) => {
+          const nextSlice: PerUserStatsSlice = {
+            eloRating: snapshot.eloRating,
+            eloPeak: Math.max(state.eloPeak, snapshot.eloPeak),
+            gamesPlayed: Math.max(state.gamesPlayed, snapshot.gamesPlayed),
+            totalScore: Math.max(state.totalScore, snapshot.totalScore),
+            bestScore: Math.max(state.bestScore, snapshot.bestScore),
+            wins: Math.max(state.wins, snapshot.wins),
+            lastEloDelta: state.lastEloDelta,
+            categoryElos: { ...state.categoryElos, ...snapshot.categoryElos },
+          };
+          return {
+            ...nextSlice,
+            statsByUser: {
+              ...state.statsByUser,
+              [state.activeUserId]: nextSlice,
+            },
+          };
+        });
       },
       setTheme: (theme) => set({ theme }),
       hydrateQuestionSets: async (load) => {
@@ -171,9 +287,11 @@ export const usePapyrusStore = create<PapyrusState>()(
       toggleBgmMuted: () => set((state) => ({ bgmMuted: !state.bgmMuted })),
     }),
     {
-      name: 'papyrus.preferences',
+      name: 'papyrus.preferences.v2',
       storage: createJSONStorage(() => preferenceStorage),
       partialize: (state) => ({
+        activeUserId: state.activeUserId,
+        statsByUser: state.statsByUser,
         deletedSetIds: state.deletedSetIds,
         theme: state.theme,
         language: state.language,

@@ -1,9 +1,20 @@
 import { errorMessage } from '@/core/domain/failure';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Linking, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { BrandMark, Button, Card, Screen, SmoothReveal, usePalette } from '@/shared/ui';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Animated,
+  Easing,
+  KeyboardAvoidingView,
+  Linking,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import { BrandMark, Button, Card, Screen, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { dependencies } from '@/composition/dependencies';
 import { sendMagicLinkEmail } from '@/composition/platform';
@@ -14,6 +25,53 @@ import { useStreakStore } from '@/features/streak/state/useStreakStore';
 import { AuthCosmicBackdrop } from '@/shared/visuals/AuthCosmicBackdrop';
 
 type AuthMode = 'signIn' | 'signUp' | 'forgot' | 'resetPassword';
+
+const MODE_STAGE_META: Record<
+  AuthMode,
+  { badge: string; accent: string; glowBg: string; captionVi: string; captionEn: string }
+> = {
+  signIn: {
+    badge: '🔓 CỔNG TINH VÂN HỌC VIỆN',
+    accent: '#818CF8',
+    glowBg: 'rgba(99, 102, 241, 0.18)',
+    captionVi: 'Mở khóa kho bộ đề, chuỗi Streak & tiến trình 3D riêng của bạn',
+    captionEn: 'Unlock your personal library, streak, and 3D arena rank',
+  },
+  signUp: {
+    badge: '✨ VƯƠNG MIỆN KHỞI TẠO HỌC GIẢ',
+    accent: '#34D399',
+    glowBg: 'rgba(16, 185, 129, 0.18)',
+    captionVi: 'Khởi tạo hồ sơ đám mây độc lập · Nhận ngay +50 XP Tân Học Giả',
+    captionEn: 'Create your cloud scholar profile & earn +50 starter XP',
+  },
+  forgot: {
+    badge: '🧭 LA BÀN KHÔI PHỤC TÀI KHOẢN',
+    accent: '#38BDF8',
+    glowBg: 'rgba(6, 182, 212, 0.18)',
+    captionVi: 'Gửi liên kết đặt lại mật khẩu bảo mật trực tiếp tới hộp thư của bạn',
+    captionEn: 'Receive a secure password recovery link in your inbox',
+  },
+  resetPassword: {
+    badge: '🛡️ THIẾT LẬP MẬT KHẨU MỚI',
+    accent: '#C084FC',
+    glowBg: 'rgba(168, 85, 247, 0.18)',
+    captionVi: 'Hoàn tất đặt mật khẩu mới để quay lại Học viện Papyrus',
+    captionEn: 'Set your new password to re-enter Papyrus Academy',
+  },
+};
+
+function computePasswordStrength(pw: string): { score: number; label: string; color: string } {
+  if (!pw) return { score: 0, label: 'Chưa nhập', color: '#64748B' };
+  let s = 0;
+  if (pw.length >= 6) s++;
+  if (pw.length >= 9) s++;
+  if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) s++;
+  if (/\d|[^A-Za-z0-9]/.test(pw)) s++;
+  if (s <= 1) return { score: 1, label: 'Yếu (nên ≥ 8 ký tự)', color: '#EF4444' };
+  if (s === 2) return { score: 2, label: 'Khá an toàn', color: '#F59E0B' };
+  if (s === 3) return { score: 3, label: 'Mạnh', color: '#10B981' };
+  return { score: 4, label: 'Rất mạnh · Tuyệt vời', color: '#34D399' };
+}
 
 export default function AuthScreen() {
   const router = useRouter();
@@ -34,13 +92,32 @@ export default function AuthScreen() {
   const enterGuestMode = useAuthStore((state) => state.enterGuestMode);
   const reduceMotion = usePapyrusStore((state) => state.reduceMotion);
 
+  // Smooth compositor-thread morph animation on card & stage whenever mode switches
+  const morphAnim = useRef(new Animated.Value(1)).current;
+  const triggerCardMorph = (next: AuthMode) => {
+    if (next === mode) return;
+    setErrorMsg(null);
+    setInfoMsg(null);
+    if (reduceMotion) {
+      setMode(next);
+      return;
+    }
+    morphAnim.setValue(0.86);
+    setMode(next);
+    Animated.timing(morphAnim, {
+      toValue: 1,
+      duration: 320,
+      easing: Easing.bezier(0.22, 1, 0.36, 1),
+      useNativeDriver: true,
+    }).start();
+  };
+
   useEffect(() => {
     if (user && mode !== 'resetPassword') {
       router.replace('/');
     }
   }, [user, mode, router]);
 
-  // Check for Password Recovery event or recovery token in URL
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const hash = window.location.hash;
@@ -63,12 +140,16 @@ export default function AuthScreen() {
     };
   }, [router]);
 
+  const pwStrength = useMemo(
+    () => computePasswordStrength(mode === 'resetPassword' ? newPassword : password),
+    [mode, newPassword, password]
+  );
+
   const handleSubmit = async () => {
     setErrorMsg(null);
     setInfoMsg(null);
     setBusy(true);
 
-    // 1. Password Recovery: Set New Password Mode
     if (mode === 'resetPassword') {
       if (!newPassword || newPassword.length < 6) {
         setErrorMsg(t.auth.passwordTooShort);
@@ -86,9 +167,7 @@ export default function AuthScreen() {
         setErrorMsg(err);
       } else {
         setInfoMsg(t.auth.passwordUpdatedSuccess);
-        setTimeout(() => {
-          router.replace('/');
-        }, 1500);
+        setTimeout(() => router.replace('/'), 1400);
       }
       setBusy(false);
       return;
@@ -96,7 +175,6 @@ export default function AuthScreen() {
 
     const cleanEmail = email.trim();
 
-    // 2. Forgot Password Request Mode
     if (mode === 'forgot') {
       if (!cleanEmail) {
         setErrorMsg(t.auth.missingEmail);
@@ -113,7 +191,6 @@ export default function AuthScreen() {
       return;
     }
 
-    // 3. Sign In or Sign Up Mode
     if (!cleanEmail || !password) {
       setErrorMsg(t.auth.missingFields);
       setBusy(false);
@@ -131,16 +208,16 @@ export default function AuthScreen() {
       } else if (result) {
         setErrorMsg(result);
       } else {
+        usePapyrusStore.getState().addBonusXp(50);
         useStreakStore.getState().recordActivity('daily_checkin');
         setInfoMsg(t.auth.signUpSuccess);
-        setTimeout(() => router.replace('/'), 1200);
+        setTimeout(() => router.replace('/'), 1000);
       }
     } else {
       const error = await dependencies.auth.signInWithPassword(cleanEmail, password);
       if (error) {
         setErrorMsg(error);
       } else {
-        useStreakStore.getState().refreshStreakStatus();
         router.replace('/');
       }
     }
@@ -157,7 +234,7 @@ export default function AuthScreen() {
         if (result.error.startsWith('PROVIDER_NOT_ENABLED:')) {
           setErrorMsg(
             provider === 'google'
-              ? 'Đăng nhập Google hiện chưa bật trên Supabase Dashboard (Authentication → Providers → Google). Bạn có thể dùng "Đăng nhập nhanh qua Email Magic Link" bên dưới hoặc Email + Mật khẩu ngay lúc này!'
+              ? 'Google Login chưa được bật trên Supabase Dashboard. Hãy dùng nút "✨ Email Magic Link" bên dưới hoặc Email + Mật khẩu!'
               : t.auth.providerNotEnabledFacebook
           );
         } else {
@@ -197,7 +274,7 @@ export default function AuthScreen() {
       } else {
         setInfoMsg(
           language === 'vi'
-            ? `✨ Đã gửi liên kết đăng nhập 1 chạm tới ${cleanEmail}! Hãy mở hộp thư và chạm vào liên kết để vào thẳng Papyrus.`
+            ? `✨ Đã gửi liên kết đăng nhập 1 chạm tới ${cleanEmail}! Hãy mở hộp thư để vào thẳng Papyrus.`
             : `✨ Magic sign-in link sent to ${cleanEmail}! Check your inbox.`
         );
       }
@@ -206,335 +283,366 @@ export default function AuthScreen() {
     }
   };
 
-  const switchMode = (next: AuthMode) => {
-    setErrorMsg(null);
-    setInfoMsg(null);
-    setMode(next);
-  };
+  const stageMeta = MODE_STAGE_META[mode];
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: '#060A24' }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: '#060A24' }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
       <AuthCosmicBackdrop mode={mode} reduceMotion={reduceMotion} />
+
       <Screen transparent>
-        {/* Top Header with Language Switcher */}
-        <View style={styles.topLangRow}>
+        {/* Top Bar: Brand + Language Pill */}
+        <View style={styles.topRow}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <BrandMark size={40} />
+            <View>
+              <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '900', letterSpacing: -0.3 }}>
+                Papyrus
+              </Text>
+              <Text style={{ color: '#94A3B8', fontSize: 11, fontWeight: '600' }}>
+                AI · 3D RPG · Scholar Social
+              </Text>
+            </View>
+          </View>
+
           <Pressable
             onPress={toggleLanguage}
             accessibilityRole="button"
             accessibilityLabel="Switch language"
             style={[
               styles.langPill,
-              { backgroundColor: 'rgba(15, 23, 66, 0.72)', borderColor: 'rgba(165, 180, 252, 0.35)' },
+              { backgroundColor: 'rgba(15, 23, 66, 0.78)', borderColor: 'rgba(165, 180, 252, 0.38)' },
             ]}
           >
-            <Text style={{ fontSize: 16 }}>{language === 'vi' ? '🇻🇳' : '🇬🇧'}</Text>
+            <Text style={{ fontSize: 15 }}>{language === 'vi' ? '🇻🇳' : '🇬🇧'}</Text>
             <Text style={[typography.caption, { color: '#E0E7FF', fontWeight: '800' }]}>
-              {language === 'vi' ? 'Tiếng Việt' : 'English'}
+              {language === 'vi' ? 'VI' : 'EN'}
             </Text>
           </Pressable>
         </View>
 
-        {/* Brand Header */}
-        <SmoothReveal>
-          <View style={styles.brand}>
-            <BrandMark size={68} />
-            <Text style={[typography.display, { color: '#FFFFFF', marginTop: spacing.md }]}>
-              Papyrus
-            </Text>
-            <Text style={[typography.body, { color: '#C7D2FE', marginTop: 2 }]}>
-              From Ancient Scroll to AI Power.
+        {/* Clear Open Hero Viewport Showcase so the 3D Sacred Geometry Morphing Stage shines unobstructed! */}
+        <View style={styles.morphStageWindow}>
+          <View
+            style={[
+              styles.morphBadgePill,
+              { backgroundColor: stageMeta.glowBg, borderColor: stageMeta.accent },
+            ]}
+          >
+            <Text style={{ color: stageMeta.accent, fontSize: 11, fontWeight: '900', letterSpacing: 0.5 }}>
+              {stageMeta.badge}
             </Text>
           </View>
-        </SmoothReveal>
+          <Text style={styles.morphStageHint} numberOfLines={2}>
+            {language === 'vi' ? stageMeta.captionVi : stageMeta.captionEn}
+          </Text>
+        </View>
 
-        {/* Main Form Card — re-animates smoothly alongside Three.js 3D Constellation Morph on mode switch */}
-        <SmoothReveal key={mode} delay={30}>
-        <Card
-          style={[
-            styles.formCard,
-            Platform.OS === 'web'
-              ? ({
-                  backdropFilter: 'blur(20px)',
-                  WebkitBackdropFilter: 'blur(20px)',
-                } as object)
-              : undefined,
-          ]}
+        {/* Translucent Frosted Glass Morphing Auth Card */}
+        <Animated.View
+          style={{
+            opacity: morphAnim,
+            transform: [
+              {
+                translateY: morphAnim.interpolate({
+                  inputRange: [0.86, 1],
+                  outputRange: [14, 0],
+                }),
+              },
+              {
+                scale: morphAnim.interpolate({
+                  inputRange: [0.86, 1],
+                  outputRange: [0.985, 1],
+                }),
+              },
+            ],
+          }}
         >
-          <Text style={[typography.heading, { color: palette.ink }]}>
-            {mode === 'signUp'
-              ? t.auth.signUpTitle
-              : mode === 'forgot'
-              ? t.auth.forgotTitle
-              : mode === 'resetPassword'
-              ? t.auth.setNewPasswordTitle
-              : t.auth.signInTitle}
-          </Text>
-          <Text style={[typography.body, { color: palette.inkMuted, marginTop: spacing.xs }]}>
-            {mode === 'signUp'
-              ? t.auth.signUpSub
-              : mode === 'forgot'
-              ? t.auth.forgotSub
-              : mode === 'resetPassword'
-              ? t.auth.setNewPasswordSub
-              : t.auth.signInSub}
-          </Text>
+          <Card
+            color="rgba(12, 18, 52, 0.84)"
+            style={[
+              styles.formCard,
+              { borderColor: stageMeta.accent },
+              Platform.OS === 'web'
+                ? ({
+                    backdropFilter: 'blur(22px)',
+                    WebkitBackdropFilter: 'blur(22px)',
+                    boxShadow: `0 20px 50px rgba(4, 8, 28, 0.72), 0 0 28px ${stageMeta.glowBg}`,
+                  } as object)
+                : undefined,
+            ]}
+          >
+            {/* 3-Tab Segmented Morph Switcher */}
+            {mode !== 'resetPassword' && (
+              <View style={styles.modeSegmented}>
+                {(
+                  [
+                    { id: 'signIn', label: language === 'vi' ? 'Đăng nhập' : 'Sign In', icon: 'log-in-outline' },
+                    { id: 'signUp', label: language === 'vi' ? 'Đăng ký' : 'Sign Up', icon: 'person-add-outline' },
+                    { id: 'forgot', label: language === 'vi' ? 'Quên MK' : 'Recover', icon: 'key-outline' },
+                  ] as const
+                ).map((tab) => {
+                  const active = mode === tab.id;
+                  return (
+                    <Pressable
+                      key={tab.id}
+                      accessibilityRole="tab"
+                      accessibilityState={{ selected: active }}
+                      onPress={() => triggerCardMorph(tab.id)}
+                      style={[
+                        styles.modeSegmentBtn,
+                        active && { backgroundColor: stageMeta.accent },
+                      ]}
+                    >
+                      <Ionicons
+                        name={tab.icon}
+                        size={14}
+                        color={active ? '#060A24' : '#CBD5E1'}
+                      />
+                      <Text
+                        style={{
+                          fontSize: 12.5,
+                          fontWeight: active ? '900' : '700',
+                          color: active ? '#060A24' : '#CBD5E1',
+                        }}
+                        numberOfLines={1}
+                      >
+                        {tab.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
 
-          {/* Feedback Banners */}
-          {errorMsg ? (
-            <View
-              style={[
-                styles.banner,
-                { backgroundColor: palette.dangerTint, borderColor: palette.danger },
-              ]}
-            >
-              <Ionicons name="alert-circle-outline" size={20} color={palette.danger} />
-              <Text style={[typography.caption, { color: palette.danger, flex: 1 }]}>
-                {errorMsg}
+            <View>
+              <Text style={[typography.heading, { color: '#FFFFFF', fontSize: 22 }]}>
+                {mode === 'signUp'
+                  ? t.auth.signUpTitle
+                  : mode === 'forgot'
+                  ? t.auth.forgotTitle
+                  : mode === 'resetPassword'
+                  ? t.auth.setNewPasswordTitle
+                  : t.auth.signInTitle}
+              </Text>
+              <Text style={[typography.caption, { color: '#CBD5E1', marginTop: 4 }]}>
+                {mode === 'signUp'
+                  ? t.auth.signUpSub
+                  : mode === 'forgot'
+                  ? t.auth.forgotSub
+                  : mode === 'resetPassword'
+                  ? t.auth.setNewPasswordSub
+                  : t.auth.signInSub}
               </Text>
             </View>
-          ) : null}
 
-          {infoMsg ? (
-            <View
-              style={[
-                styles.banner,
-                { backgroundColor: palette.mintTint, borderColor: palette.mint },
-              ]}
-            >
-              <Ionicons name="checkmark-circle-outline" size={20} color={palette.mint} />
-              <Text style={[typography.caption, { color: palette.mint, flex: 1 }]}>
-                {infoMsg}
-              </Text>
-            </View>
-          ) : null}
-
-          {/* Form Fields according to Mode */}
-          {mode === 'resetPassword' ? (
-            <>
-              {/* New Password */}
-              <View
-                style={[
-                  styles.passwordRow,
-                  { borderColor: palette.paperMuted, backgroundColor: palette.paper },
-                ]}
-              >
-                <TextInput
-                  value={newPassword}
-                  onChangeText={(val) => {
-                    setNewPassword(val);
-                    setErrorMsg(null);
-                  }}
-                  secureTextEntry={!visible}
-                  placeholder={t.auth.newPasswordPlaceholder}
-                  placeholderTextColor={palette.inkMuted}
-                  style={[styles.passwordInput, { color: palette.ink }]}
-                />
-                <Pressable onPress={() => setVisible((prev) => !prev)}>
-                  <Ionicons
-                    name={visible ? 'eye-off-outline' : 'eye-outline'}
-                    size={22}
-                    color={palette.inkMuted}
-                  />
-                </Pressable>
+            {errorMsg ? (
+              <View style={[styles.banner, { backgroundColor: 'rgba(239,68,68,0.16)', borderColor: '#EF4444' }]}>
+                <Ionicons name="alert-circle" size={19} color="#FCA5A5" />
+                <Text style={[typography.caption, { color: '#FECACA', flex: 1 }]}>{errorMsg}</Text>
               </View>
+            ) : null}
 
-              {/* Confirm New Password */}
-              <View
-                style={[
-                  styles.passwordRow,
-                  { borderColor: palette.paperMuted, backgroundColor: palette.paper },
-                ]}
-              >
-                <TextInput
-                  value={confirmPassword}
-                  onChangeText={(val) => {
-                    setConfirmPassword(val);
-                    setErrorMsg(null);
-                  }}
-                  secureTextEntry={!visible}
-                  placeholder={t.auth.confirmPasswordPlaceholder}
-                  placeholderTextColor={palette.inkMuted}
-                  style={[styles.passwordInput, { color: palette.ink }]}
-                />
+            {infoMsg ? (
+              <View style={[styles.banner, { backgroundColor: 'rgba(16,185,129,0.16)', borderColor: '#10B981' }]}>
+                <Ionicons name="checkmark-circle" size={19} color="#6EE7B7" />
+                <Text style={[typography.caption, { color: '#A7F3D0', flex: 1 }]}>{infoMsg}</Text>
               </View>
+            ) : null}
 
-              <Button icon="checkmark-circle-outline" onPress={() => void handleSubmit()} disabled={busy}>
-                {busy ? t.auth.updatingPassword : t.auth.updatePasswordBtn}
-              </Button>
-            </>
-          ) : (
-            <>
-              {/* Email input */}
-              <TextInput
-                value={email}
-                onChangeText={(val) => {
-                  setEmail(val);
-                  setErrorMsg(null);
-                }}
-                autoCapitalize="none"
-                keyboardType="email-address"
-                placeholder={t.auth.emailPlaceholder}
-                placeholderTextColor={palette.inkMuted}
-                style={[
-                  styles.input,
-                  { color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paper },
-                ]}
-              />
-
-              {/* Password input (hidden in Forgot mode) */}
-              {mode !== 'forgot' && (
-                <View
-                  style={[
-                    styles.passwordRow,
-                    { borderColor: palette.paperMuted, backgroundColor: palette.paper },
-                  ]}
-                >
+            {mode === 'resetPassword' ? (
+              <>
+                <View style={styles.darkFieldRow}>
+                  <Ionicons name="lock-closed-outline" size={18} color="#94A3B8" />
                   <TextInput
-                    value={password}
+                    value={newPassword}
                     onChangeText={(val) => {
-                      setPassword(val);
+                      setNewPassword(val);
                       setErrorMsg(null);
                     }}
                     secureTextEntry={!visible}
-                    placeholder={t.auth.passwordPlaceholder}
-                    placeholderTextColor={palette.inkMuted}
-                    style={[styles.passwordInput, { color: palette.ink }]}
+                    placeholder={t.auth.newPasswordPlaceholder}
+                    placeholderTextColor="#64748B"
+                    style={styles.darkTextInput}
                   />
                   <Pressable onPress={() => setVisible((prev) => !prev)}>
-                    <Ionicons
-                      name={visible ? 'eye-off-outline' : 'eye-outline'}
-                      size={22}
-                      color={palette.inkMuted}
-                    />
+                    <Ionicons name={visible ? 'eye-off-outline' : 'eye-outline'} size={20} color="#94A3B8" />
                   </Pressable>
                 </View>
-              )}
 
-              {/* Forgot password link in Sign In mode */}
-              {mode === 'signIn' && (
-                <Pressable
-                  onPress={() => switchMode('forgot')}
-                  style={styles.forgotLink}
-                  accessibilityRole="button"
-                >
-                  <Text style={[typography.caption, { color: palette.indigo, fontWeight: '700' }]}>
-                    {t.auth.forgotLink}
-                  </Text>
-                </Pressable>
-              )}
-
-              {/* Submit Button */}
-              <Button icon="arrow-forward" onPress={() => void handleSubmit()} disabled={busy}>
-                {busy
-                  ? mode === 'signUp'
-                    ? t.auth.signingUp
-                    : mode === 'forgot'
-                    ? t.auth.sendingReset
-                    : t.auth.signingIn
-                  : mode === 'signUp'
-                  ? t.auth.signUpBtn
-                  : mode === 'forgot'
-                  ? t.auth.forgotBtn
-                  : t.auth.signInBtn}
-              </Button>
-
-              {/* Switch Mode Links */}
-              {mode === 'forgot' ? (
-                <Pressable onPress={() => switchMode('signIn')} style={styles.toggleAuth}>
-                  <Text style={[typography.body, { color: palette.indigo, fontWeight: '700' }]}>
-                    ← {t.auth.backToSignIn}
-                  </Text>
-                </Pressable>
-              ) : (
-                <Pressable
-                  onPress={() => switchMode(mode === 'signUp' ? 'signIn' : 'signUp')}
-                  style={styles.toggleAuth}
-                >
-                  <Text style={[typography.body, { color: palette.inkMuted }]}>
-                    {mode === 'signUp' ? t.auth.haveAccount : t.auth.noAccount}
-                    <Text style={{ color: palette.indigo, fontWeight: '800' }}>
-                      {mode === 'signUp' ? t.auth.signInLink : t.auth.signUpLink}
-                    </Text>
-                  </Text>
-                </Pressable>
-              )}
-
-              {/* Social Logins Divider (Only for Sign In & Sign Up) */}
-              {mode !== 'forgot' && (
-                <>
-                  <View style={styles.divider}>
-                    <View style={[styles.line, { backgroundColor: palette.paperMuted }]} />
-                    <Text style={[typography.caption, { color: palette.inkMuted }]}>
-                      {t.auth.orContinueWith}
-                    </Text>
-                    <View style={[styles.line, { backgroundColor: palette.paperMuted }]} />
-                  </View>
-
-                  {/* OAuth Buttons: Google & Facebook */}
-                  <View style={styles.oauthRow}>
-                    <View style={{ flex: 1 }}>
-                      <Button
-                        variant="secondary"
-                        icon="logo-google"
-                        onPress={() => void handleOAuth('google')}
-                        disabled={busy}
-                      >
-                        Google
-                      </Button>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Button
-                        variant="secondary"
-                        icon="logo-facebook"
-                        onPress={() => void handleOAuth('facebook')}
-                        disabled={busy}
-                      >
-                        Facebook
-                      </Button>
-                    </View>
-                  </View>
-
-                  {/* Passwordless 1-Tap Magic Link Login */}
-                  <Button
-                    variant="ghost"
-                    icon="mail-open-outline"
-                    onPress={() => void handleMagicLink()}
-                    disabled={busy}
-                    fullWidth
-                  >
-                    {language === 'vi' ? '✨ Đăng nhập 1 chạm bằng Email Magic Link' : '✨ Sign in with Email Magic Link'}
-                  </Button>
-
-                  {/* Guest Login */}
-                  <Pressable
-                    onPress={() => {
-                      enterGuestMode();
-                      router.replace('/');
+                <View style={styles.darkFieldRow}>
+                  <Ionicons name="shield-checkmark-outline" size={18} color="#94A3B8" />
+                  <TextInput
+                    value={confirmPassword}
+                    onChangeText={(val) => {
+                      setConfirmPassword(val);
+                      setErrorMsg(null);
                     }}
-                    style={styles.guest}
-                    accessibilityRole="button"
-                  >
-                    <Ionicons name="sparkles-outline" size={18} color={palette.indigo} />
-                    <Text style={[typography.body, { color: palette.indigo, fontWeight: '800' }]}>
-                      {t.auth.guestBtn}
-                    </Text>
-                  </Pressable>
-                </>
-              )}
-            </>
-          )}
-        </Card>
-        </SmoothReveal>
+                    secureTextEntry={!visible}
+                    placeholder={t.auth.confirmPasswordPlaceholder}
+                    placeholderTextColor="#64748B"
+                    style={styles.darkTextInput}
+                  />
+                </View>
 
-        {/* Privacy Note */}
-        <Card color="rgba(15, 23, 66, 0.78)" style={[styles.privacy, { borderColor: 'rgba(129, 140, 248, 0.32)' }]}>
-          <Ionicons name="shield-checkmark-outline" size={22} color="#A5B4FC" />
-          <Text style={[typography.caption, { color: '#E0E7FF', flex: 1 }]}>
-            {t.auth.privacyNote}
-          </Text>
-        </Card>
+                <Button icon="checkmark-circle-outline" onPress={() => void handleSubmit()} disabled={busy} fullWidth>
+                  {busy ? t.auth.updatingPassword : t.auth.updatePasswordBtn}
+                </Button>
+              </>
+            ) : (
+              <>
+                <View style={styles.darkFieldRow}>
+                  <Ionicons name="mail-outline" size={18} color="#94A3B8" />
+                  <TextInput
+                    value={email}
+                    onChangeText={(val) => {
+                      setEmail(val);
+                      setErrorMsg(null);
+                    }}
+                    autoCapitalize="none"
+                    keyboardType="email-address"
+                    placeholder={t.auth.emailPlaceholder}
+                    placeholderTextColor="#64748B"
+                    style={styles.darkTextInput}
+                  />
+                </View>
 
-        {/* Admin Portal & Guest shortcut */}
+                {mode !== 'forgot' && (
+                  <View style={{ gap: 6 }}>
+                    <View style={styles.darkFieldRow}>
+                      <Ionicons name="lock-closed-outline" size={18} color="#94A3B8" />
+                      <TextInput
+                        value={password}
+                        onChangeText={(val) => {
+                          setPassword(val);
+                          setErrorMsg(null);
+                        }}
+                        secureTextEntry={!visible}
+                        placeholder={t.auth.passwordPlaceholder}
+                        placeholderTextColor="#64748B"
+                        style={styles.darkTextInput}
+                      />
+                      <Pressable onPress={() => setVisible((prev) => !prev)} hitSlop={8}>
+                        <Ionicons name={visible ? 'eye-off-outline' : 'eye-outline'} size={20} color="#94A3B8" />
+                      </Pressable>
+                    </View>
+
+                    {/* Live 4-Bar Password Strength Meter on Sign-Up */}
+                    {mode === 'signUp' && password.length > 0 && (
+                      <View style={{ gap: 4 }}>
+                        <View style={{ flexDirection: 'row', gap: 5 }}>
+                          {[1, 2, 3, 4].map((lvl) => (
+                            <View
+                              key={lvl}
+                              style={{
+                                flex: 1,
+                                height: 4,
+                                borderRadius: 2,
+                                backgroundColor:
+                                  lvl <= pwStrength.score ? pwStrength.color : 'rgba(148,163,184,0.25)',
+                              }}
+                            />
+                          ))}
+                        </View>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: pwStrength.color }}>
+                          Độ mạnh mật khẩu: {pwStrength.label}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+
+                <Button
+                  variant={mode === 'signUp' ? 'success' : 'primary'}
+                  icon={mode === 'forgot' ? 'paper-plane-outline' : 'arrow-forward'}
+                  onPress={() => void handleSubmit()}
+                  disabled={busy}
+                  fullWidth
+                >
+                  {busy
+                    ? mode === 'signUp'
+                      ? t.auth.signingUp
+                      : mode === 'forgot'
+                      ? t.auth.sendingReset
+                      : t.auth.signingIn
+                    : mode === 'signUp'
+                    ? t.auth.signUpBtn
+                    : mode === 'forgot'
+                    ? t.auth.forgotBtn
+                    : t.auth.signInBtn}
+                </Button>
+
+                {mode !== 'forgot' && (
+                  <>
+                    <View style={styles.divider}>
+                      <View style={styles.line} />
+                      <Text style={{ fontSize: 11.5, color: '#94A3B8', fontWeight: '700' }}>
+                        {t.auth.orContinueWith}
+                      </Text>
+                      <View style={styles.line} />
+                    </View>
+
+                    <View style={styles.oauthRow}>
+                      <View style={{ flex: 1 }}>
+                        <Button
+                          variant="secondary"
+                          icon="logo-google"
+                          onPress={() => void handleOAuth('google')}
+                          disabled={busy}
+                          fullWidth
+                        >
+                          Google
+                        </Button>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Button
+                          variant="secondary"
+                          icon="logo-facebook"
+                          onPress={() => void handleOAuth('facebook')}
+                          disabled={busy}
+                          fullWidth
+                        >
+                          Facebook
+                        </Button>
+                      </View>
+                    </View>
+
+                    <Pressable
+                      accessibilityRole="button"
+                      disabled={busy}
+                      onPress={() => void handleMagicLink()}
+                      style={styles.magicBtn}
+                    >
+                      <Ionicons name="sparkles" size={16} color="#FDE68A" />
+                      <Text style={{ color: '#FDE68A', fontSize: 13, fontWeight: '800' }}>
+                        {language === 'vi'
+                          ? 'Đăng nhập 1 chạm bằng Email Magic Link'
+                          : 'One-tap Email Magic Link'}
+                      </Text>
+                    </Pressable>
+
+                    <Pressable
+                      onPress={() => {
+                        enterGuestMode();
+                        router.replace('/');
+                      }}
+                      style={styles.guest}
+                      accessibilityRole="button"
+                    >
+                      <Ionicons name="compass-outline" size={18} color="#A5B4FC" />
+                      <Text style={{ color: '#C7D2FE', fontSize: 13.5, fontWeight: '800' }}>
+                        {t.auth.guestBtn}
+                      </Text>
+                    </Pressable>
+                  </>
+                )}
+              </>
+            )}
+          </Card>
+        </Animated.View>
+
         <View style={styles.bottomLinks}>
           <Pressable
             onPress={() => {
@@ -543,12 +651,12 @@ export default function AuthScreen() {
             }}
             style={styles.back}
           >
-            <Text style={[typography.caption, { color: '#CBD5E1' }]}>
-              {t.auth.backToDemo}
+            <Text style={[typography.caption, { color: '#94A3B8' }]}>
+              {palette ? t.auth.backToDemo : 'Demo'}
             </Text>
           </Pressable>
           <Pressable onPress={() => router.push('/admin')} style={styles.back}>
-            <Text style={[typography.caption, { color: '#FDE68A', fontWeight: '700' }]}>
+            <Text style={[typography.caption, { color: '#FDE68A', fontWeight: '800' }]}>
               🛡️ Quản trị viên
             </Text>
           </Pressable>
@@ -559,11 +667,13 @@ export default function AuthScreen() {
 }
 
 const styles = StyleSheet.create({
-  topLangRow: {
-    alignItems: 'flex-end',
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingTop: spacing.xs,
     width: '100%',
-    maxWidth: 520,
+    maxWidth: 500,
     alignSelf: 'center',
   },
   langPill: {
@@ -575,56 +685,102 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     borderWidth: 1.5,
   },
-  brand: { alignItems: 'center', paddingVertical: spacing.lg },
-  formCard: { gap: spacing.md, maxWidth: 520, alignSelf: 'center', width: '100%' },
-  input: {
-    minHeight: 52,
-    borderWidth: 1.5,
-    borderRadius: radii.sm,
-    paddingHorizontal: spacing.md,
-    fontSize: 15,
+  morphStageWindow: {
+    height: 158,
+    width: '100%',
+    maxWidth: 500,
+    alignSelf: 'center',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingBottom: spacing.md,
   },
-  passwordRow: {
-    minHeight: 52,
+  morphBadgePill: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+  },
+  morphStageHint: {
+    color: '#E0E7FF',
+    fontSize: 12.5,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: 6,
+    maxWidth: 380,
+  },
+  formCard: {
+    gap: spacing.md,
+    maxWidth: 500,
+    alignSelf: 'center',
+    width: '100%',
     borderWidth: 1.5,
+    borderRadius: 24,
+  },
+  modeSegmented: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(6, 10, 36, 0.75)',
+    borderRadius: radii.pill,
+    padding: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(148, 163, 184, 0.22)',
+    gap: 4,
+  },
+  modeSegmentBtn: {
+    flex: 1,
+    minHeight: 38,
+    borderRadius: radii.pill,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingHorizontal: 6,
+  },
+  darkFieldRow: {
+    minHeight: 50,
+    borderWidth: 1.5,
+    borderColor: 'rgba(148, 163, 184, 0.3)',
+    backgroundColor: 'rgba(6, 10, 36, 0.65)',
     borderRadius: radii.sm,
     paddingHorizontal: spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 10,
   },
-  passwordInput: { flex: 1, fontSize: 15 },
-  forgotLink: {
-    alignSelf: 'flex-end',
-    marginTop: -spacing.xs,
-    paddingVertical: spacing.xs,
+  darkTextInput: {
+    flex: 1,
+    color: '#F8FAFC',
+    fontSize: 15,
+    paddingVertical: 10,
   },
   banner: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.sm,
-    padding: spacing.md,
+    padding: spacing.sm,
     borderRadius: radii.sm,
     borderWidth: 1,
   },
-  toggleAuth: { alignSelf: 'center', paddingVertical: spacing.xs },
-  divider: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginVertical: spacing.xs },
-  line: { flex: 1, height: 1 },
+  divider: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginVertical: 2 },
+  line: { flex: 1, height: 1, backgroundColor: 'rgba(148, 163, 184, 0.25)' },
   oauthRow: { flexDirection: 'row', gap: spacing.sm },
-  guest: {
-    minHeight: 46,
+  magicBtn: {
+    minHeight: 44,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(253, 230, 138, 0.45)',
+    backgroundColor: 'rgba(245, 158, 11, 0.14)',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.sm,
+    gap: 8,
+    paddingHorizontal: spacing.md,
   },
-  privacy: {
-    maxWidth: 520,
-    alignSelf: 'center',
-    width: '100%',
-    marginTop: spacing.lg,
+  guest: {
+    minHeight: 42,
     flexDirection: 'row',
-    gap: spacing.md,
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
   },
   bottomLinks: {
     flexDirection: 'row',
@@ -632,6 +788,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.lg,
     flexWrap: 'wrap',
+    marginTop: spacing.sm,
   },
-  back: { alignSelf: 'center', padding: spacing.md },
+  back: { alignSelf: 'center', padding: spacing.sm },
 });

@@ -297,8 +297,9 @@ export default function AdminPortalScreen() {
         title: tVal,
         body: bVal,
         actionRoute: '/',
+        fromAdminConsole: true,
       },
-      true
+      false
     );
     sfx.playCorrect();
     if (!presetTitle) {
@@ -546,8 +547,9 @@ export default function AdminPortalScreen() {
                   title: broadcastTitle.trim() || `🦉 Nhắc học dành cho ${u.displayName}`,
                   body: broadcastBody.trim() || 'Hãy quay lại hoàn thành bài ôn tập hôm nay để giữ chuỗi Streak nhé!',
                   actionRoute: '/',
+                  fromAdminConsole: true,
                 },
-                true
+                false
               );
               setBroadcastTitle('');
               setBroadcastBody('');
@@ -884,11 +886,16 @@ export default function AdminPortalScreen() {
                                 </Text>
                               </View>
                               <View style={{ flex: 1, minWidth: 0 }}>
-                                <Text style={{ color: '#F8FAFC', fontWeight: '800', fontSize: 13.5 }} numberOfLines={1}>
-                                  {u.displayName}
-                                </Text>
-                                <Text style={{ color: '#64748B', fontSize: 11 }} numberOfLines={1}>
-                                  {u.gamesPlayed} trận · ID {u.id.slice(0, 8)}
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                                  <Text style={{ color: '#F8FAFC', fontWeight: '800', fontSize: 13.5 }} numberOfLines={1}>
+                                    {u.displayName}
+                                  </Text>
+                                  {u.isOnline ? (
+                                    <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: '#10B981' }} />
+                                  ) : null}
+                                </View>
+                                <Text style={{ color: '#94A3B8', fontSize: 11 }} numberOfLines={1}>
+                                  {u.email ? `${u.email} · ` : ''}🔥 {u.currentStreak ?? 0}d · {u.gamesPlayed} trận · ID {u.id.slice(0, 6)}
                                 </Text>
                               </View>
                             </View>

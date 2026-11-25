@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import { AppError, errorMessage, serviceFailure } from '@/core/domain/failure';
 import { supabase } from '@/core/network/supabase';
 import type { AppUser, UserRole } from '@/core/domain/models';
+import { recordKnownUserAccount } from '@/features/profile/data/profileCloudSync';
 import type { AuthProvider, AuthRepository } from '../domain/repository';
 
 const VALID_ROLES = new Set<UserRole>(['user', 'moderator', 'admin', 'superadmin']);
@@ -65,10 +66,26 @@ async function hydrateProfileFields(
       .select('display_name, avatar_url, role')
       .eq('id', user.id)
       .maybeSingle();
-    return mapUser(
+    const mapped = mapUser(
       user,
       (data as { display_name?: string | null; avatar_url?: string | null; role?: string | null } | null) ?? undefined
     );
+    if (mapped) {
+      const sync = (user.user_metadata?.papyrus_sync as Record<string, unknown> | undefined) ?? {};
+      void recordKnownUserAccount({
+        id: mapped.id,
+        email: mapped.email,
+        displayName: mapped.displayName,
+        avatarUrl: mapped.avatarUrl ?? null,
+        eloRating: Number(sync.eloRating ?? 1200),
+        totalScore: Number(sync.totalScore ?? 0),
+        gamesPlayed: Number(sync.gamesPlayed ?? 0),
+        currentStreak: Number(sync.currentStreak ?? 0),
+        role: mapped.role ?? 'user',
+        membershipTier: String(sync.membershipTier ?? 'apprentice'),
+      });
+    }
+    return mapped;
   } catch {
     return mapUser(user);
   }

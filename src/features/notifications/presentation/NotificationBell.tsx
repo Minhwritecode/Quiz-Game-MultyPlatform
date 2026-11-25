@@ -1,14 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { Badge, Button, Card, usePalette } from '@/shared/ui';
+import { usePathname, useRouter } from 'expo-router';
+import { Button, Card, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { useAuthStore } from '@/core/state/useAuthStore';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { useMembershipStore } from '@/features/membership/state/useMembershipStore';
 import { useStreakStore } from '@/features/streak/state/useStreakStore';
-import { useNotificationStore, type AdminGiftItem } from '../state/useNotificationStore';
+import {
+  isNotificationReadForViewer,
+  useNotificationStore,
+  type AdminGiftItem,
+} from '../state/useNotificationStore';
 import {
   getExternalNotificationPermission,
   requestExternalNotificationPermission,
@@ -21,8 +25,11 @@ import { sfx } from '@/core/audio/sfx';
 export function NotificationBell() {
   const palette = usePalette();
   const router = useRouter();
+  const pathname = usePathname();
   const user = useAuthStore((s) => s.user);
   const viewerId = user?.id ?? 'guest';
+  const isAdminAccount =
+    pathname.startsWith('/admin') || user?.role === 'admin' || user?.role === 'superadmin';
 
   const notifications = useNotificationStore((s) => s.notifications);
   const gifts = useNotificationStore((s) => s.gifts);
@@ -40,32 +47,34 @@ export function NotificationBell() {
   }, []);
 
   useEffect(() => {
-    if (user?.id) {
+    if (user?.id && !isAdminAccount) {
       void syncCloudGifts(user.id);
     }
-  }, [user?.id, syncCloudGifts]);
+  }, [user?.id, isAdminAccount, syncCloudGifts]);
 
   const userId = user?.id ?? null;
-  const myNotifications = useMemo(
-    () =>
-      notifications.filter(
-        (n) => n.recipientId === 'all' || (userId !== null && n.recipientId === userId)
-      ),
-    [notifications, userId]
-  );
 
-  const myUnclaimedGifts = useMemo(
-    () =>
-      gifts.filter(
-        (g) =>
-          (g.recipientId === 'all' || (userId !== null && g.recipientId === userId)) &&
-          !g.claimedByIds.includes(viewerId)
-      ),
-    [gifts, userId, viewerId]
-  );
+  // Only regular User accounts receive Admin broadcasts & targeted user notifications
+  const myNotifications = useMemo(() => {
+    if (isAdminAccount) return [];
+    return notifications.filter((n) => {
+      if (n.fromAdminConsole && !userId) return false; // Guests don't receive user-targeted admin notifications
+      return n.recipientId === 'all' || (userId !== null && n.recipientId === userId);
+    });
+  }, [isAdminAccount, notifications, userId]);
+
+  const myUnclaimedGifts = useMemo(() => {
+    if (isAdminAccount || !userId) return [];
+    return gifts.filter(
+      (g) =>
+        (g.recipientId === 'all' || g.recipientId === userId) &&
+        !g.claimedByIds.includes(viewerId)
+    );
+  }, [gifts, isAdminAccount, userId, viewerId]);
 
   const unreadCount =
-    myNotifications.filter((n) => !n.read).length + myUnclaimedGifts.length;
+    myNotifications.filter((n) => !isNotificationReadForViewer(n, viewerId)).length +
+    myUnclaimedGifts.length;
 
   const handleEnableExternal = async () => {
     const next = await requestExternalNotificationPermission();
@@ -151,7 +160,7 @@ export function NotificationBell() {
                   <Text style={[typography.title, { color: palette.ink }]}>Trung tâm Thông báo</Text>
                 </View>
                 {unreadCount > 0 ? (
-                  <Pressable onPress={() => markAllRead(user?.id)} hitSlop={8}>
+                  <Pressable onPress={() => markAllRead(viewerId)} hitSlop={8}>
                     <Text style={[typography.caption, { color: palette.indigo, fontWeight: '800' }]}>
                       Đọc tất cả
                     </Text>
@@ -162,7 +171,6 @@ export function NotificationBell() {
                 </Pressable>
               </View>
 
-              {/* Outside-app push notification permission banner */}
               {permState !== 'granted' && permState !== 'unsupported' ? (
                 <View style={[styles.pushBanner, { backgroundColor: palette.indigoTint, borderColor: palette.indigoBorder }]}>
                   <Ionicons name="radio-outline" size={18} color={palette.indigo} />
@@ -181,8 +189,7 @@ export function NotificationBell() {
                 </Text>
               )}
 
-              <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
-                {/* Unclaimed Admin Gifts */}
+              <ScrollView style={{ maxHeight: 440 }} showsVerticalScrollIndicator={false}>
                 {myUnclaimedGifts.length > 0 && (
                   <View style={{ marginBottom: spacing.md, gap: spacing.xs }}>
                     <Text style={[typography.label, { color: palette.gold }]}>
@@ -211,16 +218,18 @@ export function NotificationBell() {
                   </View>
                 )}
 
-                {/* Notifications List */}
                 {myNotifications.length === 0 ? (
                   <View style={{ alignItems: 'center', paddingVertical: spacing.xl }}>
                     <Ionicons name="checkmark-done-circle-outline" size={36} color={palette.inkMuted} />
                     <Text style={[typography.caption, { color: palette.inkMuted, marginTop: spacing.xs }]}>
-                      Bạn đã xem hết mọi thông báo quan trọng.
+                      {user
+                        ? 'Bạn đã xem hết mọi thông báo quan trọng.'
+                        : 'Đăng nhập tài khoản học viên để nhận thông báo & quà tặng cá nhân.'}
                     </Text>
                   </View>
                 ) : (
                   myNotifications.map((item) => {
+                    const isRead = isNotificationReadForViewer(item, viewerId);
                     const iconName =
                       item.kind === 'gift'
                         ? 'gift'
@@ -235,7 +244,7 @@ export function NotificationBell() {
                       <Pressable
                         key={item.id}
                         onPress={() => {
-                          markRead(item.id);
+                          markRead(item.id, viewerId);
                           if (item.actionRoute) {
                             setOpen(false);
                             router.push(item.actionRoute as '/');
@@ -244,24 +253,36 @@ export function NotificationBell() {
                         style={[
                           styles.notifRow,
                           {
-                            backgroundColor: item.read ? palette.paperRaised : palette.indigoTint,
-                            borderColor: item.read ? palette.paperMuted : palette.indigoBorder,
+                            backgroundColor: isRead ? palette.paperRaised : palette.indigoTint,
+                            borderColor: isRead ? palette.paperMuted : palette.indigoBorder,
                           },
                         ]}
                       >
                         <View style={[styles.notifIcon, { backgroundColor: palette.paper }]}>
                           <Ionicons name={iconName} size={17} color={palette.indigo} />
                         </View>
-                        <View style={{ flex: 1, minWidth: 0 }}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                            <Text style={[typography.caption, { color: palette.ink, fontWeight: '800', flex: 1 }]} numberOfLines={1}>
-                              {item.title}
-                            </Text>
-                            {!item.read && <Badge tone="primary">Mới</Badge>}
-                          </View>
-                          <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]} numberOfLines={3}>
+                        <View style={{ flex: 1, minWidth: 0, paddingRight: 64 }}>
+                          <Text style={[typography.caption, { color: palette.ink, fontWeight: '800' }]} numberOfLines={1}>
+                            {item.title}
+                          </Text>
+                          <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 3 }]} numberOfLines={3}>
                             {item.body}
                           </Text>
+                        </View>
+
+                        {/* Top-Right Read / Unread Status Indicator */}
+                        <View style={styles.topRightStatus}>
+                          {isRead ? (
+                            <View style={[styles.readPill, { backgroundColor: palette.mintTint }]}>
+                              <Ionicons name="checkmark-done-circle" size={14} color={palette.mint} />
+                              <Text style={{ fontSize: 10, fontWeight: '800', color: palette.mint }}>Đã đọc</Text>
+                            </View>
+                          ) : (
+                            <View style={[styles.unreadPill, { backgroundColor: palette.indigo }]}>
+                              <View style={styles.unreadDot} />
+                              <Text style={{ fontSize: 10, fontWeight: '800', color: '#FFFFFF' }}>Mới</Text>
+                            </View>
+                          )}
                         </View>
                       </Pressable>
                     );
@@ -337,6 +358,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
   },
   notifRow: {
+    position: 'relative',
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.sm,
@@ -351,5 +373,32 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  topRightStatus: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+  },
+  readPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: radii.pill,
+  },
+  unreadPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: radii.pill,
+  },
+  unreadDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: '#FDE68A',
   },
 });

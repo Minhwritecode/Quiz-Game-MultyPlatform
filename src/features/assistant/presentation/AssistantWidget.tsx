@@ -280,6 +280,7 @@ export function AssistantWidget() {
       if (!controller.signal.aborted) {
         const completed: ChatMessage[] = [...historyForUi, { role: 'assistant', content: answer }];
         setMessages(completed);
+        clearAttachments();
         persist(
           [
             { id: conversationId, updatedAt: getNow(), messages: completed },
@@ -574,8 +575,8 @@ export function AssistantWidget() {
               style={[
                 styles.sheet,
                 {
-                  width: desktop ? 450 : '100%',
-                  height: Math.min(height - insets.top - 20, 710),
+                  width: desktop ? 460 : '100%',
+                  height: desktop ? Math.min(height - 48, 720) : Math.round((height - insets.top) * 0.89),
                   marginRight: desktop ? 24 : 0,
                   marginBottom: desktop ? 24 : 0,
                   paddingBottom: desktop ? 0 : Math.max(8, insets.bottom),
@@ -591,10 +592,10 @@ export function AssistantWidget() {
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text accessibilityRole="header" style={[typography.title, { color: palette.ink }]}>
-                    Papybot AI
+                    Gia sư Papybot AI
                   </Text>
                   <Text style={[typography.caption, { color: palette.inkMuted, fontSize: 11.5 }]} numberOfLines={1}>
-                    Đa phương thức (Ảnh · Camera · PDF · Voice) · {context?.title ?? 'Papyrus'}
+                    Giải bài · Đọc tài liệu · {context?.title ?? 'Papyrus'}
                   </Text>
                 </View>
                 <ActionIcon

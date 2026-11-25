@@ -15,8 +15,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAssistantUiStore } from '@/core/state/useAssistantUiStore';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 
-const ORB_SIZE = 62;
-const MARGIN = 14;
+const ORB_SIZE = 52;
+const MARGIN = 12;
 
 /**
  * Floating draggable Papybot mascot orb ONLY for the Home screen:

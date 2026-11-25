@@ -71,6 +71,18 @@
         [role="link"] {
           transition: none !important;
         }
+        ::view-transition-group(*),
+        ::view-transition-old(*),
+        ::view-transition-new(*) {
+          animation: none !important;
+        }
+      }
+      @media (prefers-reduced-motion: no-preference) {
+        ::view-transition-old(root),
+        ::view-transition-new(root) {
+          animation-duration: 210ms;
+          animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+        }
       }
     </style>
   </head>
