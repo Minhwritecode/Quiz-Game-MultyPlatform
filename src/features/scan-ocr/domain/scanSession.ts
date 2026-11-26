@@ -101,3 +101,8 @@ export function buildCombinedSourceText(pages: ScanPage[], maxChars = MAX_SOURCE
     reviewCount,
   };
 }
+
+export function buildReviewedSourceText(pages: ScanPage[], pastedText: string): string {
+  const { combinedText } = buildCombinedSourceText(pages, Infinity);
+  return [combinedText, pastedText.trim()].filter(Boolean).join('\n\n');
+}

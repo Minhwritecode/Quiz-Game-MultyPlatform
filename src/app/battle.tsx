@@ -4,7 +4,7 @@ import { roomInvite } from '@/features/room-battle/domain/invite';
 import { InviteQr, ScanRoomQr } from '@/features/room-battle/presentation/RoomQr';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Alert, Animated, AppState, Easing, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Animated, AppState, Easing, Platform, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { preferenceStorage } from '@/composition/preferences';
 import { Ionicons } from '@expo/vector-icons';
 import { Badge, Button, Card, IconTile, Screen, TopBar, usePalette } from '@/shared/ui';
@@ -48,14 +48,15 @@ function ConfettiOverlay({ visible }: { visible: boolean }) {
 
   useEffect(() => {
     if (!visible) return;
+    const useNative = Platform.OS !== 'web';
     const anims = particles.map((p) => {
       p.y.setValue(0);
       p.op.setValue(1);
       p.rot.setValue(0);
       return Animated.parallel([
-        Animated.timing(p.y, { toValue: 1, duration: 2000 + Math.random() * 800, useNativeDriver: true, easing: Easing.out(Easing.quad) }),
-        Animated.timing(p.op, { toValue: 0, duration: 2400, delay: 400, useNativeDriver: true }),
-        Animated.timing(p.rot, { toValue: 1, duration: 2000, useNativeDriver: true }),
+        Animated.timing(p.y, { toValue: 1, duration: 2000 + Math.random() * 800, useNativeDriver: useNative, easing: Easing.out(Easing.quad) }),
+        Animated.timing(p.op, { toValue: 0, duration: 2400, delay: 400, useNativeDriver: useNative }),
+        Animated.timing(p.rot, { toValue: 1, duration: 2000, useNativeDriver: useNative }),
       ]);
     });
     Animated.stagger(80, anims).start();
@@ -335,10 +336,10 @@ export default function BattleScreen() {
     });
   }, [enrichedSets, setCategoryFilter, setSearchQuery]);
 
-  return (
-    <Screen bottomNav>
-      <TopBar title={t.battle.title} />
-      <GameEnvironment gameMode="battle" enable3DToggle={false}>
+  const inActiveMatch = Boolean(roomId || turnPvpActive);
+
+  const arenaBody = (
+    <>
         {/* Connection & 30s Seat-Hold Status Banner */}
         {roomId && connectionBanner !== 'connected' && (
           <View
@@ -376,7 +377,7 @@ export default function BattleScreen() {
           </View>
         )}
 
-        {/* Segmented Arena Switcher (Rooms, 1v1 ELO, 3D Arcade Modes) */}
+        {/* Segmented Arena Switcher (Rooms, 1v1 ELO, Arcade 3D — clean labels, zero ellipsis on 375px) */}
         {!roomId && !turnPvpActive && (
           <View style={[styles.arenaTabs, { backgroundColor: palette.paperRaised, borderColor: palette.paperMuted }]}>
             <Pressable
@@ -385,8 +386,8 @@ export default function BattleScreen() {
               onPress={() => setArenaTab('rooms')}
               style={[styles.arenaTabBtn, arenaTab === 'rooms' && { backgroundColor: palette.indigo }]}
             >
-              <Ionicons name="people-outline" size={15} color={arenaTab === 'rooms' ? '#FFFFFF' : palette.inkMuted} />
-              <Text style={[typography.caption, { color: arenaTab === 'rooms' ? '#FFFFFF' : palette.inkMuted, fontWeight: '800' }]} numberOfLines={1}>
+              <Ionicons name="people-outline" size={14} color={arenaTab === 'rooms' ? palette.onPrimary : palette.inkMuted} />
+              <Text style={[typography.caption, { color: arenaTab === 'rooms' ? palette.onPrimary : palette.inkMuted, fontWeight: '800' }]} numberOfLines={1}>
                 {language === 'vi' ? 'Phòng nhóm' : 'Rooms'}
               </Text>
             </Pressable>
@@ -396,8 +397,8 @@ export default function BattleScreen() {
               onPress={() => setArenaTab('duel_1v1')}
               style={[styles.arenaTabBtn, arenaTab === 'duel_1v1' && { backgroundColor: palette.indigo }]}
             >
-              <Ionicons name="trophy-outline" size={15} color={arenaTab === 'duel_1v1' ? '#FFFFFF' : palette.inkMuted} />
-              <Text style={[typography.caption, { color: arenaTab === 'duel_1v1' ? '#FFFFFF' : palette.inkMuted, fontWeight: '800' }]} numberOfLines={1}>
+              <Ionicons name="trophy-outline" size={14} color={arenaTab === 'duel_1v1' ? palette.onPrimary : palette.inkMuted} />
+              <Text style={[typography.caption, { color: arenaTab === 'duel_1v1' ? palette.onPrimary : palette.inkMuted, fontWeight: '800' }]} numberOfLines={1}>
                 {language === 'vi' ? '1v1 ELO' : '1v1 ELO'}
               </Text>
             </Pressable>
@@ -407,27 +408,27 @@ export default function BattleScreen() {
               onPress={() => setArenaTab('arcade')}
               style={[styles.arenaTabBtn, arenaTab === 'arcade' && { backgroundColor: palette.indigo }]}
             >
-              <Ionicons name="cube-outline" size={15} color={arenaTab === 'arcade' ? '#FFFFFF' : palette.inkMuted} />
-              <Text style={[typography.caption, { color: arenaTab === 'arcade' ? '#FFFFFF' : palette.inkMuted, fontWeight: '800' }]} numberOfLines={1}>
-                {language === 'vi' ? 'Đấu trường 3D' : '3D Modes'}
+              <Ionicons name="cube-outline" size={14} color={arenaTab === 'arcade' ? palette.onPrimary : palette.inkMuted} />
+              <Text style={[typography.caption, { color: arenaTab === 'arcade' ? palette.onPrimary : palette.inkMuted, fontWeight: '800' }]} numberOfLines={1}>
+                {language === 'vi' ? 'Arcade 3D' : '3D Modes'}
               </Text>
             </Pressable>
           </View>
         )}
 
-        {/* Dedicated 3D & Non-Quiz Arcade Modes Hub */}
+        {/* Dedicated 3D & Non-Quiz Arcade Modes Hub (Clean IconTile, zero duplicate emojis) */}
         {!roomId && !turnPvpActive && arenaTab === 'arcade' ? (
           <View style={styles.lobbySections}>
             <Card onPress={() => router.push('/games/archer')} style={styles.cardSection}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                 <IconTile icon="flame" tint="fire" />
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Badge tone="fire">MỚI · BẮN CUNG 3D KHÔNG TRẮC NGHIỆM</Badge>
+                  <Badge tone="fire">BẮN CUNG 3D</Badge>
                   <Text style={[typography.title, { color: palette.ink, marginTop: 4 }]}>
-                    🏹 Cung Thủ Diệt Thiên Thạch 3D
+                    Cung Thủ Diệt Thiên Thạch 3D
                   </Text>
-                  <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
-                    Ngắm bắn tên lửa Phượng Hoàng hoặc gõ chữ khắc cổ ngữ hạ thiên thạch bay — học cực cuốn không A/B/C/D!
+                  <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]} numberOfLines={2}>
+                    Ngắm bắn tên lửa Phượng Hoàng hoặc gõ cổ ngữ hạ thiên thạch bay theo khái niệm đúng.
                   </Text>
                 </View>
                 <Ionicons name="chevron-forward" size={20} color={palette.indigo} />
@@ -438,12 +439,12 @@ export default function BattleScreen() {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                 <IconTile icon="flask-outline" tint="success" />
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Badge tone="success">MỚI · PHÂN LOẠI KHÔNG GIAN 3D</Badge>
+                  <Badge tone="success">PHÂN LOẠI 3D</Badge>
                   <Text style={[typography.title, { color: palette.ink, marginTop: 4 }]}>
-                    🧪 Giả Kim Thuật Phân Loại 3D
+                    Giả Kim Thuật Phân Loại 3D
                   </Text>
-                  <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
-                    Ném tinh thể kiến thức vào 3 lò giả kim 3D đang sôi (Ngọc Lục Bảo · Lam Tinh · Hoàng Kim) tích chuỗi Combo!
+                  <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]} numberOfLines={2}>
+                    Ném tinh thể kiến thức vào đúng 3 lò giả kim 3D để tích chuỗi Combo.
                   </Text>
                 </View>
                 <Ionicons name="chevron-forward" size={20} color={palette.indigo} />
@@ -527,37 +528,38 @@ export default function BattleScreen() {
           />
         ) : null}
 
-        {/* Unified Smart Room PIN Hub (Works for Guests via Kahoot Live AND Signed-in Colosseum Rooms — Zero Duplicate PIN Boxes!) */}
+        {/* Unified Smart Room PIN Hub (Streamlined PIN + QR Row + Clear Disabled State) */}
         {!turnPvpActive && arenaTab === 'rooms' && !roomId && (
           <View style={styles.lobbySections}>
             <Card style={[styles.cardSection, { borderColor: palette.indigoBorder, borderWidth: 1.5 }]}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-                <Badge tone="reward">⚡ CỔNG MÃ PIN HỢP NHẤT · QR & 6 KÝ TỰ</Badge>
-                {!user && <Badge tone="primary">Chơi ngay không cần đăng nhập</Badge>}
-              </View>
+              <Badge tone="primary">CHƠI NGAY · MÃ PIN 6 KÝ TỰ & QR</Badge>
               <Text style={[typography.title, { color: palette.ink, marginTop: 8 }]}>
-                Tham gia Phòng Đấu bằng Mã PIN hoặc Quét QR
+                Tham gia Phòng Đấu
               </Text>
               <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
-                Chỉ cần nhập duy nhất 1 mã PIN 6 ký tự — hệ thống tự động nhận diện Phòng Kahoot Live (Biệt danh nhanh) hoặc Phòng Colosseum tính điểm ELO!
+                Nhập mã PIN hoặc quét QR để vào ngay phòng Kahoot Live hoặc Colosseum ELO.
               </Text>
-              <ScanRoomQr onCode={setCode} />
-              <TextInput
-                accessibilityLabel="Room code"
-                value={code}
-                onChangeText={(v) => setCode(v.replace(/[^a-z0-9]/gi, '').slice(0, 6).toUpperCase())}
-                autoCapitalize="characters"
-                maxLength={6}
-                placeholder={t.battle.pinPlaceholder}
-                placeholderTextColor={palette.inkMuted}
-                style={[
-                  styles.pinInput,
-                  { color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paper },
-                ]}
-              />
+
+              <View style={styles.pinEntryRow}>
+                <TextInput
+                  accessibilityLabel="Room code"
+                  value={code}
+                  onChangeText={(v) => setCode(v.replace(/[^a-z0-9]/gi, '').slice(0, 6).toUpperCase())}
+                  autoCapitalize="characters"
+                  maxLength={6}
+                  placeholder={t.battle.pinPlaceholder}
+                  placeholderTextColor={palette.inkMuted}
+                  style={[
+                    styles.pinInput,
+                    { color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paper },
+                  ]}
+                />
+                <ScanRoomQr onCode={setCode} compact />
+              </View>
+
               <Button
                 icon="flash"
-                variant="reward"
+                variant={busy || code.trim().length < 4 ? 'ghost' : 'reward'}
                 disabled={busy || code.trim().length < 4}
                 onPress={() => {
                   const cleanPin = code.trim().toUpperCase();
@@ -582,12 +584,12 @@ export default function BattleScreen() {
                 }}
                 fullWidth
               >
-                Vào Phòng Đấu Ngay (Tự nhận diện PIN)
+                Vào phòng đấu
               </Button>
 
               <View style={{ borderTopWidth: 1, borderTopColor: palette.paperMuted, marginTop: spacing.md, paddingTop: spacing.sm, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-                <Text style={[typography.caption, { color: palette.inkMuted, flex: 1 }]}>
-                  Muốn làm Chủ phòng phát mã PIN/QR cho cả lớp vào chơi ngay?
+                <Text style={[typography.caption, { color: palette.inkMuted, flex: 1, minWidth: 150 }]}>
+                  Mở phòng phát mã PIN/QR cho bạn học?
                 </Text>
                 <Button
                   variant="secondary"
@@ -606,19 +608,21 @@ export default function BattleScreen() {
             </Card>
 
             {!user ? (
-              <Card style={styles.notAuthCard}>
-                <IconTile icon="lock-closed-outline" tint="primary" />
-                <Text style={[typography.title, { color: palette.ink, marginTop: spacing.md }]}>
-                  Đăng nhập để tạo Phòng Colosseum Cloud (2–12 người)
-                </Text>
-                <Text style={[typography.caption, { color: palette.inkMuted, textAlign: 'center', marginTop: 4 }]}>
-                  Bạn đã có thể vào và mở Phòng Kahoot Live ở ngay thẻ trên! Đăng nhập thêm nếu muốn lưu lịch sử trận đấu & bảng điểm ELO.
-                </Text>
-                <View style={{ marginTop: spacing.md, width: '100%' }}>
-                  <Button icon="log-in-outline" onPress={() => router.push('/auth')} fullWidth>
-                    {language === 'vi' ? 'Đăng nhập tài khoản' : 'Sign in'}
-                  </Button>
+              <Card style={styles.guestCloudCard}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <IconTile icon="lock-closed-outline" tint="primary" />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={[typography.title, { color: palette.ink }]}>
+                      Phòng Colosseum Cloud (2–12 người)
+                    </Text>
+                    <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
+                      Đăng nhập để lưu lịch sử trận đấu & bảng điểm ELO.
+                    </Text>
+                  </View>
                 </View>
+                <Button icon="log-in-outline" onPress={() => router.push('/auth')} fullWidth>
+                  {language === 'vi' ? 'Đăng nhập tài khoản' : 'Sign in'}
+                </Button>
               </Card>
             ) : (
               /* Create Cloud Colosseum Room */
@@ -1228,7 +1232,19 @@ export default function BattleScreen() {
             </Button>
           </View>
         )}
-      </GameEnvironment>
+    </>
+  );
+
+  return (
+    <Screen bottomNav>
+      <TopBar title={t.battle.title} />
+      {inActiveMatch ? (
+        <GameEnvironment gameMode="battle" enable3DToggle={false}>
+          {arenaBody}
+        </GameEnvironment>
+      ) : (
+        <View style={styles.lobbyBody}>{arenaBody}</View>
+      )}
       <ConfettiOverlay visible={showConfetti} />
     </Screen>
   );
@@ -1288,7 +1304,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginBottom: spacing.md,
   },
-  notAuthCard: { alignItems: 'center', padding: spacing.xxl, borderRadius: radii.md },
+  lobbyBody: { gap: spacing.xs },
+  guestCloudCard: { padding: spacing.lg, borderRadius: radii.md, gap: spacing.md },
+  pinEntryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginVertical: spacing.md,
+  },
   lobbySections: { gap: spacing.md, marginBottom: spacing.xl },
   cardSection: { padding: spacing.lg, borderRadius: radii.md },
   modePill: {
@@ -1326,14 +1349,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   pinInput: {
-    minHeight: 56,
-    borderWidth: 2,
-    borderRadius: radii.md,
+    flex: 1,
+    minWidth: 0,
+    minHeight: 48,
+    borderWidth: 1.5,
+    borderRadius: radii.sm,
     textAlign: 'center',
-    fontSize: 24,
+    fontSize: 18,
     fontWeight: '800',
-    letterSpacing: 4,
-    marginVertical: spacing.md,
+    letterSpacing: 3,
+    paddingHorizontal: spacing.sm,
   },
   noSetsNotice: { gap: spacing.sm, marginTop: spacing.md },
   setsList: { gap: spacing.sm, marginTop: spacing.md },

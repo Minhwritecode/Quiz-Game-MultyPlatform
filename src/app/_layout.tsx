@@ -121,7 +121,11 @@ function RootLayout() {
     }
     const prev = prevPathRef.current;
     prevPathRef.current = pathname;
-    if (prev !== pathname && PRIMARY_TAB_PATHS.has(pathname)) {
+    if (!PRIMARY_TAB_PATHS.has(pathname)) {
+      setNavLoadingActive(false);
+      return;
+    }
+    if (prev !== pathname) {
       setNavLoadingActive(true);
       const t = setTimeout(() => setNavLoadingActive(false), 185);
       return () => clearTimeout(t);
@@ -374,7 +378,10 @@ function RootLayout() {
               {navLoadingActive && (
                 <View
                   pointerEvents="none"
-                  style={[styles.navOverlay, { backgroundColor: 'rgba(6, 10, 36, 0.42)' }]}
+                  style={[
+                    styles.navOverlay,
+                    { backgroundColor: isDark ? 'rgba(18, 21, 31, 0.48)' : 'rgba(247, 243, 232, 0.62)' },
+                  ]}
                 >
                   <PapyrusMorphLoader compact />
                 </View>

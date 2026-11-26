@@ -39,7 +39,7 @@ export const InAppNotificationBanner = memo(function InAppNotificationBanner() {
         toValue: 0,
         duration: 260,
         easing: Easing.bezier(0.22, 1, 0.36, 1),
-        useNativeDriver: true,
+        useNativeDriver: Platform.OS !== 'web',
       }).start();
     }
 
@@ -74,22 +74,7 @@ export const InAppNotificationBanner = memo(function InAppNotificationBanner() {
             },
           ]}
         >
-          <Pressable
-            accessibilityRole="button"
-            onHoverIn={() => setPaused(true)}
-            onHoverOut={() => setPaused(false)}
-            onFocus={() => setPaused(true)}
-            onBlur={() => setPaused(false)}
-            onPress={() => {
-              const route = banner.actionRoute;
-              const params = banner.actionParams;
-              dismiss();
-              if (params) {
-                router.push({ pathname: route as '/community', params });
-              } else {
-                router.push(route as '/');
-              }
-            }}
+          <View
             style={[
               styles.card,
               shadows.card,
@@ -105,40 +90,64 @@ export const InAppNotificationBanner = memo(function InAppNotificationBanner() {
                 : undefined,
             ]}
           >
-            <View style={[styles.iconCircle, { backgroundColor: palette.indigo }]}>
-              <Ionicons
-                name={
-                  banner.kind === 'message'
-                    ? 'chatbubble-ellipses'
-                    : banner.kind === 'gift'
-                    ? 'gift'
-                    : 'notifications'
+            <Pressable
+              accessibilityRole="button"
+              onHoverIn={() => setPaused(true)}
+              onHoverOut={() => setPaused(false)}
+              onFocus={() => setPaused(true)}
+              onBlur={() => setPaused(false)}
+              onPress={() => {
+                const route = banner.actionRoute;
+                const params = banner.actionParams;
+                dismiss();
+                if (params) {
+                  router.push({ pathname: route as '/community', params });
+                } else {
+                  router.push(route as '/');
                 }
-                size={18}
-                color="#FFFFFF"
-              />
-            </View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={[typography.caption, { color: palette.ink, fontWeight: '900' }]} numberOfLines={1}>
-                {banner.title}
-              </Text>
-              <Text style={{ fontSize: 12, color: palette.inkMuted, marginTop: 1 }} numberOfLines={2}>
-                {banner.body}
-              </Text>
-            </View>
+              }}
+              style={[
+                styles.mainTap,
+                Platform.OS === 'web' ? ({ cursor: 'pointer' } as unknown as ViewStyle) : undefined,
+              ]}
+            >
+              <View style={[styles.iconCircle, { backgroundColor: palette.indigo }]}>
+                <Ionicons
+                  name={
+                    banner.kind === 'message'
+                      ? 'chatbubble-ellipses'
+                      : banner.kind === 'gift'
+                      ? 'gift'
+                      : 'notifications'
+                  }
+                  size={18}
+                  color={palette.onPrimary}
+                />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={[typography.caption, { color: palette.ink, fontWeight: '900' }]} numberOfLines={1}>
+                  {banner.title}
+                </Text>
+                <Text style={{ fontSize: 12, color: palette.inkMuted, marginTop: 1 }} numberOfLines={2}>
+                  {banner.body}
+                </Text>
+              </View>
+            </Pressable>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Đóng thông báo"
-              onPress={(e) => {
-                e.stopPropagation?.();
-                dismiss();
-              }}
+              onHoverIn={() => setPaused(true)}
+              onHoverOut={() => setPaused(false)}
+              onPress={dismiss}
               hitSlop={10}
-              style={styles.closeBtn}
+              style={[
+                styles.closeBtn,
+                Platform.OS === 'web' ? ({ cursor: 'pointer' } as unknown as ViewStyle) : undefined,
+              ]}
             >
               <Ionicons name="close" size={18} color={palette.inkMuted} />
             </Pressable>
-          </Pressable>
+          </View>
         </Animated.View>
       ) : null}
     </>
@@ -171,6 +180,13 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     borderRadius: radii.lg,
     borderWidth: 1.5,
+  },
+  mainTap: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   iconCircle: {
     width: 36,

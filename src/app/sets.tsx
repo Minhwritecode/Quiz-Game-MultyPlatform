@@ -255,77 +255,92 @@ export default function LibraryScreen() {
           }
         />
       ) : (
-        visibleSets.map((set) => (
-          <Card
-            key={set.id}
-            onPress={() => router.push({ pathname: '/study/[setId]', params: { setId: set.id } })}
-            style={styles.setCard}
-          >
-            <View style={styles.setRowTop}>
-              <IconTile
-                icon={set.questions.length ? 'book-outline' : 'document-text-outline'}
-                tint={set.questions.length ? 'primary' : 'reward'}
-              />
-              <View style={styles.copy}>
-                <Text style={[typography.title, { color: palette.ink }]} numberOfLines={2}>
-                  {set.title}
-                </Text>
-                <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]} numberOfLines={1}>
-                  {set.subject || t.library.uncategorized} · {set.questions.length} {t.library.questionsCount}
-                </Text>
+        visibleSets.map((set) => {
+          const openStudy = () =>
+            router.push({ pathname: '/study/[setId]', params: { setId: set.id } });
+          return (
+            <Card key={set.id} style={styles.setCard}>
+              <View style={styles.setRowTop}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={set.title}
+                  onPress={openStudy}
+                  style={({ pressed }) => [
+                    styles.setMainTap,
+                    pressed ? { opacity: 0.84 } : undefined,
+                  ]}
+                >
+                  <IconTile
+                    icon={set.questions.length ? 'book-outline' : 'document-text-outline'}
+                    tint={set.questions.length ? 'primary' : 'reward'}
+                  />
+                  <View style={styles.copy}>
+                    <Text style={[typography.title, { color: palette.ink }]} numberOfLines={2}>
+                      {set.title}
+                    </Text>
+                    <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]} numberOfLines={1}>
+                      {set.subject || t.library.uncategorized} · {set.questions.length} {t.library.questionsCount}
+                    </Text>
+                  </View>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={language === 'vi' ? `Tùy chọn cho ${set.title}` : `Options for ${set.title}`}
+                  disabled={actionBusyId === set.id}
+                  hitSlop={8}
+                  onPress={() => setMenuSet(set)}
+                  style={[styles.moreBtn, { backgroundColor: palette.paper }]}
+                >
+                  <Ionicons name="ellipsis-horizontal" size={20} color={palette.inkMuted} />
+                </Pressable>
               </View>
+
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={language === 'vi' ? `Tùy chọn cho ${set.title}` : `Options for ${set.title}`}
-                disabled={actionBusyId === set.id}
-                hitSlop={8}
-                onPress={(event) => {
-                  event.stopPropagation?.();
-                  setMenuSet(set);
-                }}
-                style={[styles.moreBtn, { backgroundColor: palette.paper }]}
+                accessibilityLabel={language === 'vi' ? `Học ngay ${set.title}` : `Study ${set.title}`}
+                onPress={openStudy}
+                style={({ pressed }) => [
+                  styles.setRowFooter,
+                  { borderTopColor: palette.paperMuted, opacity: pressed ? 0.84 : 1 },
+                ]}
               >
-                <Ionicons name="ellipsis-horizontal" size={20} color={palette.inkMuted} />
+                <View style={styles.footerLeft}>
+                  <Badge
+                    tone={
+                      set.syncStatus === 'conflict'
+                        ? 'danger'
+                        : set.syncStatus === 'pending' || set.syncStatus === 'failed'
+                        ? 'reward'
+                        : 'success'
+                    }
+                  >
+                    {set.syncStatus === 'conflict'
+                      ? language === 'vi'
+                        ? 'Xung đột'
+                        : 'Conflict'
+                      : set.syncStatus === 'failed'
+                      ? language === 'vi'
+                        ? 'Chờ thử lại'
+                        : 'Retry pending'
+                      : set.syncStatus === 'pending'
+                      ? t.library.pendingSync
+                      : t.library.synced}
+                  </Badge>
+                  <Text style={[typography.caption, { color: palette.inkMuted, fontSize: 12 }]}>
+                    {new Date(set.updatedAt).toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US')}
+                  </Text>
+                </View>
+
+                <View style={styles.studyPill}>
+                  <Text style={[typography.caption, { color: palette.indigo, fontWeight: '800' }]}>
+                    {language === 'vi' ? 'Học ngay' : 'Study'}
+                  </Text>
+                  <Ionicons name="arrow-forward" size={14} color={palette.indigo} />
+                </View>
               </Pressable>
-            </View>
-
-            <View style={[styles.setRowFooter, { borderTopColor: palette.paperMuted }]}>
-              <View style={styles.footerLeft}>
-                <Badge
-                  tone={
-                    set.syncStatus === 'conflict'
-                      ? 'danger'
-                      : set.syncStatus === 'pending' || set.syncStatus === 'failed'
-                      ? 'reward'
-                      : 'success'
-                  }
-                >
-                  {set.syncStatus === 'conflict'
-                    ? language === 'vi'
-                      ? 'Xung đột'
-                      : 'Conflict'
-                    : set.syncStatus === 'failed'
-                    ? language === 'vi'
-                      ? 'Chờ thử lại'
-                      : 'Retry pending'
-                    : set.syncStatus === 'pending'
-                    ? t.library.pendingSync
-                    : t.library.synced}
-                </Badge>
-                <Text style={[typography.caption, { color: palette.inkMuted, fontSize: 12 }]}>
-                  {new Date(set.updatedAt).toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US')}
-                </Text>
-              </View>
-
-              <View style={styles.studyPill}>
-                <Text style={[typography.caption, { color: palette.indigo, fontWeight: '800' }]}>
-                  {language === 'vi' ? 'Học ngay' : 'Study'}
-                </Text>
-                <Ionicons name="arrow-forward" size={14} color={palette.indigo} />
-              </View>
-            </View>
-          </Card>
-        ))
+            </Card>
+          );
+        })
       )}
 
       {filtered.length > visibleCount && (
@@ -586,6 +601,13 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   setRowTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  setMainTap: {
+    flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,

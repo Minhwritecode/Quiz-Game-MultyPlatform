@@ -16,7 +16,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import { Badge, Button, Card, OnlineStatusDot, Screen, TopBar, usePalette } from '@/shared/ui';
+import { Badge, Button, Card, Screen, TopBar, usePalette } from '@/shared/ui';
 import { PapyrusPageSkeleton } from '@/shared/PapyrusLoader';
 import {
   getOnlineScholarCandidates,
@@ -87,39 +87,55 @@ const PlayerRow = memo(function PlayerRow({
     rankFg = '#C2410C';
   }
 
+  const alreadyMarkedMe =
+    player.name.includes('(Bạn)') ||
+    player.name.includes('(You)') ||
+    /^Bạn(\s|\(|$)/i.test(player.name) ||
+    /^You(\s|\(|$)/i.test(player.name);
+
   return (
     <Card
-      onPress={() => onOpenProfile?.(player.id, player.isMe)}
       style={[
         styles.playerCard,
-        player.isMe ? { borderColor: palette.indigo, borderWidth: 2 } : undefined,
+        player.isMe ? { borderColor: palette.indigo, borderWidth: 1.75 } : undefined,
       ]}
     >
-      <View style={[styles.rankBadge, { backgroundColor: rankBg }]}>
-        <Text style={{ fontWeight: '800', color: rankFg, fontSize: 13 }}>{player.rank}</Text>
-      </View>
+      <View style={styles.playerCardInner}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Xem hồ sơ ${player.name}`}
+          onPress={() => onOpenProfile?.(player.id, player.isMe)}
+          style={({ pressed }) => [styles.playerMainTap, { opacity: pressed ? 0.78 : 1 }]}
+        >
+          <View style={[styles.rankBadge, { backgroundColor: rankBg }]}>
+            <Text style={{ fontWeight: '800', color: rankFg, fontSize: 13 }}>{player.rank}</Text>
+          </View>
 
-      {player.avatarUrl ? (
-        <Image source={{ uri: player.avatarUrl }} style={styles.avatarImage} />
-      ) : (
-        <View style={[styles.avatarFallback, { backgroundColor: palette.indigoTint }]}>
-          <Text style={styles.avatar}>{player.avatar}</Text>
-        </View>
-      )}
+          {player.avatarUrl ? (
+            <Image
+              source={{ uri: player.avatarUrl }}
+              style={[styles.avatarImage, { borderColor: palette.indigoBorder }]}
+            />
+          ) : (
+            <View style={[styles.avatarFallback, { backgroundColor: palette.indigoTint }]}>
+              <Text style={styles.avatar}>{player.avatar}</Text>
+            </View>
+          )}
 
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={[typography.title, { color: palette.ink, fontSize: 15 }]} numberOfLines={1}>
-          {player.isMe && !player.name.includes('(Bạn)') ? `${player.name} (Bạn)` : player.name}
-        </Text>
-        <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]} numberOfLines={1}>
-          {player.streak} {t.home.streakDays} · {player.gamesPlayed} trận
-        </Text>
-      </View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={[typography.title, { color: palette.ink, fontSize: 15 }]} numberOfLines={1}>
+              {player.isMe && !alreadyMarkedMe ? `${player.name}${t.leaderboard.youTag}` : player.name}
+            </Text>
+            <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]} numberOfLines={1}>
+              {player.streak} {t.home.streakDays} · {player.gamesPlayed} trận
+            </Text>
+          </View>
 
-      <View style={styles.rowRight}>
-        <Text style={[typography.title, { color: palette.indigo, fontSize: 14 }]} numberOfLines={1}>
-          {player.scoreLabel}
-        </Text>
+          <Text style={[typography.title, { color: palette.indigo, fontSize: 14 }]} numberOfLines={1}>
+            {player.scoreLabel}
+          </Text>
+        </Pressable>
+
         {showAddFriend && !player.isMe && !player.isFriend && onAddFriend ? (
           <Pressable
             accessibilityRole="button"
@@ -384,13 +400,10 @@ export default function LeaderboardScreen() {
         renderItem={renderItem}
         ListHeaderComponent={
           <>
-            {/* Prominent TopBar + Header */}
+            {/* Prominent TopBar + Compact Header (no duplicate OnlineStatusDot) */}
             <TopBar title={t.leaderboard.title} />
             <View style={styles.header}>
-              <View style={styles.headerTopRow}>
-                <Text style={[typography.label, { color: palette.indigo }]}>{t.leaderboard.badge}</Text>
-                <OnlineStatusDot />
-              </View>
+              <Text style={[typography.label, { color: palette.indigo }]}>{t.leaderboard.badge}</Text>
               <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
                 {t.leaderboard.sub}
               </Text>
@@ -418,11 +431,11 @@ export default function LeaderboardScreen() {
                     },
                   ]}
                 >
-                  <Ionicons name={sc.icon} size={15} color={scope === sc.key ? '#FFFFFF' : palette.inkMuted} />
+                  <Ionicons name={sc.icon} size={15} color={scope === sc.key ? palette.onPrimary : palette.inkMuted} />
                   <Text
                     style={[
                       typography.caption,
-                      { color: scope === sc.key ? '#FFFFFF' : palette.ink, fontWeight: '800' },
+                      { color: scope === sc.key ? palette.onPrimary : palette.ink, fontWeight: '800' },
                     ]}
                   >
                     {sc.label}
@@ -514,8 +527,8 @@ export default function LeaderboardScreen() {
                               onPress={() => void handleAddFriend(cand.id)}
                               style={[styles.addFriendBtn, { backgroundColor: palette.indigo }]}
                             >
-                              <Ionicons name="person-add" size={14} color="#FFFFFF" />
-                              <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '800' }}>
+                              <Ionicons name="person-add" size={14} color={palette.onPrimary} />
+                              <Text style={{ color: palette.onPrimary, fontSize: 12, fontWeight: '800' }}>
                                 {addingFriendId === cand.id ? '...' : 'Kết bạn'}
                               </Text>
                             </Pressable>
@@ -554,8 +567,8 @@ export default function LeaderboardScreen() {
                               onPress={() => void handleAddFriend(cand.id)}
                               style={[styles.addFriendBtn, { backgroundColor: palette.indigo }]}
                             >
-                              <Ionicons name="person-add" size={14} color="#FFFFFF" />
-                              <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '800' }}>
+                              <Ionicons name="person-add" size={14} color={palette.onPrimary} />
+                              <Text style={{ color: palette.onPrimary, fontSize: 12, fontWeight: '800' }}>
                                 {addingFriendId === cand.id ? '...' : 'Kết bạn'}
                               </Text>
                             </Pressable>
@@ -583,54 +596,54 @@ export default function LeaderboardScreen() {
               </Card>
             ) : null}
 
-            {/* Time filter tabs */}
-            <View style={styles.tabRow}>
-              {TIME_TABS.map((tab) => (
-                <Pressable
-                  key={tab.key}
-                  accessibilityRole="tab"
-                  accessibilityState={{ selected: timeFilter === tab.key }}
-                  onPress={() => {
-                    setTimeFilter(tab.key);
-                    setPage(0);
-                  }}
-                  style={[
-                    styles.tab,
-                    {
-                      backgroundColor: timeFilter === tab.key ? palette.indigo : palette.paperMuted,
-                      borderColor: timeFilter === tab.key ? palette.indigo : 'transparent',
-                    },
-                  ]}
-                >
-                  <Text
+            {/* Compact Timeframe Segmented Control */}
+            <View style={[styles.timeSegmentedBar, { backgroundColor: palette.paperMuted }]}>
+              {TIME_TABS.map((tab) => {
+                const active = timeFilter === tab.key;
+                return (
+                  <Pressable
+                    key={tab.key}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: active }}
+                    onPress={() => {
+                      setTimeFilter(tab.key);
+                      setPage(0);
+                    }}
                     style={[
-                      typography.caption,
-                      { color: timeFilter === tab.key ? '#FFFFFF' : palette.inkMuted, fontWeight: '700' },
+                      styles.timeSegmentBtn,
+                      { backgroundColor: active ? palette.indigo : 'transparent' },
                     ]}
                   >
-                    {tab.label}
-                  </Text>
-                </Pressable>
-              ))}
+                    <Text
+                      style={[
+                        typography.caption,
+                        { color: active ? palette.onPrimary : palette.ink, fontWeight: active ? '800' : '700' },
+                      ]}
+                    >
+                      {tab.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
 
             {/* Streak highlight card */}
             <Card color={palette.goldTint} style={styles.streakCard}>
               <View style={[styles.medal, { backgroundColor: palette.gold }]}>
-                <Ionicons name="flame" size={24} color={palette.white} />
+                <Ionicons name="flame" size={20} color={palette.onGold} />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={[typography.label, { color: palette.gold }]} numberOfLines={1}>
                   {t.leaderboard.streakTitle}
                 </Text>
-                <Text style={[typography.title, { color: palette.ink, marginTop: 2 }]} numberOfLines={1}>
+                <Text style={[typography.title, { color: palette.ink, fontSize: 15, marginTop: 1 }]}>
                   {localStreak > 0 ? `Chuỗi ${localStreak} ngày liên tiếp` : t.leaderboard.streakSub}
                 </Text>
-                <Text style={[typography.caption, { color: palette.inkMuted }]} numberOfLines={1}>
+                <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 1 }]}>
                   {t.leaderboard.streakBonus}
                 </Text>
               </View>
-              <Badge tone="fire">{myEntry ? `#${myEntry.rank}` : t.leaderboard.rank1}</Badge>
+              <Badge tone="fire">{localStreak > 0 ? `${localStreak} ngày` : '+20% XP'}</Badge>
             </Card>
 
             {/* My rank snapshot + ELO */}
@@ -638,11 +651,14 @@ export default function LeaderboardScreen() {
               <Card onPress={() => router.push('/profile')} style={[styles.myRank, { borderColor: palette.indigo }]}>
                 <Ionicons name="person-circle" size={20} color={palette.indigo} />
                 <Text style={[typography.caption, { color: palette.indigo, flex: 1, fontWeight: '700' }]} numberOfLines={1}>
-                  Hạng #{myEntry.rank} · {eloTier.badge} {eloRating} ELO · Xem hồ sơ
+                  Hạng #{myEntry.rank} · {eloTier.badge} {eloRating} ELO
                 </Text>
-                <Text style={[typography.caption, { color: palette.inkMuted, fontWeight: '700' }]}>
-                  {myEntry.scoreLabel}
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <Text style={[typography.caption, { color: palette.ink, fontWeight: '800' }]}>
+                    {myEntry.scoreLabel}
+                  </Text>
+                  <Ionicons name="chevron-forward" size={14} color={palette.indigo} />
+                </View>
               </Card>
             ) : null}
 
@@ -689,34 +705,41 @@ export default function LeaderboardScreen() {
             {/* Topic filter chips (Global only) */}
             {scope === 'global' && (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipScroll}>
-                {TOPIC_CHIPS.map((chip) => (
-                  <Pressable
-                    key={chip.key}
-                    accessibilityRole="tab"
-                    accessibilityState={{ selected: topicFilter === chip.key }}
-                    onPress={() => {
-                      setTopicFilter(chip.key);
-                      setPage(0);
-                    }}
-                    style={[
-                      styles.chip,
-                      { backgroundColor: topicFilter === chip.key ? palette.indigo : palette.paperMuted },
-                    ]}
-                  >
-                    <Text
+                {TOPIC_CHIPS.map((chip) => {
+                  const selected = topicFilter === chip.key;
+                  return (
+                    <Pressable
+                      key={chip.key}
+                      accessibilityRole="tab"
+                      accessibilityState={{ selected }}
+                      onPress={() => {
+                        setTopicFilter(chip.key);
+                        setPage(0);
+                      }}
                       style={[
-                        typography.caption,
-                        { color: topicFilter === chip.key ? '#FFFFFF' : palette.inkMuted, fontWeight: '700' },
+                        styles.chip,
+                        {
+                          backgroundColor: selected ? palette.indigo : palette.paperRaised,
+                          borderColor: selected ? palette.indigo : palette.paperMuted,
+                          borderWidth: 1,
+                        },
                       ]}
                     >
-                      {chip.label}
-                    </Text>
-                  </Pressable>
-                ))}
+                      <Text
+                        style={[
+                          typography.caption,
+                          { color: selected ? palette.onPrimary : palette.ink, fontWeight: '700' },
+                        ]}
+                      >
+                        {chip.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
               </ScrollView>
             )}
 
-            <Text style={[typography.title, { color: palette.ink, marginTop: spacing.lg, marginBottom: spacing.sm }]}>
+            <Text style={[typography.title, { color: palette.ink, marginTop: spacing.md, marginBottom: spacing.sm }]}>
               {scope === 'friends' ? 'Bảng xếp hạng bạn bè & đối thủ' : t.leaderboard.topPlayers}
             </Text>
           </>
@@ -763,7 +786,7 @@ export default function LeaderboardScreen() {
                   <Text
                     style={[
                       typography.caption,
-                      { color: safePage === i ? '#FFFFFF' : palette.inkMuted, fontWeight: '700' },
+                      { color: safePage === i ? palette.onPrimary : palette.ink, fontWeight: '700' },
                     ]}
                   >
                     {i + 1}
@@ -795,15 +818,8 @@ export default function LeaderboardScreen() {
 
 const styles = StyleSheet.create({
   list: { paddingBottom: spacing.xxl },
-  header: { marginTop: spacing.sm, marginBottom: spacing.lg },
-  headerTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
-  },
-  tabRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
+  header: { marginTop: spacing.xs, marginBottom: spacing.sm },
+  tabRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm },
   tab: {
     flex: 1,
     flexDirection: 'row',
@@ -813,6 +829,20 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     borderRadius: radii.md,
     borderWidth: 1.5,
+  },
+  timeSegmentedBar: {
+    flexDirection: 'row',
+    gap: 4,
+    padding: 3,
+    borderRadius: radii.pill,
+    marginBottom: spacing.sm,
+  },
+  timeSegmentBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 6,
+    borderRadius: radii.pill,
   },
   friendSearchRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   friendInput: {
@@ -839,30 +869,44 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: radii.pill,
   },
-  streakCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.md, marginBottom: spacing.md },
-  medal: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  streakCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.md, marginBottom: spacing.sm },
+  medal: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
   myRank: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
     borderWidth: 1.5,
-    padding: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
-  chipScroll: { gap: spacing.sm, paddingVertical: spacing.xs },
-  chip: { paddingHorizontal: spacing.md, paddingVertical: 7, borderRadius: radii.pill },
-  playerCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.md, marginBottom: spacing.sm },
+  chipScroll: { gap: spacing.sm, paddingVertical: 2, paddingRight: spacing.md },
+  chip: { paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radii.pill },
+  playerCard: { padding: 0, marginBottom: spacing.sm },
+  playerCardInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  playerMainTap: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
   rankBadge: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   avatarFallback: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  avatarImage: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: '#6366F1' },
+  avatarImage: { width: 36, height: 36, borderRadius: 18, borderWidth: 1 },
   avatar: { fontSize: 18 },
-  rowRight: { alignItems: 'flex-end', gap: 4 },
   miniAddBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: radii.pill,
     borderWidth: 1,
   },

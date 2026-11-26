@@ -3,8 +3,22 @@ import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import GenerateScreen from '@/app/create/generate';
 import { dependencies } from '@/composition/dependencies';
 jest.mock('expo-router',()=>({useLocalSearchParams:()=>({}),useRouter:()=>({replace:jest.fn()})}));
+jest.mock('expo-crypto', () => ({ randomUUID: jest.requireActual('node:crypto').randomUUID }));
 jest.mock('@expo/vector-icons',()=>({Ionicons:()=>null}));
-jest.mock('@/composition/dependencies',()=>({dependencies:{generation:{configured:false,generate:jest.fn()},questionSets:{save:jest.fn()}}}));
+jest.mock('@/composition/dependencies', () => ({
+  dependencies: {
+    generation: {
+      configured: false,
+      generate: jest.fn(),
+      jobs: {
+        list: jest.fn().mockResolvedValue([]),
+        recover: jest.fn().mockResolvedValue([]),
+      },
+      observeWake: jest.fn(() => () => {}),
+    },
+    questionSets: { save: jest.fn() },
+  },
+}));
 jest.mock('@/shared/ui',()=>{
   const {Text:MockText,Pressable:MockPressable,View:MockView}=jest.requireActual('react-native');
   return {Screen:({children}:any)=><MockView>{children}</MockView>,Card:({children}:any)=><MockView>{children}</MockView>,TopBar:()=>null,PageHeader:()=>null,usePalette:()=>({}),Button:({children,onPress,disabled}:any)=><MockPressable accessibilityRole="button" disabled={disabled} onPress={onPress}><MockText>{children}</MockText></MockPressable>};

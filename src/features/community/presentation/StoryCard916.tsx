@@ -42,14 +42,10 @@ export const CreateStoryCard916 = memo(function CreateStoryCard916({
             style={[
               StyleSheet.absoluteFill,
               styles.createFallbackBg,
-              Platform.OS === 'web'
-                ? ({
-                    backgroundImage: 'linear-gradient(155deg, #1E1B4B 0%, #4F46E5 100%)',
-                  } as unknown as ViewStyle)
-                : { backgroundColor: '#312E81' },
+              { backgroundColor: palette.indigoTint },
             ]}
           >
-            <Text style={{ fontSize: 38, fontWeight: '900', color: 'rgba(255,255,255,0.85)' }}>
+            <Text style={{ fontSize: 36, fontWeight: '800', color: palette.indigo }}>
               {initial}
             </Text>
           </View>
@@ -57,8 +53,8 @@ export const CreateStoryCard916 = memo(function CreateStoryCard916({
       </View>
 
       <View style={[styles.createBottomBar, { backgroundColor: palette.paperRaised }]}>
-        <View style={[styles.plusCircle, { borderColor: palette.paperRaised }]}>
-          <Ionicons name="add" size={20} color="#FFFFFF" />
+        <View style={[styles.plusCircle, { backgroundColor: palette.indigo, borderColor: palette.paperRaised }]}>
+          <Ionicons name="add" size={20} color={palette.onPrimary} />
         </View>
         <Text style={[styles.createLabel, { color: palette.ink }]} numberOfLines={1}>
           Tạo tin
@@ -82,6 +78,7 @@ export const StoryCard916 = memo(function StoryCard916({
   seen: boolean;
   onPress: () => void;
 }) {
+  const palette = usePalette();
   const thumb = story.thumbnailUri || story.imageUri || null;
   const isVideo = story.mediaType === 'video' || Boolean(story.videoUri);
   const initial = (story.authorName.trim()[0] || 'S').toUpperCase();
@@ -95,7 +92,7 @@ export const StoryCard916 = memo(function StoryCard916({
         styles.card,
         {
           backgroundColor: story.gradient[0],
-          borderColor: seen ? 'rgba(148, 163, 184, 0.32)' : 'rgba(59, 130, 246, 0.72)',
+          borderColor: seen ? palette.paperMuted : palette.indigo,
           opacity: pressed ? 0.9 : 1,
           transform: pressed ? [{ scale: 0.97 }] : undefined,
         },
@@ -137,15 +134,15 @@ export const StoryCard916 = memo(function StoryCard916({
           style={[
             styles.avatarRing,
             {
-              borderColor: seen ? 'rgba(203, 213, 225, 0.75)' : '#3B82F6',
+              borderColor: seen ? palette.paperMuted : palette.indigo,
             },
           ]}
         >
           {story.authorAvatar ? (
             <Image source={{ uri: story.authorAvatar }} style={styles.avatarImg} />
           ) : (
-            <View style={styles.avatarFallback}>
-              <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '900' }}>{initial}</Text>
+            <View style={[styles.avatarFallback, { backgroundColor: palette.indigo }]}>
+              <Text style={{ color: palette.onPrimary, fontSize: 12, fontWeight: '900' }}>{initial}</Text>
             </View>
           )}
         </View>

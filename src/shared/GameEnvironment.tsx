@@ -1,5 +1,5 @@
 import React, { ReactNode, memo, useEffect, useRef, useState } from 'react';
-import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
@@ -43,16 +43,17 @@ const FloatingOrb = memo(function FloatingOrb({
       opacityAnim.setValue(0.45);
       return;
     }
+    const useNative = Platform.OS !== 'web';
     const floatLoop = Animated.loop(
       Animated.sequence([
-        Animated.timing(anim, { toValue: 1, duration, useNativeDriver: true }),
-        Animated.timing(anim, { toValue: 0, duration, useNativeDriver: true }),
+        Animated.timing(anim, { toValue: 1, duration, useNativeDriver: useNative }),
+        Animated.timing(anim, { toValue: 0, duration, useNativeDriver: useNative }),
       ])
     );
     const fadeLoop = Animated.loop(
       Animated.sequence([
-        Animated.timing(opacityAnim, { toValue: 0.9, duration: duration * 0.6, useNativeDriver: true }),
-        Animated.timing(opacityAnim, { toValue: 0.3, duration: duration * 0.6, useNativeDriver: true }),
+        Animated.timing(opacityAnim, { toValue: 0.9, duration: duration * 0.6, useNativeDriver: useNative }),
+        Animated.timing(opacityAnim, { toValue: 0.3, duration: duration * 0.6, useNativeDriver: useNative }),
       ])
     );
     floatLoop.start();
@@ -107,16 +108,17 @@ const StarParticle = memo(function StarParticle({
       return;
     }
     let loop: Animated.CompositeAnimation | null = null;
+    const useNative = Platform.OS !== 'web';
     const timer = setTimeout(() => {
       loop = Animated.loop(
         Animated.parallel([
           Animated.sequence([
-            Animated.timing(floatAnim, { toValue: -60, duration: 3000, useNativeDriver: true }),
-            Animated.timing(floatAnim, { toValue: 0, duration: 0, useNativeDriver: true }),
+            Animated.timing(floatAnim, { toValue: -60, duration: 3000, useNativeDriver: useNative }),
+            Animated.timing(floatAnim, { toValue: 0, duration: 0, useNativeDriver: useNative }),
           ]),
           Animated.sequence([
-            Animated.timing(opacityAnim, { toValue: 0.9, duration: 800, useNativeDriver: true }),
-            Animated.timing(opacityAnim, { toValue: 0, duration: 2200, useNativeDriver: true }),
+            Animated.timing(opacityAnim, { toValue: 0.9, duration: 800, useNativeDriver: useNative }),
+            Animated.timing(opacityAnim, { toValue: 0, duration: 2200, useNativeDriver: useNative }),
           ]),
         ])
       );
@@ -165,12 +167,13 @@ const CandleFlicker = memo(function CandleFlicker({
       flicker.setValue(0.85);
       return;
     }
+    const useNative = Platform.OS !== 'web';
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(flicker, { toValue: 1.0, duration: 250, useNativeDriver: true }),
-        Animated.timing(flicker, { toValue: 0.55, duration: 180, useNativeDriver: true }),
-        Animated.timing(flicker, { toValue: 0.85, duration: 320, useNativeDriver: true }),
-        Animated.timing(flicker, { toValue: 0.65, duration: 200, useNativeDriver: true }),
+        Animated.timing(flicker, { toValue: 1.0, duration: 250, useNativeDriver: useNative }),
+        Animated.timing(flicker, { toValue: 0.55, duration: 180, useNativeDriver: useNative }),
+        Animated.timing(flicker, { toValue: 0.85, duration: 320, useNativeDriver: useNative }),
+        Animated.timing(flicker, { toValue: 0.65, duration: 200, useNativeDriver: useNative }),
       ])
     );
     loop.start();
@@ -211,10 +214,11 @@ const CelestialSpireBackdrop = memo(function CelestialSpireBackdrop({ reduceMoti
       pulseAnim.setValue(0.65);
       return;
     }
+    const useNative = Platform.OS !== 'web';
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 0.9, duration: 2000, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 0.4, duration: 2000, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 0.9, duration: 2000, useNativeDriver: useNative }),
+        Animated.timing(pulseAnim, { toValue: 0.4, duration: 2000, useNativeDriver: useNative }),
       ])
     );
     loop.start();

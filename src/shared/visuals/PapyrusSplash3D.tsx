@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PapyrusSplashFallback } from './PapyrusSplashFallback';
 import { SPLASH_TOTAL_DURATION_SEC } from './splashMorphCurve';
@@ -31,18 +31,19 @@ export function PapyrusSplash3D({ reduceMotion = false, onFinish }: PapyrusSplas
 
   const handleSkip = useCallback(() => {
     if (finishedRef.current) return;
+    const useNative = Platform.OS !== 'web';
     Animated.parallel([
       Animated.timing(exitOpacity, {
         toValue: 0,
         duration: 180,
         easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
+        useNativeDriver: useNative,
       }),
       Animated.timing(exitScale, {
         toValue: 1.04,
         duration: 180,
         easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
+        useNativeDriver: useNative,
       }),
     ]).start(() => finishOnce());
   }, [exitOpacity, exitScale, finishOnce]);
@@ -53,6 +54,7 @@ export function PapyrusSplash3D({ reduceMotion = false, onFinish }: PapyrusSplas
       return;
     }
 
+    const useNative = Platform.OS !== 'web';
     const totalMs = reduceMotion ? 650 : Math.round(SPLASH_TOTAL_DURATION_SEC * 1000);
     const exitMs = reduceMotion ? 180 : 380;
     const holdMs = Math.max(0, totalMs - exitMs);
@@ -71,13 +73,13 @@ export function PapyrusSplash3D({ reduceMotion = false, onFinish }: PapyrusSplas
           toValue: 0,
           duration: exitMs,
           easing: Easing.inOut(Easing.cubic),
-          useNativeDriver: true,
+          useNativeDriver: useNative,
         }),
         Animated.timing(exitScale, {
           toValue: reduceMotion ? 1 : 1.07,
           duration: exitMs,
           easing: Easing.inOut(Easing.cubic),
-          useNativeDriver: true,
+          useNativeDriver: useNative,
         }),
       ]),
     ]);

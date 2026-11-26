@@ -29,6 +29,7 @@ interface Model3DViewProps {
   actionEffect?: Model3DActionEffect;
   pulseTrigger?: number;
   autoplay?: boolean;
+  showcase?: boolean;
 }
 
 export function Model3DView({
@@ -37,9 +38,10 @@ export function Model3DView({
   height = 240,
   autoRotate = true,
   interactive = true,
-  cameraOrbit = '0deg 75deg 100%',
+  cameraOrbit,
   animationName = 'Idle',
   autoplay = true,
+  showcase = false,
 }: Model3DViewProps) {
   const webviewRef = useRef<any>(null);
   const [modelDataUri, setModelDataUri] = useState<string | null>(null);
@@ -76,8 +78,8 @@ export function Model3DView({
   }, [animationName]);
 
   const html = useMemo(() => {
-    const isCharacter = model === 'character';
-    const effectiveOrbit = cameraOrbit || (isCharacter ? '0deg 80deg 3.5m' : '0deg 75deg 100%');
+    const showcaseOrbit = model === 'archerBow' ? '-22deg 38deg 115%' : '-14deg 84deg 115%';
+    const effectiveOrbit = cameraOrbit || (showcase ? showcaseOrbit : '0deg 75deg 100%');
 
     return `
 <!DOCTYPE html>
@@ -120,8 +122,8 @@ export function Model3DView({
     ${animationName ? `animation-name="${animationName}"` : ''}
     ${autoplay ? 'autoplay' : ''}
     camera-orbit="${effectiveOrbit}"
-    shadow-intensity="1.5"
-    exposure="1.15"
+    shadow-intensity="${showcase ? 0.65 : 1.5}"
+    exposure="${showcase ? 1 : 1.15}"
     touch-action="pan-y"
     interaction-prompt="none"
     loading="eager"
@@ -162,7 +164,7 @@ export function Model3DView({
 </body>
 </html>
     `;
-  }, [model, modelDataUri, autoRotate, interactive, cameraOrbit, animationName, autoplay]);
+  }, [model, modelDataUri, autoRotate, interactive, cameraOrbit, animationName, autoplay, showcase]);
 
   return (
     <View style={[styles.container, { height }, style]}>

@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Badge, Button, Card, Screen, SmoothReveal, TopBar, usePalette } from '@/shared/ui';
+import { Badge, Button, Card, Screen, TopBar, usePalette } from '@/shared/ui';
 import { PapyrusPageSkeleton } from '@/shared/PapyrusLoader';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { useAuthStore } from '@/core/state/useAuthStore';
@@ -67,8 +67,10 @@ export default function CommunityScreen() {
   const palette = usePalette();
   const { width } = useWindowDimensions();
   const isWide = width >= 880;
+  const isCompactHeader = width < 600;
   const refreshTick = useRouteRefreshStore((s) => s.refreshTick);
   const scrollRef = useRef<ComponentRef<typeof ScrollView> | null>(null);
+  const latestScrollYRef = useRef(0);
 
   const user = useAuthStore((s) => s.user);
   const viewerId = user?.id ?? 'guest';
@@ -97,7 +99,6 @@ export default function CommunityScreen() {
   const communities = useSocialStore((s) => s.communities);
   const conversations = useSocialStore((s) => s.conversations);
   const userSlices = useSocialStore((s) => s.userSlices);
-  const feedScrollOffset = useSocialStore((s) => s.feedScrollOffset);
 
   const ensureUserProfile = useSocialStore((s) => s.ensureUserProfile);
   const syncCloudDirectory = useSocialStore((s) => s.syncCloudDirectory);
@@ -124,7 +125,6 @@ export default function CommunityScreen() {
   const toggleCloseUnifiedPoll = useSocialStore((s) => s.toggleCloseUnifiedPoll);
   const toggleFollowUser = useSocialStore((s) => s.toggleFollowUser);
   const toggleUserRelation = useSocialStore((s) => s.toggleUserRelation);
-  const setFeedScrollOffset = useSocialStore((s) => s.setFeedScrollOffset);
   const updateYourAlgo = useSocialStore((s) => s.updateYourAlgo);
   const resetYourAlgo = useSocialStore((s) => s.resetYourAlgo);
   const saveCustomFeed = useSocialStore((s) => s.saveCustomFeed);
@@ -184,16 +184,20 @@ export default function CommunityScreen() {
     void syncCloudDirectory();
   }, [ensureUserProfile, refreshTick, runScheduledAndGhostSweep, syncCloudDirectory, user]);
 
-  // Restore scroll position on mount when returning to Feed
+  // Restore saved scroll offset ONCE on mount and flush once on unmount (avoids scroll-loop jank!)
   useEffect(() => {
-    if (feedScrollOffset > 40) {
-      const t = setTimeout(() => {
-        scrollRef.current?.scrollTo({ y: feedScrollOffset, animated: false });
-      }, 90);
-      return () => clearTimeout(t);
+    const savedOffset = useSocialStore.getState().feedScrollOffset;
+    let restoreTimer: ReturnType<typeof setTimeout> | undefined;
+    if (savedOffset > 40) {
+      restoreTimer = setTimeout(() => {
+        scrollRef.current?.scrollTo({ y: savedOffset, animated: false });
+      }, 60);
     }
-    return undefined;
-  }, [feedScrollOffset]);
+    return () => {
+      if (restoreTimer) clearTimeout(restoreTimer);
+      useSocialStore.getState().setFeedScrollOffset(latestScrollYRef.current);
+    };
+  }, []);
 
   const [hubSection, setHubSection] = useState<HubSection>(() =>
     params.communityId
@@ -215,6 +219,7 @@ export default function CommunityScreen() {
   const [pageSize, setPageSize] = useState(8);
 
   // PapyAI Feed Assistant
+  const [aiAlgoOpen, setAiAlgoOpen] = useState(false);
   const [aiFeedPrompt, setAiFeedPrompt] = useState('');
   const [aiAssistantBusy, setAiAssistantBusy] = useState(false);
   const [statusToast, setStatusToast] = useState<string | null>(null);
@@ -569,29 +574,32 @@ export default function CommunityScreen() {
   };
 
   return (
-    <Screen scroll={false}>
+    <Screen scroll={false} bottomNav>
       <View style={[styles.container, isWide && { maxWidth: 960, alignSelf: 'center', width: '100%' }]}>
         <TopBar
-          title="Mạng Xã Hội & Cộng Đồng"
-          subtitle="Threads · Nhóm Học Tập · Tin 24h · PapyAI"
+          title={isCompactHeader ? 'Cộng đồng' : 'Mạng Xã Hội & Cộng Đồng'}
+          subtitle={isCompactHeader ? 'Threads · Nhóm · PapyAI' : 'Threads · Nhóm Học Tập · Tin 24h · PapyAI'}
           right={
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Mở Trung tâm Tin nhắn"
                 onPress={() => router.push('/messages')}
                 style={[
                   styles.msgShortcutBtn,
+                  isCompactHeader && { paddingHorizontal: 8 },
                   { backgroundColor: palette.paperRaised, borderColor: palette.indigoBorder },
                 ]}
               >
-                <Ionicons name="chatbubble-ellipses" size={17} color={palette.indigo} />
-                <Text style={{ fontSize: 12, fontWeight: '800', color: palette.ink }}>
-                  Tin nhắn
-                </Text>
+                <Ionicons name="chatbubble-ellipses" size={16} color={palette.indigo} />
+                {!isCompactHeader && (
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: palette.ink }}>
+                    Tin nhắn
+                  </Text>
+                )}
                 {unreadMessagesTotal > 0 ? (
                   <View style={[styles.msgBadge, { backgroundColor: palette.danger }]}>
-                    <Text style={{ color: '#FFF', fontSize: 10, fontWeight: '900' }}>
+                    <Text style={{ color: palette.onPrimary, fontSize: 10, fontWeight: '900' }}>
                       {unreadMessagesTotal}
                     </Text>
                   </View>
@@ -608,8 +616,10 @@ export default function CommunityScreen() {
                 }}
                 style={[styles.composeTopBtn, { backgroundColor: palette.indigo }]}
               >
-                <Ionicons name="create-outline" size={16} color="#FFFFFF" />
-                <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '800' }}>Đăng bài</Text>
+                <Ionicons name="create-outline" size={15} color={palette.onPrimary} />
+                <Text style={{ color: palette.onPrimary, fontSize: 12, fontWeight: '800' }}>
+                  {isCompactHeader ? 'Đăng' : 'Đăng bài'}
+                </Text>
               </Pressable>
             </View>
           }
@@ -617,40 +627,47 @@ export default function CommunityScreen() {
 
         {statusToast ? (
           <View style={[styles.toastBar, { backgroundColor: palette.indigo }]}>
-            <Ionicons name="sparkles" size={15} color="#FDE68A" />
-            <Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '800', flexShrink: 1 }}>
+            <Ionicons name="sparkles" size={15} color={palette.goldTint} />
+            <Text style={{ color: palette.onPrimary, fontSize: 12.5, fontWeight: '800', flexShrink: 1 }}>
               {statusToast}
             </Text>
           </View>
         ) : null}
 
-        {/* Primary Module Switcher */}
+        {/* Primary Module Switcher (Concise Labels + Icons, zero ellipsis on 375px) */}
         <View style={styles.hubTabsRow}>
           {(
             [
-              { id: 'feeds', label: '🧵 Bảng tin Threads' },
-              { id: 'communities', label: `🏛️ Cộng đồng (${communities.length})` },
-              { id: 'discover', label: '🔍 Khám phá & Bạn bè' },
+              { id: 'feeds', label: 'Bảng tin', icon: 'chatbubbles-outline' as const },
+              { id: 'communities', label: `Nhóm (${communities.length})`, icon: 'people-outline' as const },
+              { id: 'discover', label: 'Khám phá', icon: 'compass-outline' as const },
             ] as const
           ).map((sec) => {
             const active = hubSection === sec.id;
             return (
               <Pressable
                 key={sec.id}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: active }}
                 onPress={() => setHubSection(sec.id)}
                 style={[
                   styles.hubTabBtn,
                   {
-                    backgroundColor: active ? palette.indigo : palette.paper,
+                    backgroundColor: active ? palette.indigo : palette.paperRaised,
                     borderColor: active ? palette.indigo : palette.paperMuted,
                   },
                 ]}
               >
+                <Ionicons
+                  name={sec.icon}
+                  size={14}
+                  color={active ? palette.onPrimary : palette.indigo}
+                />
                 <Text
                   style={{
                     fontSize: 12.5,
                     fontWeight: '800',
-                    color: active ? '#FFFFFF' : palette.ink,
+                    color: active ? palette.onPrimary : palette.ink,
                   }}
                   numberOfLines={1}
                 >
@@ -664,11 +681,13 @@ export default function CommunityScreen() {
         <ScrollView
           ref={scrollRef}
           style={{ flex: 1 }}
-          contentContainerStyle={{ padding: spacing.md, paddingBottom: 110, gap: spacing.md }}
-          scrollEventThrottle={250}
+          contentContainerStyle={{ paddingTop: spacing.xs, paddingBottom: spacing.xl, gap: spacing.md }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          scrollEventThrottle={64}
           onScroll={(e) => {
             if (hubSection === 'feeds') {
-              setFeedScrollOffset(e.nativeEvent.contentOffset.y);
+              latestScrollYRef.current = e.nativeEvent.contentOffset.y;
             }
           }}
         >
@@ -676,7 +695,7 @@ export default function CommunityScreen() {
           {/* MODULE 1: META THREADS + FACEBOOK STORIES + YOUR ALGO FEED            */}
           {/* ===================================================================== */}
           {hubSection === 'feeds' ? (
-            <SmoothReveal style={{ gap: spacing.md }}>
+            <View style={{ gap: spacing.md }}>
               {/* 9:16 Facebook Stories Strip */}
               <ScrollView
                 horizontal
@@ -738,71 +757,112 @@ export default function CommunityScreen() {
                 <Badge tone="primary">+ Chuỗi</Badge>
               </Pressable>
 
-              {/* PapyAI Feed Assistant + Your Algo & Saved Bookmarks Controls */}
-              <Card style={{ gap: 8 }}>
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    flexWrap: 'wrap',
-                    gap: 8,
-                  }}
+              {/* Compact 1-Row PapyAI & Feed Controls (expands prompt only when tapped so posts appear higher) */}
+              <View style={{ gap: 8 }}>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.algoCompactBar}
                 >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Ionicons name="sparkles" size={16} color={palette.indigo} />
-                    <Text style={{ fontSize: 12.5, fontWeight: '800', color: palette.ink }}>
-                      Trợ lý Bảng tin PapyAI & Thuật toán cá nhân
-                    </Text>
-                  </View>
-
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                    <Pressable
-                      onPress={() => setAlgoModalOpen(true)}
-                      style={[styles.utilChip, { backgroundColor: palette.indigoTint }]}
-                    >
-                      <Ionicons name="options-outline" size={14} color={palette.indigo} />
-                      <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.indigo }}>
-                        Your Algo & Custom Feeds
-                      </Text>
-                    </Pressable>
-
-                    <Pressable
-                      onPress={() => setBookmarksDrawerOpen(true)}
-                      style={[styles.utilChip, { backgroundColor: palette.paperRaised }]}
-                    >
-                      <Ionicons name="bookmarks-outline" size={14} color={palette.ink} />
-                      <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.ink }}>
-                        Đã lưu ({mySlice?.bookmarkedPostIds.length ?? 0})
-                      </Text>
-                    </Pressable>
-                  </View>
-                </View>
-
-                <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
-                  <TextInput
-                    value={aiFeedPrompt}
-                    onChangeText={setAiFeedPrompt}
-                    placeholder="Nói với PapyAI: 'Ưu tiên CNTT & AI, ẩn giải trí, bật chế độ tập trung'..."
-                    placeholderTextColor={palette.inkMuted}
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: aiAlgoOpen }}
+                    onPress={() => setAiAlgoOpen((v) => !v)}
                     style={[
-                      styles.aiInput,
+                      styles.utilChip,
                       {
-                        color: palette.ink,
-                        backgroundColor: palette.paperRaised,
-                        borderColor: palette.paperMuted,
+                        backgroundColor: aiAlgoOpen ? palette.indigo : palette.indigoTint,
+                        borderColor: palette.indigoBorder,
+                        borderWidth: 1,
                       },
                     ]}
-                  />
-                  <Button
-                    size="sm"
-                    disabled={!aiFeedPrompt.trim() || aiAssistantBusy}
-                    onPress={() => void handleAskAiFeedAssistant()}
                   >
-                    {aiAssistantBusy ? 'Đang tối ưu...' : 'Áp dụng AI'}
-                  </Button>
-                </View>
-              </Card>
+                    <Ionicons
+                      name="sparkles"
+                      size={13}
+                      color={aiAlgoOpen ? palette.onPrimary : palette.indigo}
+                    />
+                    <Text
+                      style={{
+                        fontSize: 11.5,
+                        fontWeight: '800',
+                        color: aiAlgoOpen ? palette.onPrimary : palette.indigoDeep,
+                      }}
+                    >
+                      Trợ lý PapyAI
+                    </Text>
+                    <Ionicons
+                      name={aiAlgoOpen ? 'chevron-up' : 'chevron-down'}
+                      size={12}
+                      color={aiAlgoOpen ? palette.onPrimary : palette.indigo}
+                    />
+                  </Pressable>
+
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => setAlgoModalOpen(true)}
+                    style={[
+                      styles.utilChip,
+                      {
+                        backgroundColor: palette.paperRaised,
+                        borderColor: palette.paperMuted,
+                        borderWidth: 1,
+                      },
+                    ]}
+                  >
+                    <Ionicons name="options-outline" size={14} color={palette.indigo} />
+                    <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.ink }}>
+                      Thuật toán
+                    </Text>
+                  </Pressable>
+
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => setBookmarksDrawerOpen(true)}
+                    style={[
+                      styles.utilChip,
+                      {
+                        backgroundColor: palette.paperRaised,
+                        borderColor: palette.paperMuted,
+                        borderWidth: 1,
+                      },
+                    ]}
+                  >
+                    <Ionicons name="bookmarks-outline" size={14} color={palette.ink} />
+                    <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.ink }}>
+                      Đã lưu ({mySlice?.bookmarkedPostIds.length ?? 0})
+                    </Text>
+                  </Pressable>
+                </ScrollView>
+
+                {aiAlgoOpen ? (
+                  <Card style={{ padding: spacing.sm, gap: 6 }}>
+                    <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+                      <TextInput
+                        value={aiFeedPrompt}
+                        onChangeText={setAiFeedPrompt}
+                        placeholder="Ví dụ: Ưu tiên CNTT & AI, ẩn giải trí..."
+                        placeholderTextColor={palette.inkMuted}
+                        style={[
+                          styles.aiInput,
+                          {
+                            color: palette.ink,
+                            backgroundColor: palette.paper,
+                            borderColor: palette.paperMuted,
+                          },
+                        ]}
+                      />
+                      <Button
+                        size="sm"
+                        disabled={!aiFeedPrompt.trim() || aiAssistantBusy}
+                        onPress={() => void handleAskAiFeedAssistant()}
+                      >
+                        {aiAssistantBusy ? 'Đang lọc...' : 'Áp dụng'}
+                      </Button>
+                    </View>
+                  </Card>
+                ) : null}
+              </View>
 
               {/* Feed Mode Selector (For You, Home, Following, Friends, Trending, Knowledge, Debate, Nearby + Custom Feeds) */}
               <ScrollView
@@ -865,8 +925,8 @@ export default function CommunityScreen() {
                         style={[
                           styles.modePill,
                           {
-                            backgroundColor: active ? '#8B5CF6' : palette.paper,
-                            borderColor: active ? '#8B5CF6' : palette.indigoBorder,
+                            backgroundColor: active ? palette.gold : palette.paper,
+                            borderColor: active ? palette.goldBorder : palette.indigoBorder,
                           },
                         ]}
                       >
@@ -874,7 +934,7 @@ export default function CommunityScreen() {
                           style={{
                             fontSize: 12,
                             fontWeight: '800',
-                            color: active ? '#FFFFFF' : palette.indigo,
+                            color: active ? palette.onGold : palette.indigo,
                           }}
                         >
                           {cf.name}
@@ -1031,14 +1091,14 @@ export default function CommunityScreen() {
                   ) : null}
                 </>
               )}
-            </SmoothReveal>
+            </View>
           ) : null}
 
           {/* ===================================================================== */}
           {/* MODULE 2: COMMUNITIES / GROUPS + RBAC + EVENTS + REPUTATION           */}
           {/* ===================================================================== */}
           {hubSection === 'communities' ? (
-            <SmoothReveal style={{ gap: spacing.md }}>
+            <View style={{ gap: spacing.md }}>
               {!selectedCommunity ? (
                 <>
                   <Card style={{ gap: 8 }}>
@@ -1475,14 +1535,14 @@ export default function CommunityScreen() {
                   ) : null}
                 </>
               )}
-            </SmoothReveal>
+            </View>
           ) : null}
 
           {/* ===================================================================== */}
           {/* MODULE 3: SEPARATED ACADEMIC/POST DISCOVERY VS USER PROFILE SEARCH    */}
           {/* ===================================================================== */}
           {hubSection === 'discover' ? (
-            <SmoothReveal style={{ gap: spacing.md }}>
+            <View style={{ gap: spacing.md }}>
               {/* Explicit Separation per Section 7.5: Document/Post Search vs User Search */}
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 <Pressable
@@ -1722,7 +1782,7 @@ export default function CommunityScreen() {
                   </View>
                 </View>
               )}
-            </SmoothReveal>
+            </View>
           ) : null}
         </ScrollView>
       </View>
@@ -2457,7 +2517,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginHorizontal: spacing.md,
     marginBottom: 4,
     paddingHorizontal: 14,
     paddingVertical: 8,
@@ -2466,17 +2525,24 @@ const styles = StyleSheet.create({
   hubTabsRow: {
     flexDirection: 'row',
     gap: 6,
-    paddingHorizontal: spacing.md,
     paddingBottom: 6,
   },
   hubTabBtn: {
     flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    gap: 5,
     paddingVertical: 8,
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
     borderRadius: radii.sm,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  algoCompactBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   quickComposeCard: {
     flexDirection: 'row',

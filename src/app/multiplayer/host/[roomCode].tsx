@@ -135,8 +135,12 @@ export default function HostRoomScreen() {
         text: 'Kết thúc',
         style: 'destructive',
         onPress: () => {
-          if (roomCode) gameApi.endQuiz(roomCode);
-          router.replace('/multiplayer/results/' + roomCode);
+          if (!roomCode) return;
+          gameApi.endQuiz(roomCode);
+          router.replace({
+            pathname: '/multiplayer/results/[roomCode]',
+            params: { roomCode },
+          });
         },
       },
     ]);

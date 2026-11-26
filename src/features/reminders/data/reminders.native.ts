@@ -20,4 +20,20 @@ export const reminders={
   if(!permission.granted)throw new Error('Chưa có quyền thông báo. Bạn có thể bật quyền trong cài đặt điện thoại.');
   await Notifications.scheduleNotificationAsync({identifier,content:{title:'Một chút thời gian cho việc học',body:'Mở Papyrus và ôn lại một bộ câu hỏi khi bạn sẵn sàng.',data:{route:'/sets'}},trigger:{type:Notifications.SchedulableTriggerInputTypes.DAILY,hour,minute,channelId:'study'}});
  },
+ async checkAndTouchActivity(
+  unfinishedTitle?:string,
+  onInAppNudge?:(title:string,body:string)=>void
+ ){
+  try{
+   const isEnabled=await this.enabled();
+   if(!isEnabled)return;
+   const perm=await Notifications.getPermissionsAsync();
+   if(!perm.granted)return;
+   if(unfinishedTitle&&onInAppNudge){
+    // Native daily reminder schedule stays intact; no extra noisy popup on boot
+   }
+  }catch{
+   // Non-fatal on simulators without notification entitlement
+  }
+ },
 };

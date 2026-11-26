@@ -126,19 +126,19 @@ export default function AuthScreen() {
         toValue: 0.35,
         duration: 115,
         easing: Easing.out(Easing.quad),
-        useNativeDriver: true,
+        useNativeDriver: Platform.OS !== 'web',
       }),
       Animated.timing(modalScale, {
         toValue: 0.94,
         duration: 115,
         easing: Easing.out(Easing.quad),
-        useNativeDriver: true,
+        useNativeDriver: Platform.OS !== 'web',
       }),
       Animated.timing(modalFlip, {
         toValue: dir * 0.5,
         duration: 115,
         easing: Easing.out(Easing.quad),
-        useNativeDriver: true,
+        useNativeDriver: Platform.OS !== 'web',
       }),
     ]).start(() => {
       setMode(next);
@@ -148,21 +148,21 @@ export default function AuthScreen() {
           toValue: 1,
           duration: 260,
           easing: Easing.bezier(0.22, 1, 0.36, 1),
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== 'web',
         }),
         Animated.spring(modalScale, {
           toValue: 1,
           damping: 15,
           stiffness: 190,
           mass: 0.8,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== 'web',
         }),
         Animated.spring(modalFlip, {
           toValue: 0,
           damping: 16,
           stiffness: 180,
           mass: 0.8,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== 'web',
         }),
       ]).start();
     });

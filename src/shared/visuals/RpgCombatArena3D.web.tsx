@@ -138,8 +138,8 @@ function ArenaBattleScene({
           box.getSize(sz);
           const s = 2.35 / Math.max(sz.x, sz.y, sz.z, 0.01);
           root.scale.setScalar(s);
-          // Face toward the Hero on the left (-X, +Z)
-          root.rotation.y = -Math.PI * 0.58;
+          // Angle toward the hero while leaving the molten core visible to the camera.
+          root.rotation.y = -Math.PI * 0.39;
           if (Array.isArray(gltf.animations) && gltf.animations.length > 0) {
             const mixer = new THREE.AnimationMixer(root);
             bossMixerRef.current = mixer;
@@ -395,9 +395,9 @@ function ArenaBattleScene({
 
   return (
     <>
-      <ambientLight intensity={1.05} color="#E0E7FF" />
-      <directionalLight position={[4, 7, 5]} intensity={1.85} color="#FFFBEB" />
-      <pointLight position={[-3.2, 2.6, 2.5]} intensity={1.6} color="#38BDF8" />
+      <hemisphereLight args={['#CFDFFF', '#49384C', 0.9]} />
+      <directionalLight position={[-3, 5, 5]} intensity={2.15} color="#FFEDD2" />
+      <directionalLight position={[2.8, 2.4, -3.5]} intensity={1.7} color="#73CBD8" />
       <pointLight ref={impactLightRef} position={[0, 2, 1.5]} intensity={1.0} color="#F59E0B" />
 
       <group ref={worldRef} position={[0, -0.82, 0]}>
@@ -408,11 +408,11 @@ function ArenaBattleScene({
         </mesh>
         <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
           <ringGeometry args={[2.85, 3.02, 40]} />
-          <meshStandardMaterial color={ringColor} emissive={ringColor} emissiveIntensity={1.6} />
+          <meshStandardMaterial color={ringColor} emissive={ringColor} emissiveIntensity={0.55} />
         </mesh>
         <mesh position={[0, 0.015, 0]} rotation={[-Math.PI / 2, 0, 0]}>
           <ringGeometry args={[1.35, 1.44, 32]} />
-          <meshStandardMaterial color="#F59E0B" emissive="#F59E0B" emissiveIntensity={1.4} />
+          <meshStandardMaterial color="#C88B43" emissive="#C88B43" emissiveIntensity={0.5} />
         </mesh>
 
         {/* 4 Background Colosseum Torch Pillars */}

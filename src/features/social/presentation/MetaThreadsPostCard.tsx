@@ -44,6 +44,41 @@ function formatGhostRemaining(expiresAt?: string | null): string {
   return hrs > 0 ? `Còn ${hrs}g ${mins}p` : `Còn ${mins} phút`;
 }
 
+/** Render inline backtick spans as highlighted monospace code without raw markdown ticks. */
+function renderTextWithInlineCode(
+  content: string,
+  baseStyle: object,
+  codeBg: string,
+  codeFg: string
+) {
+  if (!content.includes('`')) {
+    return <Text style={baseStyle}>{content}</Text>;
+  }
+  const segments = content.split(/(`[^`\n]+`)/g);
+  return (
+    <Text style={baseStyle}>
+      {segments.map((seg, i) => {
+        if (seg.length >= 2 && seg.startsWith('`') && seg.endsWith('`')) {
+          return (
+            <Text
+              key={i}
+              style={{
+                fontFamily: Platform.OS === 'web' ? 'monospace' : 'Courier',
+                backgroundColor: codeBg,
+                color: codeFg,
+                fontWeight: '700',
+              }}
+            >
+              {` ${seg.slice(1, -1)} `}
+            </Text>
+          );
+        }
+        return seg;
+      })}
+    </Text>
+  );
+}
+
 export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
   post,
   viewerId,
@@ -161,6 +196,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
 
   const [debateArgDraft, setDebateArgDraft] = useState('');
   const [debateSidePick, setDebateSidePick] = useState<'A' | 'B'>('A');
+  const [debateArgsExpanded, setDebateArgsExpanded] = useState(false);
 
   const isOwnPost = (post.internalAuthorId || post.authorId) === viewerId;
   const canReply = canViewerReplyToPost(post, viewerId, graph);
@@ -373,18 +409,19 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                   onPress={() => router.push({ pathname: '/post/[postId]', params: { postId: post.id } })}
                   style={{ flex: 1, minWidth: 0, paddingBottom: hasNext ? 12 : 4 }}
                 >
-                  <Text
-                    style={[
+                  {renderTextWithInlineCode(
+                    part,
+                    [
                       typography.body,
                       {
                         color: palette.ink,
                         fontWeight: idx === 0 && post.threadParts.length > 1 ? '700' : '500',
                         lineHeight: 22,
                       },
-                    ]}
-                  >
-                    {part}
-                  </Text>
+                    ],
+                    palette.indigoTint,
+                    palette.indigoDeep
+                  )}
                 </Pressable>
               </View>
             );
@@ -393,11 +430,14 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
           {/* Long-Form Rich Content with Read More + PapyAI Summary */}
           {post.longFormBody ? (
             <View style={[styles.longFormBox, { backgroundColor: palette.paper, borderColor: palette.paperMuted }]}>
-              <Text style={[typography.caption, { color: palette.ink, lineHeight: 20 }]}>
-                {longFormExpanded || post.longFormBody.length <= 220
+              {renderTextWithInlineCode(
+                longFormExpanded || post.longFormBody.length <= 220
                   ? post.longFormBody
-                  : `${post.longFormBody.slice(0, 220)}…`}
-              </Text>
+                  : `${post.longFormBody.slice(0, 220)}…`,
+                [typography.caption, { color: palette.ink, lineHeight: 20 }],
+                palette.indigoTint,
+                palette.indigoDeep
+              )}
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, flexWrap: 'wrap', gap: 8 }}>
                 {post.longFormBody.length > 220 && (
                   <Pressable onPress={() => setLongFormExpanded((v) => !v)}>
@@ -572,22 +612,22 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
           {/* Debate Mode Structured Arguments & Viewpoint Voting (Section 10.5) */}
           {post.debate ? (
             <View style={[styles.debateBox, { backgroundColor: palette.paper, borderColor: palette.indigoBorder }]}>
-              <Badge tone="reward">⚖️ Chế độ Tranh biện Đa chiều (Debate Mode)</Badge>
+              <Badge tone="reward">⚖️ Chế độ Tranh biện Đa chiều</Badge>
               <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
                 <Pressable
                   onPress={() => onVoteDebate(post.id, 'A')}
                   style={[
                     styles.debateVoteBtn,
                     {
-                      borderColor: '#3B82F6',
+                      borderColor: palette.indigo,
                       backgroundColor: post.debate.sideAVoterIds.includes(viewerId)
-                        ? 'rgba(59,130,246,0.2)'
+                        ? palette.indigoTint
                         : palette.paperRaised,
                     },
                   ]}
                 >
-                  <Text style={{ fontSize: 12, fontWeight: '800', color: '#3B82F6' }}>
-                    🅰️ {post.debate.sideALabel} ({post.debate.sideAVoterIds.length})
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: palette.indigoDeep }} numberOfLines={2}>
+                    A · {post.debate.sideALabel} ({post.debate.sideAVoterIds.length})
                   </Text>
                 </Pressable>
 
@@ -596,15 +636,15 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                   style={[
                     styles.debateVoteBtn,
                     {
-                      borderColor: '#EC4899',
+                      borderColor: palette.fire,
                       backgroundColor: post.debate.sideBVoterIds.includes(viewerId)
-                        ? 'rgba(236,72,153,0.2)'
+                        ? palette.fireTint
                         : palette.paperRaised,
                     },
                   ]}
                 >
-                  <Text style={{ fontSize: 12, fontWeight: '800', color: '#EC4899' }}>
-                    🅱️ {post.debate.sideBLabel} ({post.debate.sideBVoterIds.length})
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: palette.fire }} numberOfLines={2}>
+                    B · {post.debate.sideBLabel} ({post.debate.sideBVoterIds.length})
                   </Text>
                 </Pressable>
               </View>
@@ -616,25 +656,40 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
               ) : null}
 
               <View style={{ gap: 6, marginTop: 8 }}>
-                {post.debate.arguments.map((arg) => (
+                {(debateArgsExpanded ? post.debate.arguments : post.debate.arguments.slice(0, 2)).map((arg) => (
                   <View
                     key={arg.id}
                     style={[
                       styles.debateArgItem,
                       {
-                        borderLeftColor: arg.side === 'A' ? '#3B82F6' : '#EC4899',
+                        borderLeftColor: arg.side === 'A' ? palette.indigo : palette.fire,
                         backgroundColor: palette.paperRaised,
                       },
                     ]}
                   >
                     <Pressable onPress={() => navigateToProfile(arg.authorId)}>
-                      <Text style={{ fontSize: 11.5, fontWeight: '800', color: arg.side === 'A' ? '#3B82F6' : '#EC4899' }}>
+                      <Text
+                        style={{
+                          fontSize: 11.5,
+                          fontWeight: '800',
+                          color: arg.side === 'A' ? palette.indigoDeep : palette.fire,
+                        }}
+                      >
                         [{arg.side === 'A' ? post.debate!.sideALabel : post.debate!.sideBLabel}] · {arg.authorName}
                       </Text>
                     </Pressable>
                     <Text style={{ fontSize: 12, color: palette.ink, marginTop: 2 }}>{arg.content}</Text>
                   </View>
                 ))}
+                {post.debate.arguments.length > 2 ? (
+                  <Pressable onPress={() => setDebateArgsExpanded((v) => !v)} style={{ paddingVertical: 2 }}>
+                    <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.indigo }}>
+                      {debateArgsExpanded
+                        ? 'Thu gọn lập luận ▲'
+                        : `Xem thêm ${post.debate.arguments.length - 2} lập luận ▼`}
+                    </Text>
+                  </Pressable>
+                ) : null}
               </View>
 
               <View style={{ flexDirection: 'row', gap: 6, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -660,7 +715,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                   }}
                   style={[styles.sendMiniBtn, { backgroundColor: palette.indigo }]}
                 >
-                  <Ionicons name="send" size={14} color="#FFFFFF" />
+                  <Ionicons name="send" size={14} color={palette.onPrimary} />
                 </Pressable>
               </View>
             </View>

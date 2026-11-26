@@ -117,34 +117,37 @@ export async function fetchGlobalLeaderboard(params: {
       // Fall through to real profiles query
     }
 
-    // 2. Fallback on live backend: query real registered profiles directly (no fake mock names!)
+    // 2. Fallback on live backend: query real registered profiles directly only when authenticated
     try {
-      const { data: profiles, error: profErr } = await supabase
-        .from('profiles')
-        .select('id, display_name, avatar_url, total_score, games_played, elo_rating')
-        .order('total_score', { ascending: false })
-        .order('elo_rating', { ascending: false })
-        .limit(50);
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (sessionData.session?.user) {
+        const { data: profiles, error: profErr } = await supabase
+          .from('profiles')
+          .select('id, display_name, avatar_url, total_score, games_played, elo_rating')
+          .order('total_score', { ascending: false })
+          .order('elo_rating', { ascending: false })
+          .limit(50);
 
-      if (!profErr && Array.isArray(profiles) && profiles.length > 0) {
-        const entries: LeaderboardEntry[] = (profiles as ProfileRow[]).map((p, idx) => {
-          const score = Number(p.total_score ?? 0);
-          const games = Number(p.games_played ?? 0);
-          return {
-            id: p.id,
-            rank: idx + 1,
-            name: p.display_name || 'Học giả Papyrus',
-            score,
-            scoreLabel: formatXp(score),
-            gamesPlayed: games,
-            streak: p.id === currentUserId ? localStreak : Math.max(0, Math.min(14, games)),
-            avatar: AVATARS[idx % AVATARS.length] ?? '⭐',
-            avatarUrl: p.avatar_url ?? null,
-            isMe: Boolean(currentUserId && p.id === currentUserId),
-            topic,
-          };
-        });
-        return { entries, source: 'live', totalCount: entries.length };
+        if (!profErr && Array.isArray(profiles) && profiles.length > 0) {
+          const entries: LeaderboardEntry[] = (profiles as ProfileRow[]).map((p, idx) => {
+            const score = Number(p.total_score ?? 0);
+            const games = Number(p.games_played ?? 0);
+            return {
+              id: p.id,
+              rank: idx + 1,
+              name: p.display_name || 'Học giả Papyrus',
+              score,
+              scoreLabel: formatXp(score),
+              gamesPlayed: games,
+              streak: p.id === currentUserId ? localStreak : Math.max(0, Math.min(14, games)),
+              avatar: AVATARS[idx % AVATARS.length] ?? '⭐',
+              avatarUrl: p.avatar_url ?? null,
+              isMe: Boolean(currentUserId && p.id === currentUserId),
+              topic,
+            };
+          });
+          return { entries, source: 'live', totalCount: entries.length };
+        }
       }
     } catch {
       // Fall through to offline mode only if completely unreachable
@@ -397,24 +400,27 @@ export async function searchPlayersForFriend(query: string): Promise<FriendSearc
       }
     }
 
-    // 3. Direct profiles query fallback (if RLS allows broader read)
+    // 3. Direct profiles query fallback only when authenticated
     if (byId.size === 0) {
       try {
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('id, display_name, avatar_url, elo_rating, total_score')
-          .ilike('display_name', `%${clean}%`)
-          .limit(15);
-        if (!error && Array.isArray(data)) {
-          for (const row of data as ProfileRow[]) {
-            if (row.id === myId) continue;
-            byId.set(row.id, {
-              id: row.id,
-              displayName: row.display_name || 'Học giả Papyrus',
-              avatarUrl: row.avatar_url ?? null,
-              eloRating: Number(row.elo_rating ?? 1200),
-              totalScore: Number(row.total_score ?? 0),
-            });
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (sessionData.session?.user) {
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('id, display_name, avatar_url, elo_rating, total_score')
+            .ilike('display_name', `%${clean}%`)
+            .limit(15);
+          if (!error && Array.isArray(data)) {
+            for (const row of data as ProfileRow[]) {
+              if (row.id === myId) continue;
+              byId.set(row.id, {
+                id: row.id,
+                displayName: row.display_name || 'Học giả Papyrus',
+                avatarUrl: row.avatar_url ?? null,
+                eloRating: Number(row.elo_rating ?? 1200),
+                totalScore: Number(row.total_score ?? 0),
+              });
+            }
           }
         }
       } catch {

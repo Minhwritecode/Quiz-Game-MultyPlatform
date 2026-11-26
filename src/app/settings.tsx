@@ -330,19 +330,45 @@ export default function SettingsScreen() {
       <TopBar title={t.settings.title} />
 
       {/* User Profile Card */}
-      <Card style={styles.profile} onPress={() => router.push('/profile')}>
-        <BrandMark size={56} />
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={[typography.title, { color: palette.ink }]} numberOfLines={1}>
-            {user?.displayName ?? (user?.email ? user.email.split('@')[0] : t.settings.guestName)}
-          </Text>
-          <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 3 }]} numberOfLines={1}>
-            {user ? user.email || t.settings.authStatus : t.settings.guestStatus}
-          </Text>
-        </View>
-        <Badge tone={user ? 'success' : 'neutral'}>
-          {user ? t.settings.badgeAuth : t.settings.badgeGuest}
-        </Badge>
+      <Card style={styles.profile}>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => router.push('/profile')}
+          style={({ pressed }) => [styles.profileMainTap, { opacity: pressed ? 0.78 : 1 }]}
+        >
+          <BrandMark size={52} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={[typography.title, { color: palette.ink }]} numberOfLines={1}>
+              {user?.displayName ?? (user?.email ? user.email.split('@')[0] : t.settings.guestName)}
+            </Text>
+            <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 3 }]} numberOfLines={2}>
+              {user ? user.email || t.settings.authStatus : t.settings.guestStatus}
+            </Text>
+          </View>
+        </Pressable>
+        {user ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push('/profile')}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+          >
+            <Badge tone="success">{t.settings.badgeAuth}</Badge>
+            <Ionicons name="chevron-forward" size={18} color={palette.inkMuted} />
+          </Pressable>
+        ) : (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push('/auth')}
+            style={({ pressed }) => [
+              styles.profileSignInPill,
+              { backgroundColor: palette.indigo, opacity: pressed ? 0.85 : 1 },
+            ]}
+          >
+            <Text style={{ fontSize: 12.5, fontWeight: '800', color: palette.onPrimary }}>
+              {language === 'vi' ? 'Đăng nhập' : 'Sign in'}
+            </Text>
+          </Pressable>
+        )}
       </Card>
 
       {/* ── SECURITY CENTER: PASSKEYS · 2FA · ACTIVE LOGIN DEVICES ── */}
@@ -545,23 +571,66 @@ export default function SettingsScreen() {
       </Text>
 
       <Card style={styles.group}>
-        <PreferenceRow icon="moon-outline" title={t.settings.themeTitle} subtitle={t.settings.themeSub}>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
-            {(['system', 'light', 'dark'] as const).map((value) => (
-              <Pressable
-                key={value}
-                accessibilityRole="radio"
-                accessibilityState={{ selected: theme === value }}
-                onPress={() => setTheme(value)}
-                style={{ minHeight: 44, paddingHorizontal: 8, justifyContent: 'center' }}
-              >
-                <Text style={{ color: theme === value ? palette.indigo : palette.inkMuted, fontWeight: '700' }}>
-                  {value === 'system' ? 'Auto' : value === 'light' ? 'Light' : 'Dark'}
-                </Text>
-              </Pressable>
-            ))}
+        <View style={styles.themeBlockRow}>
+          <View style={styles.themeHeaderRow}>
+            <View style={[styles.iconWrap, { backgroundColor: palette.paper }]}>
+              <Ionicons name="moon-outline" size={20} color={palette.indigo} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={[typography.body, { color: palette.ink, fontWeight: '700' }]}>
+                {t.settings.themeTitle}
+              </Text>
+              <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
+                {t.settings.themeSub}
+              </Text>
+            </View>
           </View>
-        </PreferenceRow>
+          <View style={[styles.themeSegmentedTrack, { backgroundColor: palette.paperMuted }]}>
+            {(['system', 'light', 'dark'] as const).map((value) => {
+              const selected = theme === value;
+              const label =
+                language === 'vi'
+                  ? value === 'system'
+                    ? 'Tự động'
+                    : value === 'light'
+                      ? 'Sáng'
+                      : 'Tối'
+                  : value === 'system'
+                    ? 'Auto'
+                    : value === 'light'
+                      ? 'Light'
+                      : 'Dark';
+              return (
+                <Pressable
+                  key={value}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected }}
+                  onPress={() => setTheme(value)}
+                  style={[
+                    styles.themeSegmentBtn,
+                    selected
+                      ? {
+                          backgroundColor: palette.paperRaised,
+                          borderColor: palette.indigoBorder,
+                          borderWidth: 1,
+                        }
+                      : undefined,
+                  ]}
+                >
+                  <Text
+                    style={{
+                      fontSize: 13,
+                      color: selected ? palette.indigo : palette.ink,
+                      fontWeight: selected ? '800' : '600',
+                    }}
+                  >
+                    {label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
         <View style={[styles.separator, { backgroundColor: palette.paperMuted }]} />
 
         <Pressable accessibilityRole="button" onPress={() => setLanguage(language === 'vi' ? 'en' : 'vi')}>
@@ -592,11 +661,11 @@ export default function SettingsScreen() {
         <Pressable accessibilityRole="button" onPress={() => useOnboardingStore.getState().openReplay()}>
           <PreferenceRow
             icon="film-outline"
-            title={language === 'vi' ? 'Xem lại Video Giới thiệu Papyrus' : 'Replay Papyrus Intro Video'}
+            title={language === 'vi' ? 'Xem lại hướng dẫn Papyrus' : 'Replay Papyrus Intro'}
             subtitle={
               language === 'vi'
-                ? 'Hiệu ứng ảo ảnh thị giác 9.5 giây (Pain Point → AI Quiz → Battle)'
-                : '9.5s optical-illusion story (Pain Point → AI Quiz → Battle)'
+                ? 'Câu chuyện giới thiệu 3 bước từ tài liệu tới thi đấu'
+                : '9.5s story from study notes to live battles'
             }
           >
             <Badge tone="primary">{language === 'vi' ? 'Xem' : 'Play'}</Badge>
@@ -624,7 +693,7 @@ export default function SettingsScreen() {
           <View style={[styles.iconWrap, { backgroundColor: palette.paper }]}>
             <Ionicons name="server-outline" size={20} color={palette.indigo} />
           </View>
-          <View style={{ flex: 1 }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={[typography.body, { color: palette.ink, fontWeight: '700' }]}>
               {t.settings.manageLocalTitle}
             </Text>
@@ -639,15 +708,15 @@ export default function SettingsScreen() {
           <View style={[styles.iconWrap, { backgroundColor: palette.paper }]}>
             <Ionicons name="trash-bin-outline" size={20} color={palette.inkMuted} />
           </View>
-          <View style={{ flex: 1 }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={[typography.body, { color: palette.ink, fontWeight: '700' }]}>
               {language === 'vi' ? 'Dọn bộ nhớ đệm & phiên học tạm' : 'Clear Local Drafts & OCR Cache'}
             </Text>
             <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
               {cacheNotice ||
                 (language === 'vi'
-                  ? `Đang lưu ${questionSetCount} bộ đề · Chạm để dọn phiên học dở & cache OCR tạm`
-                  : `${questionSetCount} sets stored · Tap to clear temporary drafts and OCR cache`)}
+                  ? `Đang lưu ${questionSetCount} bộ đề · Chạm để dọn phiên học dở & cache tạm`
+                  : `${questionSetCount} sets stored · Tap to clear temporary drafts and cache`)}
             </Text>
           </View>
           <Badge tone="neutral">{clearingCache ? '...' : language === 'vi' ? 'Dọn' : 'Clear'}</Badge>
@@ -657,18 +726,18 @@ export default function SettingsScreen() {
           <View style={[styles.iconWrap, { backgroundColor: palette.paper }]}>
             <Ionicons name="card-outline" size={20} color={palette.gold} />
           </View>
-          <View style={{ flex: 1 }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={[typography.body, { color: palette.ink, fontWeight: '700' }]}>
-              {language === 'vi' ? 'Nâng cấp VIP & Nạp AI Token (Checkout)' : 'VIP & AI Token Checkout'}
+              {language === 'vi' ? 'Nâng cấp VIP & Nạp AI Token' : 'VIP & AI Token Upgrades'}
             </Text>
             <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]}>
               {language === 'vi'
-                ? 'Cổng thanh toán Stripe / VietQR / Apple Pay / Google Pay & lịch sử gói'
-                : 'Stripe / Apple Pay / Google Pay checkout & billing history'}
+                ? 'Mở khóa tạo đề không giới hạn qua VietQR, Thẻ & Apple/Google Pay'
+                : 'Unlock unlimited AI quizzes via card, Apple Pay, Google Pay & history'}
             </Text>
           </View>
           <Badge tone={membershipTier === 'archmage' ? 'reward' : 'primary'}>
-            {membershipTier === 'archmage' ? '👑 VIP' : 'Nâng cấp'}
+            {membershipTier === 'archmage' ? '👑 VIP' : language === 'vi' ? 'Nâng cấp' : 'Upgrade'}
           </Badge>
         </Pressable>
       </Card>
@@ -746,28 +815,28 @@ export default function SettingsScreen() {
             id: 'papyrus-logout-dialog',
             'aria-labelledby': 'papyrus-logout-title',
             style: {
-              border: '1px solid rgba(148, 163, 184, 0.25)',
+              border: `1px solid ${palette.paperMuted}`,
               borderRadius: '20px',
               padding: '24px',
               maxWidth: '400px',
               width: 'calc(100% - 32px)',
-              backgroundColor: '#0F172A',
-              color: '#F8FAFC',
-              boxShadow: '0 24px 54px rgba(2, 6, 23, 0.78)',
+              backgroundColor: palette.paperRaised,
+              color: palette.ink,
+              boxShadow: '0 24px 54px rgba(24, 28, 37, 0.28)',
             },
           },
           createElement(
             'h1',
             {
               id: 'papyrus-logout-title',
-              style: { margin: 0, fontSize: '18px', fontWeight: 800, color: '#F8FAFC' },
+              style: { margin: 0, fontSize: '18px', fontWeight: 800, color: palette.ink },
             },
             'Bạn có chắc chắn muốn đăng xuất?'
           ),
           createElement(
             'p',
             {
-              style: { marginTop: '8px', marginBottom: '20px', fontSize: '14px', lineHeight: 1.5, color: '#94A3B8' },
+              style: { marginTop: '8px', marginBottom: '20px', fontSize: '14px', lineHeight: 1.5, color: palette.inkMuted },
             },
             'Tiến trình học tập, chuỗi Streak và cấp Học giả của bạn đã được lưu an toàn trên đám mây.'
           ),
@@ -786,9 +855,9 @@ export default function SettingsScreen() {
                   minHeight: '44px',
                   padding: '0 18px',
                   borderRadius: '12px',
-                  border: '1px solid rgba(148, 163, 184, 0.35)',
-                  background: 'rgba(30, 41, 59, 0.8)',
-                  color: '#E2E8F0',
+                  border: `1px solid ${palette.paperMuted}`,
+                  background: palette.paperSoft,
+                  color: palette.ink,
                   fontWeight: 800,
                   cursor: 'pointer',
                 },
@@ -804,8 +873,8 @@ export default function SettingsScreen() {
                   padding: '0 18px',
                   borderRadius: '12px',
                   border: 'none',
-                  background: '#EF4444',
-                  color: '#FFFFFF',
+                  background: palette.danger,
+                  color: palette.onPrimary,
                   fontWeight: 800,
                   cursor: 'pointer',
                 },
@@ -868,9 +937,9 @@ export default function SettingsScreen() {
                 <Text style={[typography.caption, { color: palette.mint, fontWeight: '800' }]}>
                   ✅ Đã kích hoạt 2FA thành công! Hãy lưu lại 4 mã dự phòng khẩn cấp dưới đây:
                 </Text>
-                <View style={styles.backupCodesBox}>
+                <View style={[styles.backupCodesBox, { backgroundColor: palette.mintTint }]}>
                   {newBackupCodes.map((c) => (
-                    <Text key={c} style={styles.backupCodeText}>
+                    <Text key={c} style={[styles.backupCodeText, { color: palette.mint }]}>
                       {c}
                     </Text>
                   ))}
@@ -923,9 +992,30 @@ export default function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  profile: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.lg, borderRadius: radii.md },
+  profile: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.md, borderRadius: radii.md },
+  profileMainTap: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  profileSignInPill: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    borderRadius: radii.pill,
+  },
   group: { padding: 0, overflow: 'hidden', borderRadius: radii.md },
-  row: { minHeight: 70, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.lg },
+  row: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
+  themeBlockRow: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md, gap: spacing.sm },
+  themeHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  themeSegmentedTrack: {
+    flexDirection: 'row',
+    gap: 4,
+    padding: 3,
+    borderRadius: radii.pill,
+  },
+  themeSegmentBtn: {
+    flex: 1,
+    minHeight: 36,
+    borderRadius: radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   iconWrap: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   separator: { height: 1, marginLeft: 64 },
   fullDivider: { height: 1, width: '100%' },
@@ -966,7 +1056,7 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(2, 6, 23, 0.78)',
+    backgroundColor: 'rgba(24, 28, 37, 0.56)',
     alignItems: 'center',
     justifyContent: 'center',
     padding: spacing.lg,
@@ -993,12 +1083,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 12,
     borderRadius: 12,
-    backgroundColor: 'rgba(15, 23, 42, 0.12)',
   },
   backupCodeText: {
     fontSize: 15,
     fontWeight: '900',
-    color: '#10B981',
     letterSpacing: 2,
     paddingHorizontal: 10,
     paddingVertical: 4,
