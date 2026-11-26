@@ -369,12 +369,12 @@ export function RankedDuelArena({
           <View style={styles.topRow}>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={[typography.label, { color: palette.indigo }]}>1V1 RANKED MATCHMAKING</Text>
-              <Text style={[typography.title, { color: palette.ink, fontSize: 19, marginTop: 2 }]}>
-                Đấu trường ELO theo chuyên môn
+              <Text style={[typography.title, { color: palette.ink, fontSize: 18, marginTop: 2 }]} numberOfLines={1}>
+                Đấu trường ELO 1v1
               </Text>
             </View>
             <View style={[styles.tierPill, { backgroundColor: palette.paper, borderColor: currentTier.color }]}>
-              <Text style={{ fontSize: 15 }}>{currentTier.badge}</Text>
+              <Text style={{ fontSize: 14 }}>{currentTier.badge}</Text>
               <Text style={[typography.caption, { color: currentTier.color, fontWeight: '800', fontVariant: ['tabular-nums'] }]}>
                 {currentCatElo} ELO
               </Text>
@@ -382,7 +382,7 @@ export function RankedDuelArena({
           </View>
 
           <Text style={[typography.caption, { color: palette.inkMuted, marginTop: spacing.xs }]}>
-            Ghép đối thủ đang trực tuyến trong 25 giây gần nhất (không bao giờ ghép người chơi cũ đã thoát). Mỗi trận gồm 6 câu hỏi chuyên sâu.
+            Ghép đối thủ đang trực tuyến trong 25 giây gần nhất. Mỗi trận gồm 6 câu hỏi chuyên sâu.
           </Text>
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.catScroll}>
@@ -401,10 +401,10 @@ export function RankedDuelArena({
                     },
                   ]}
                 >
-                  <Text style={[typography.caption, { color: active ? '#FFFFFF' : palette.ink, fontWeight: '800' }]}>
+                  <Text style={[typography.caption, { color: active ? palette.onPrimary : palette.ink, fontWeight: '800' }]}>
                     {cat.icon} {cat.label}
                   </Text>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: active ? '#E0E7FF' : palette.inkMuted, fontVariant: ['tabular-nums'] }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: active ? palette.onPrimary : palette.inkMuted, opacity: active ? 0.85 : 1, fontVariant: ['tabular-nums'] }}>
                     {catElo} ELO
                   </Text>
                 </Pressable>
@@ -414,13 +414,13 @@ export function RankedDuelArena({
 
           <View style={styles.ctaStack}>
             <Button variant="reward" icon="flash" onPress={() => void startSearch(true)} fullWidth>
-              ⚔️ Tìm trận Ranked 1v1 ({selectedCatLabel})
+              Tìm trận Ranked 1v1 ({selectedCatLabel})
             </Button>
             <Button variant="secondary" icon="hardware-chip-outline" onPress={launchAiPractice} fullWidth>
-              🤖 Luyện đấu ngay với Bot học giả
+              Luyện đấu ngay với Bot học giả
             </Button>
             <Button variant="ghost" icon="people-outline" onPress={() => void createFriendInvite()} fullWidth>
-              🤝 Tạo mã mời bạn đấu Giao hữu
+              Tạo mã mời bạn đấu Giao hữu
             </Button>
           </View>
 
