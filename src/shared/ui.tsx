@@ -17,6 +17,7 @@ import {
   StyleSheet,
   Text,
   View,
+  type StyleProp,
   type ViewStyle,
   useColorScheme,
   useWindowDimensions,
@@ -57,6 +58,8 @@ export const OnlineStatusDot = memo(function OnlineStatusDot({ size = 9 }: { siz
     };
   }, []);
 
+  const palette = usePalette();
+
   useEffect(() => {
     if (reduceMotion || !online) {
       pulse.setValue(0);
@@ -64,15 +67,15 @@ export const OnlineStatusDot = memo(function OnlineStatusDot({ size = 9 }: { siz
     }
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(pulse, { toValue: 1, duration: 1200, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 0.25, duration: 1200, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1, duration: 1200, useNativeDriver: Platform.OS !== 'web' }),
+        Animated.timing(pulse, { toValue: 0.25, duration: 1200, useNativeDriver: Platform.OS !== 'web' }),
       ])
     );
     loop.start();
     return () => loop.stop();
   }, [online, pulse, reduceMotion]);
 
-  const dotColor = online ? '#10B981' : '#EF4444';
+  const dotColor = online ? palette.mint : palette.danger;
   return (
     <View
       accessibilityLabel={online ? 'Đang kết nối mạng' : 'Mất kết nối mạng'}
@@ -126,7 +129,7 @@ export const SmoothReveal = memo(function SmoothReveal({
       duration: 280,
       delay,
       easing: Easing.bezier(0.23, 1, 0.32, 1),
-      useNativeDriver: true,
+      useNativeDriver: Platform.OS !== 'web',
     });
     anim.start();
     return () => anim.stop();
@@ -415,11 +418,11 @@ export const TopBar = memo(function TopBar({
   const palette = usePalette();
   const router = useRouter();
   const hapticsEnabled = usePapyrusStore((s) => s.haptics);
-  const fg = lightContent ? '#F8FAFC' : palette.ink;
-  const surfaceBg = lightContent ? 'rgba(15, 23, 66, 0.84)' : palette.paperRaised;
-  const borderCol = lightContent ? 'rgba(129, 140, 248, 0.42)' : palette.indigoBorder;
-  const backBg = lightContent ? 'rgba(99, 102, 241, 0.28)' : palette.indigoTint;
-  const backBorder = lightContent ? 'rgba(165, 180, 252, 0.48)' : palette.indigoBorder;
+  const fg = lightContent ? '#F3EFE0' : palette.ink;
+  const surfaceBg = lightContent ? 'rgba(18, 21, 31, 0.88)' : palette.paperRaised;
+  const borderCol = lightContent ? 'rgba(123, 164, 255, 0.32)' : palette.paperMuted;
+  const backBg = lightContent ? 'rgba(28, 63, 148, 0.34)' : palette.indigoTint;
+  const backBorder = lightContent ? 'rgba(123, 164, 255, 0.42)' : palette.indigoBorder;
 
   const handleBack = () => {
     if (hapticsEnabled && Platform.OS !== 'web') {
@@ -473,7 +476,7 @@ export const TopBar = memo(function TopBar({
           <Ionicons
             name="arrow-back"
             size={20}
-            color={hovered || pressed ? '#FFFFFF' : lightContent ? '#E0E7FF' : palette.indigoDeep}
+            color={hovered || pressed ? palette.onPrimary : lightContent ? '#F3EFE0' : palette.indigoDeep}
           />
         )}
       </Pressable>
@@ -509,33 +512,33 @@ export const BrandMark = memo(function BrandMark({ size = 46 }: { size?: number 
         {
           width: size,
           height: size,
-          borderRadius: Math.round(size * 0.28),
-          backgroundColor: '#060A24',
-          borderWidth: 1.5,
-          borderColor: 'rgba(129, 140, 248, 0.5)',
+          borderRadius: Math.round(size * 0.26),
+          backgroundColor: '#1C3F94',
+          borderWidth: 1,
+          borderColor: 'rgba(228, 220, 198, 0.45)',
           justifyContent: 'center',
           alignItems: 'center',
           position: 'relative',
         },
       ]}
     >
-      <Ionicons name="bookmarks" size={iconSize} color="#A5B4FC" />
+      <Ionicons name="bookmarks" size={iconSize} color="#FFFDF8" />
       <View
         style={{
           position: 'absolute',
-          top: Math.round(size * 0.12),
-          right: Math.round(size * 0.12),
+          top: Math.round(size * 0.11),
+          right: Math.round(size * 0.11),
           width: badgeSize,
           height: badgeSize,
           borderRadius: badgeSize / 2,
-          backgroundColor: '#F59E0B',
+          backgroundColor: '#D98A1E',
           borderWidth: 1.5,
-          borderColor: '#060A24',
+          borderColor: '#1C3F94',
           justifyContent: 'center',
           alignItems: 'center',
         }}
       >
-        <Ionicons name="flash" size={Math.round(badgeSize * 0.6)} color="#FFFFFF" />
+        <Ionicons name="sparkles" size={Math.round(badgeSize * 0.56)} color="#FFFDF8" />
       </View>
     </View>
   );
@@ -561,23 +564,81 @@ export function PageHeader({ eyebrow, title, subtitle }: { eyebrow?: string; tit
   );
 }
 
+const OUTER_CARD_STYLE_KEYS = new Set([
+  'margin',
+  'marginTop',
+  'marginBottom',
+  'marginLeft',
+  'marginRight',
+  'marginHorizontal',
+  'marginVertical',
+  'marginStart',
+  'marginEnd',
+  'flex',
+  'flexGrow',
+  'flexShrink',
+  'flexBasis',
+  'width',
+  'minWidth',
+  'maxWidth',
+  'height',
+  'minHeight',
+  'maxHeight',
+  'alignSelf',
+  'position',
+  'top',
+  'right',
+  'bottom',
+  'left',
+  'zIndex',
+]);
+
+function splitCardPressStyles(rawStyle: StyleProp<ViewStyle> | object | undefined): {
+  outerStyle: ViewStyle | undefined;
+  innerStyle: ViewStyle | undefined;
+} {
+  const flat = StyleSheet.flatten(rawStyle as StyleProp<ViewStyle>) as ViewStyle | undefined;
+  if (!flat) return { outerStyle: undefined, innerStyle: undefined };
+
+  const outer: Record<string, unknown> = {};
+  const inner: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(flat)) {
+    if (value === undefined) continue;
+    if (OUTER_CARD_STYLE_KEYS.has(key)) outer[key] = value;
+    else inner[key] = value;
+  }
+
+  return {
+    outerStyle: Object.keys(outer).length > 0 ? (outer as ViewStyle) : undefined,
+    innerStyle: Object.keys(inner).length > 0 ? (inner as ViewStyle) : undefined,
+  };
+}
+
 export function Card({
   children,
   style,
+  containerStyle,
   color,
   onPress,
-}: PropsWithChildren<{ style?: object; color?: string; onPress?: () => void }>) {
+}: PropsWithChildren<{
+  style?: StyleProp<ViewStyle> | object;
+  containerStyle?: StyleProp<ViewStyle>;
+  color?: string;
+  onPress?: () => void;
+}>) {
   const palette = usePalette();
-  const baseCardStyle = [
+  const baseVisual = [
     styles.card,
     shadows.card,
     { backgroundColor: color ?? palette.paperRaised, borderColor: palette.paperMuted },
-    style,
   ];
 
   if (!onPress) {
-    return <View style={baseCardStyle}>{children}</View>;
+    return <View style={[...baseVisual, containerStyle, style as StyleProp<ViewStyle>]}>{children}</View>;
   }
+
+  const { outerStyle, innerStyle } = splitCardPressStyles(style);
 
   return (
     <Pressable
@@ -589,13 +650,17 @@ export function Card({
           transform: pressed ? [{ scale: 0.985 }] : hovered ? [{ translateY: -2 }] : undefined,
           opacity: pressed ? 0.92 : 1,
         },
+        outerStyle,
+        containerStyle,
         Platform.OS === 'web' ? ({ cursor: 'pointer' } as unknown as ViewStyle) : undefined,
       ]}
     >
       {({ hovered }: { pressed: boolean; hovered?: boolean }) => (
         <View
           style={[
-            ...baseCardStyle,
+            ...baseVisual,
+            { flexGrow: 1 },
+            innerStyle,
             hovered ? { borderColor: palette.indigoBorder } : undefined,
           ]}
         >
@@ -627,12 +692,12 @@ export function Button({
 }) {
   const palette = usePalette();
   const configs = {
-    primary: { bg: palette.indigo, border: palette.indigoBorder, fg: palette.white, bbWidth: 3 },
-    secondary: { bg: palette.indigoTint, border: palette.indigoBorder, fg: palette.indigoDeep, bbWidth: 2 },
-    success: { bg: palette.mint, border: palette.mintBorder, fg: palette.white, bbWidth: 3 },
-    reward: { bg: palette.gold, border: palette.goldBorder, fg: palette.white, bbWidth: 3 },
-    danger: { bg: palette.dangerTint, border: palette.dangerBorder, fg: palette.danger, bbWidth: 2 },
-    ghost: { bg: 'transparent', border: palette.paperMuted, fg: palette.indigoDeep, bbWidth: 1 },
+    primary: { bg: palette.indigo, border: palette.indigo, fg: palette.onPrimary, bbWidth: 2 },
+    secondary: { bg: palette.indigoTint, border: palette.indigoBorder, fg: palette.indigoDeep, bbWidth: 1 },
+    success: { bg: palette.mint, border: palette.mint, fg: palette.onMint, bbWidth: 2 },
+    reward: { bg: palette.gold, border: palette.gold, fg: palette.onGold, bbWidth: 2 },
+    danger: { bg: palette.dangerTint, border: palette.dangerBorder, fg: palette.danger, bbWidth: 1 },
+    ghost: { bg: 'transparent', border: palette.paperMuted, fg: palette.ink, bbWidth: 1 },
   };
   const cfg = configs[variant] ?? configs.primary;
   const reduceMotion = usePapyrusStore((s) => s.reduceMotion);
@@ -1043,8 +1108,8 @@ export const DesktopNav = memo(function DesktopNav() {
               { backgroundColor: palette.indigo, opacity: hovered ? 0.92 : 1 },
             ]}
           >
-            <Ionicons name="sparkles-outline" size={17} color={palette.white} />
-            <Text style={[typography.caption, { color: palette.white, fontWeight: '800' }]}>
+            <Ionicons name="sparkles-outline" size={17} color={palette.onPrimary} />
+            <Text style={[typography.caption, { color: palette.onPrimary, fontWeight: '800' }]}>
               {t.home.createAiBtn}
             </Text>
           </Pressable>

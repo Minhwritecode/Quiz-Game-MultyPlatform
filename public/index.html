@@ -12,7 +12,9 @@
       name="description"
       content="Papyrus — From Ancient Scroll to AI Power. AI Quiz Generation, Papybot RAG Tutor & 3D Gamified Study Arena."
     />
-    <meta name="theme-color" content="#060A24" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F7F3E8" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#12151F" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -22,6 +24,17 @@
     <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png" />
     <!-- The `react-native-web` recommended style reset + full dynamic viewport height for iOS Safari / PWA -->
     <style id="expo-reset">
+      :root {
+        color-scheme: light dark;
+        --papyrus-canvas-bg: #F7F3E8;
+        --papyrus-spinner-accent: #1C3F94;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --papyrus-canvas-bg: #12151F;
+          --papyrus-spinner-accent: #7BA4FF;
+        }
+      }
       html,
       body {
         width: 100%;
@@ -31,7 +44,7 @@
         min-height: 100dvh;
         margin: 0;
         padding: 0;
-        background-color: #060a24;
+        background-color: var(--papyrus-canvas-bg);
         overscroll-behavior-y: none;
         -webkit-tap-highlight-color: transparent;
         -webkit-font-smoothing: antialiased;
@@ -100,8 +113,8 @@
       progress.papyrus-spinner:indeterminate {
         --size: 64px;
         --thickness: 3px;
-        --spinner-color: #818cf8;
-        --track-color: rgba(148, 163, 184, 0.16);
+        --spinner-color: var(--papyrus-spinner-accent);
+        --track-color: rgba(148, 163, 184, 0.18);
         --_used-spinner-duration: 1.15s;
         width: var(--size);
         height: var(--size);

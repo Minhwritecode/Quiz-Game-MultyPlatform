@@ -374,7 +374,10 @@ function RootLayout() {
               {navLoadingActive && (
                 <View
                   pointerEvents="none"
-                  style={[styles.navOverlay, { backgroundColor: 'rgba(6, 10, 36, 0.42)' }]}
+                  style={[
+                    styles.navOverlay,
+                    { backgroundColor: isDark ? 'rgba(18, 21, 31, 0.48)' : 'rgba(247, 243, 232, 0.62)' },
+                  ]}
                 >
                   <PapyrusMorphLoader compact />
                 </View>

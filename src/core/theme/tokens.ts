@@ -1,55 +1,75 @@
 import { Platform } from 'react-native';
 
+/**
+ * Papyrus "Warm Paper & Egyptian Ink" Design Tokens
+ * Designed for calm, glare-free long-form study and high readability (WCAG AA+).
+ */
 export const colors = {
-  ink: '#0F172A',
-  inkMuted: '#475569',
-  paper: '#F6F7FB',
-  paperRaised: '#FFFFFF',
-  paperMuted: '#E2E8F0',
-  indigo: '#4F46E5',
-  indigoDeep: '#3730A3',
-  indigoTint: '#EEF2FF',
-  indigoBorder: '#6366F1',
-  gold: '#D97706',
-  goldTint: '#FEF3C7',
-  goldBorder: '#D97706',
-  mint: '#059669',
-  mintTint: '#D1FAE5',
-  mintBorder: '#059669',
-  danger: '#DC2626',
-  dangerTint: '#FEE2E2',
-  dangerBorder: '#DC2626',
-  fire: '#EA580C',
-  fireTint: '#FFEDD5',
-  fireBorder: '#EA580C',
-  night: '#060A24',
-  nightSurface: '#0E1538',
-  nightRaised: '#16204A',
-  nightMuted: '#243063',
+  ink: '#181C25',
+  inkMuted: '#575E6E',
+  paper: '#F7F3E8',
+  paperRaised: '#FFFDF8',
+  paperMuted: '#E4DCC6',
+  paperSoft: '#EFE9D8',
+
+  // Primary Brand: Egyptian Lapis Blue (preserving existing `indigo` token key across app)
+  indigo: '#1C3F94',
+  indigoDeep: '#10265C',
+  indigoTint: '#E4EBF9',
+  indigoBorder: '#B8C8EB',
+  onPrimary: '#FFFFFF',
+
+  // Accent (used sparingly <=10%): Warm Amber Gold
+  gold: '#9A5804',
+  goldTint: '#FAF0DC',
+  goldBorder: '#DFC18A',
+  onGold: '#FFFFFF',
+
+  // Semantic Correct / Success
+  mint: '#15803D',
+  mintTint: '#E3F5EA',
+  mintBorder: '#9EDBB6',
+  onMint: '#FFFFFF',
+
+  // Semantic Error / Danger
+  danger: '#B91C1C',
+  dangerTint: '#FCE8E8',
+  dangerBorder: '#EEB4B1',
+
+  // Semantic Streak / Fire
+  fire: '#C2410C',
+  fireTint: '#FFF0E5',
+  fireBorder: '#F7C29E',
+
+  // Dark Mode Ink & Paper Surfaces
+  night: '#12151F',
+  nightSurface: '#1B2030',
+  nightRaised: '#242A3D',
+  nightMuted: '#2F374F',
   white: '#FFFFFF',
 } as const;
 
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 28, xxxl: 36 } as const;
-export const radii = { sm: 12, md: 18, lg: 24, pill: 999 } as const;
+export const radii = { sm: 10, md: 16, lg: 22, pill: 999 } as const;
 export const shadows = {
   card: Platform.select({
-    ios: { shadowColor: '#060A24', shadowOpacity: 0.08, shadowRadius: 16, shadowOffset: { width: 0, height: 6 } },
-    android: { elevation: 3 },
-    default: { boxShadow: '0 6px 20px -2px rgba(6, 10, 36, 0.08)' },
+    ios: { shadowColor: '#181C25', shadowOpacity: 0.04, shadowRadius: 10, shadowOffset: { width: 0, height: 3 } },
+    android: { elevation: 1 },
+    default: { boxShadow: '0 2px 10px -1px rgba(24, 28, 37, 0.05)' },
   }),
   raised: Platform.select({
-    ios: { shadowColor: '#4F46E5', shadowOpacity: 0.16, shadowRadius: 24, shadowOffset: { width: 0, height: 10 } },
-    android: { elevation: 6 },
-    default: { boxShadow: '0 12px 28px -6px rgba(79, 70, 229, 0.22)' },
+    ios: { shadowColor: '#181C25', shadowOpacity: 0.08, shadowRadius: 16, shadowOffset: { width: 0, height: 6 } },
+    android: { elevation: 3 },
+    default: { boxShadow: '0 6px 20px -4px rgba(24, 28, 37, 0.09)' },
   }),
 } as const;
 
 export const typography = {
-  display: { fontSize: 32, lineHeight: 38, fontWeight: '800' as const, letterSpacing: -0.6 },
-  heading: { fontSize: 24, lineHeight: 30, fontWeight: '800' as const, letterSpacing: -0.4 },
-  title: { fontSize: 17, lineHeight: 23, fontWeight: '700' as const, letterSpacing: -0.2 },
+  display: { fontSize: 30, lineHeight: 36, fontWeight: '800' as const, letterSpacing: -0.5 },
+  heading: { fontSize: 22, lineHeight: 29, fontWeight: '800' as const, letterSpacing: -0.35 },
+  title: { fontSize: 16.5, lineHeight: 22, fontWeight: '700' as const, letterSpacing: -0.15 },
   body: { fontSize: 15, lineHeight: 22, fontWeight: '500' as const },
-  label: { fontSize: 11.5, lineHeight: 16, fontWeight: '800' as const, letterSpacing: 0.8 },
+  label: { fontSize: 11.5, lineHeight: 16, fontWeight: '800' as const, letterSpacing: 0.7 },
   caption: { fontSize: 13, lineHeight: 18, fontWeight: '500' as const },
 } as const;
 
@@ -60,26 +80,35 @@ export const palettes: Record<ThemeMode, Palette> = {
   light: colors,
   dark: {
     ...colors,
-    ink: '#F8FAFC',
-    inkMuted: '#94A3B8',
+    ink: '#F3EFE0',
+    inkMuted: '#9CA3B5',
     paper: colors.night,
     paperRaised: colors.nightSurface,
     paperMuted: colors.nightMuted,
-    indigo: '#6366F1',
-    indigoDeep: '#E0E7FF',
-    indigoTint: '#1B2252',
-    indigoBorder: '#6366F1',
-    gold: '#F59E0B',
-    goldTint: '#3B2308',
-    goldBorder: '#D97706',
-    mint: '#10B981',
-    mintTint: '#063D2F',
-    mintBorder: '#10B981',
+    paperSoft: colors.nightRaised,
+
+    indigo: '#7BA4FF',
+    indigoDeep: '#DCE6FF',
+    indigoTint: '#1D2847',
+    indigoBorder: '#34477A',
+    onPrimary: '#0D1B3E',
+
+    gold: '#F5B73B',
+    goldTint: '#34260B',
+    goldBorder: '#705014',
+    onGold: '#221604',
+
+    mint: '#34D399',
+    mintTint: '#0D3326',
+    mintBorder: '#1E6148',
+    onMint: '#08271C',
+
     danger: '#F87171',
-    dangerTint: '#3F1219',
-    dangerBorder: '#DC2626',
+    dangerTint: '#3B1519',
+    dangerBorder: '#7A2730',
+
     fire: '#FB923C',
-    fireTint: '#3E1A08',
-    fireBorder: '#EA580C',
+    fireTint: '#381B09',
+    fireBorder: '#7A3B14',
   },
 };
