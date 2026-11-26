@@ -1,4 +1,4 @@
-import { memo, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Model3DView, type Model3DActionEffect, type Model3DType } from '@/shared/Model3DView';
@@ -32,13 +32,17 @@ export const HomeHero3DShowcase = memo(function HomeHero3DShowcase({
   const [selected, setSelected] = useState<Model3DType>('royalScroll');
   const [effect, setEffect] = useState<Model3DActionEffect>('idle');
   const [pulse, setPulse] = useState(0);
+  const effectTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => () => clearTimeout(effectTimeout.current), []);
 
   if (reduceMotion) return null;
 
-  const triggerCast = () => {
-    setEffect('attack');
+  const playEffect = (next: 'attack' | 'victory', duration: number) => {
+    clearTimeout(effectTimeout.current);
+    setEffect(next);
     setPulse((p) => p + 1);
-    setTimeout(() => setEffect('idle'), 950);
+    effectTimeout.current = setTimeout(() => setEffect('idle'), duration);
   };
 
   return (
@@ -47,8 +51,8 @@ export const HomeHero3DShowcase = memo(function HomeHero3DShowcase({
         style={[
           styles.stageBox,
           {
-            backgroundColor: palette.paper,
-            borderColor: palette.paperMuted,
+            backgroundColor: '#182735',
+            borderColor: '#534837',
           },
         ]}
       >
@@ -56,6 +60,7 @@ export const HomeHero3DShowcase = memo(function HomeHero3DShowcase({
           <Model3DView
             model={selected}
             height={compact ? 170 : 224}
+            showcase
             autoRotate
             interactive
             actionEffect={effect}
@@ -79,7 +84,7 @@ export const HomeHero3DShowcase = memo(function HomeHero3DShowcase({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Kích hoạt hiệu ứng mô hình 3D"
-          onPress={triggerCast}
+          onPress={() => playEffect('attack', 950)}
           style={({ pressed }) => [
             styles.castPill,
             {
@@ -107,9 +112,7 @@ export const HomeHero3DShowcase = memo(function HomeHero3DShowcase({
                   accessibilityState={{ selected: active }}
                   onPress={() => {
                     setSelected(item.id);
-                    setEffect('victory');
-                    setPulse((p) => p + 1);
-                    setTimeout(() => setEffect('idle'), 850);
+                    playEffect('victory', 850);
                   }}
                   style={[
                     styles.switchChip,

@@ -29,6 +29,7 @@ interface Model3DViewProps {
   actionEffect?: Model3DActionEffect;
   pulseTrigger?: number;
   autoplay?: boolean;
+  showcase?: boolean;
 }
 
 const LazyModel3DCanvas = lazy(() => import('./Model3DCanvas.web'));
@@ -53,15 +54,16 @@ export function Model3DView({
   actionEffect = 'idle',
   pulseTrigger = 0,
   autoplay = true,
+  showcase = false,
 }: Model3DViewProps) {
   const [webglOk] = useState(checkWebGLAvailable);
-  const [failed, setFailed] = useState(false);
+  const [failedModel, setFailedModel] = useState<Model3DType | null>(null);
 
   const handleError = useCallback(() => {
-    setFailed(true);
-  }, []);
+    setFailedModel(model);
+  }, [model]);
 
-  if (!webglOk || failed) {
+  if (!webglOk || failedModel === model) {
     return (
       <View style={[styles.container, styles.fallback, { height }, style]}>
         <Ionicons name="cube-outline" size={28} color="#818CF8" />
@@ -96,6 +98,7 @@ export function Model3DView({
             actionEffect={actionEffect}
             pulseTrigger={pulseTrigger}
             autoplay={autoplay}
+            showcase={showcase}
             onError={handleError}
           />
         </Suspense>

@@ -17,6 +17,7 @@ interface Model3DCanvasWebProps {
   actionEffect?: Model3DActionEffect;
   pulseTrigger?: number;
   autoplay: boolean;
+  showcase: boolean;
   onError: () => void;
 }
 
@@ -61,6 +62,7 @@ function LoadedGlbStage({
   actionEffect = 'idle',
   pulseTrigger = 0,
   autoplay,
+  showcase,
   dragRotationYRef,
   dragRotationXRef,
   tapImpulseRef,
@@ -115,7 +117,9 @@ function LoadedGlbStage({
             box.getCenter(center);
             const maxDim = Math.max(size.x, size.y, size.z, 0.001);
             const targetSize =
-              model === 'character'
+              showcase
+                ? 2.35
+                : model === 'character'
                 ? 2.35
                 : model === 'splashMorph' || model === 'questEmblem'
                 ? 2.45
@@ -124,12 +128,12 @@ function LoadedGlbStage({
             root.scale.setScalar(targetScale);
             root.position.set(
               -center.x * targetScale,
-              -center.y * targetScale - (model === 'character' ? 0.06 : 0.05),
+              -center.y * targetScale - (showcase ? 0 : model === 'character' ? 0.06 : 0.05),
               -center.z * targetScale
             );
 
-            // Boost emissive intensity slightly so stylized rune/gem/flame colors pop vividly
-            root.traverse?.((child: any) => {
+            // Keep the authored brass and stone distinct from the glowing accents in the showcase.
+            if (!showcase) root.traverse?.((child: any) => {
               if (child.isMesh && child.material) {
                 const mats = Array.isArray(child.material) ? child.material : [child.material];
                 for (const m of mats) {
@@ -184,7 +188,7 @@ function LoadedGlbStage({
       dracoLoader?.dispose?.();
       setSceneObj(null);
     };
-  }, [model, autoplay, onError]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [model, autoplay, onError, showcase]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!animationName || !autoplay || actionsRef.current.size === 0) return;
@@ -230,9 +234,11 @@ function LoadedGlbStage({
     }
 
     if (containerRef.current) {
-      // Base rotation + interactive drag + action spin boost
+      // Keep the display facing the viewer until they drag, with just enough motion to reveal depth.
       const spinSpeed =
-        actionEffect === 'victory'
+        showcase
+          ? 0
+          : actionEffect === 'victory'
           ? 1.5
           : actionEffect === 'attack' && impulse > 0.1
           ? 1.8 * impulse
@@ -243,15 +249,18 @@ function LoadedGlbStage({
       if (spinSpeed > 0) {
         dragRotationYRef.current += delta * spinSpeed;
       }
-      if (tapImpulseRef.current > 0.05) {
+      if (!showcase && tapImpulseRef.current > 0.05) {
         dragRotationYRef.current += delta * 2.4 * tapImpulseRef.current;
       }
 
-      containerRef.current.rotation.y += (dragRotationYRef.current - containerRef.current.rotation.y) * 0.14;
-      containerRef.current.rotation.x += (dragRotationXRef.current - containerRef.current.rotation.x) * 0.14;
+      const idleYaw = showcase && autoRotate ? Math.sin(t * 0.62) * 0.19 : 0;
+      const reactionYaw = showcase && actionEffect === 'attack' ? Math.sin(impulse * Math.PI) * 0.28 : 0;
+      containerRef.current.rotation.y += (dragRotationYRef.current + idleYaw + reactionYaw - containerRef.current.rotation.y) * 0.14;
+      const displayPitch = showcase && model === 'archerBow' ? 0.84 : 0;
+      containerRef.current.rotation.x += (dragRotationXRef.current + displayPitch - containerRef.current.rotation.x) * 0.14;
 
       // Gameplay-driven lively transform feedback (float, attack lunge, hurt shake, victory hop)
-      let posY = Math.sin(t * 2.0) * 0.06;
+      let posY = showcase ? -0.11 + Math.sin(t * 2.0) * 0.035 : Math.sin(t * 2.0) * 0.06;
       let posX = 0;
       let posZ = 0;
       let scaleBoost = 1 + tapImpulseRef.current * 0.08;
@@ -295,14 +304,23 @@ export default function Model3DCanvasWeb(props: Model3DCanvasWebProps) {
     props.model === 'alchemyCauldrons';
   const defaultTiltX = isCharacter ? 0.03 : isProp ? 0.06 : 0.22;
 
-  const dragRotationYRef = useRef(isCharacter ? 0.12 : 0.28);
+  const dragRotationYRef = useRef(props.showcase ? -0.22 : isCharacter ? 0.12 : 0.28);
   const dragRotationXRef = useRef(defaultTiltX);
   const tapImpulseRef = useRef(0);
   const draggingRef = useRef(false);
   const movedRef = useRef(false);
   const lastPosRef = useRef({ x: 0, y: 0 });
 
-  const cameraPos: [number, number, number] = isCharacter
+  useEffect(() => {
+    if (!props.showcase) return;
+    dragRotationYRef.current = -0.22;
+    dragRotationXRef.current = defaultTiltX;
+    tapImpulseRef.current = 0;
+  }, [props.model, props.showcase, defaultTiltX]);
+
+  const cameraPos: [number, number, number] = props.showcase
+    ? [0, 0, 4.55]
+    : isCharacter
     ? [0, 0.18, 3.25]
     : isProp
     ? [0, 0.12, 3.45]
@@ -315,6 +333,9 @@ export default function Model3DCanvasWeb(props: Model3DCanvasWebProps) {
         height: '100%',
         cursor: props.interactive ? 'grab' : 'default',
         touchAction: 'pan-y',
+        background: props.showcase
+          ? 'radial-gradient(ellipse at 50% 55%, #47626c 0%, #253746 40%, #131b2a 76%)'
+          : undefined,
       }}
       onPointerDown={(e) => {
         if (!props.interactive) return;
@@ -348,10 +369,10 @@ export default function Model3DCanvasWeb(props: Model3DCanvasWebProps) {
         gl={{ antialias: false, alpha: true, powerPreference: 'low-power' }}
         style={{ width: '100%', height: '100%', background: 'transparent' }}
       >
-        <ambientLight intensity={1.15} color="#EEF2FF" />
-        <hemisphereLight args={['#C7D2FE', '#1E1B4B', 0.95]} />
-        <directionalLight position={[4, 6, 5]} intensity={1.85} color="#FFF7ED" />
-        <directionalLight position={[-4, 2, -4]} intensity={1.2} color="#818CF8" />
+        <ambientLight intensity={props.showcase ? 0.55 : 1.15} color="#EEF2FF" />
+        <hemisphereLight args={props.showcase ? ['#C4DFEA', '#443447', 0.85] : ['#C7D2FE', '#1E1B4B', 0.95]} />
+        <directionalLight position={props.showcase ? [-3, 4, 5] : [4, 6, 5]} intensity={props.showcase ? 2.18 : 1.85} color={props.showcase ? '#FFF0D9' : '#FFF7ED'} />
+        <directionalLight position={props.showcase ? [3, 1, -4] : [-4, 2, -4]} intensity={props.showcase ? 2.0 : 1.2} color={props.showcase ? '#8EDDDD' : '#818CF8'} />
         <LoadedGlbStage
           {...props}
           dragRotationYRef={dragRotationYRef}

@@ -12,6 +12,7 @@ vividly colored PBR + Emissive low-poly 3D game assets facing +Z in glTF Y-up sp
 import base64
 import math
 import os
+import subprocess
 import bpy
 import bmesh
 
@@ -704,7 +705,7 @@ def build_arcane_bow():
 # ==============================================================================
 # 4. VIBRANT ROYAL PAPYRUS SCROLL (royal_papyrus_scroll.glb)
 # ==============================================================================
-def build_royal_scroll():
+def build_legacy_royal_scroll():
     clear_scene()
 
     m_parchment = make_mat("M_Golden_Parchment", (1.0, 0.93, 0.74, 1.0), metallic=0.05, roughness=0.42)
@@ -803,6 +804,6 @@ if __name__ == "__main__":
     build_archmage_character()
     build_obsidian_golem_boss()
     build_arcane_bow()
-    build_royal_scroll()
+    subprocess.run(["node", os.path.join(ROOT_DIR, "scripts", "build-royal-scroll.mjs")], check=True)
     build_alchemy_cauldrons()
-    print("🌟 ALL 5 STYLIZED RPG BLENDER MODELS GENERATED SUCCESSFULLY!")
+    print("Generated the five Papyrus RPG models.")

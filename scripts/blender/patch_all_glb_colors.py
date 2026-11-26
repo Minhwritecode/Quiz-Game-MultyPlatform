@@ -15,18 +15,27 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 MODELS_DIR = os.path.join(ROOT, "assets", "models")
 TS_DIR = os.path.join(ROOT, "src", "shared", "models3d")
 
+def linear_rgb(hex_color):
+    srgb = [int(hex_color[i:i + 2], 16) / 255 for i in (0, 2, 4)]
+    return [round(c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4, 5) for c in srgb]
+
+
+def surface(color, metallic, roughness, emission="000000"):
+    return ([*linear_rgb(color), 1.0], metallic, roughness, linear_rgb(emission))
+
+
 # Material Name -> (baseColor RGBA, metallic, roughness, emissive RGB or None)
 PALETTE = {
     # Redesigned Archmage Character
     "M_Warm_Skin":        ([1.00, 0.82, 0.70, 1.0], 0.02, 0.48, [0.12, 0.06, 0.04]),
     "M_Coral_Blush":      ([0.98, 0.44, 0.54, 1.0], 0.00, 0.50, [0.45, 0.12, 0.20]),
     "M_Silver_Hair":      ([0.92, 0.95, 1.00, 1.0], 0.18, 0.30, [0.10, 0.14, 0.25]),
-    "M_Royal_Indigo":     ([0.22, 0.18, 0.78, 1.0], 0.16, 0.32, [0.05, 0.04, 0.22]),
-    "M_Arcane_Violet":    ([0.52, 0.20, 0.92, 1.0], 0.18, 0.30, [0.12, 0.04, 0.28]),
-    "M_Ruby_Cape":        ([0.90, 0.14, 0.30, 1.0], 0.14, 0.35, [0.22, 0.02, 0.06]),
-    "M_Burnished_Gold":   ([1.00, 0.78, 0.16, 1.0], 0.88, 0.20, [0.28, 0.18, 0.02]),
-    "M_Parchment_Ivory":  ([1.00, 0.96, 0.84, 1.0], 0.04, 0.48, [0.12, 0.10, 0.05]),
-    "M_Mage_Boots":       ([0.18, 0.12, 0.32, 1.0], 0.22, 0.40, None),
+    "M_Royal_Indigo":     surface("3d52a0", 0.06, 0.72),
+    "M_Arcane_Violet":    surface("72579c", 0.07, 0.63),
+    "M_Ruby_Cape":        surface("a13749", 0.03, 0.75),
+    "M_Burnished_Gold":   surface("e7ae57", 0.48, 0.31, "4d2c12"),
+    "M_Parchment_Ivory":  surface("f1dfb9", 0.0, 0.76),
+    "M_Mage_Boots":       surface("343049", 0.04, 0.69),
     "M_Dragon_Wood":      ([0.46, 0.22, 0.10, 1.0], 0.10, 0.48, None),
     "M_Sapphire_Iris":    ([0.05, 0.22, 0.62, 1.0], 0.15, 0.14, [0.02, 0.12, 0.38]),
     "M_Cyan_Mana":        ([0.08, 0.94, 1.00, 1.0], 0.12, 0.14, [0.08, 0.92, 1.00]),
@@ -35,15 +44,15 @@ PALETTE = {
     "M_Eye_Sparkle":      ([1.00, 1.00, 1.00, 1.0], 0.00, 0.08, [1.00, 1.00, 1.00]),
 
     # Obsidian Boss Golem
-    "M_Obsidian_Armor":   ([0.15, 0.12, 0.28, 1.0], 0.42, 0.30, [0.04, 0.02, 0.09]),
-    "M_Basalt_Rock":      ([0.28, 0.22, 0.42, 1.0], 0.24, 0.42, None),
-    "M_Molten_Lava":      ([1.00, 0.34, 0.04, 1.0], 0.10, 0.18, [1.00, 0.32, 0.02]),
-    "M_Crimson_Crystal":  ([0.98, 0.10, 0.30, 1.0], 0.25, 0.15, [0.96, 0.08, 0.26]),
-    "M_Boss_Gold_Crown":  ([1.00, 0.76, 0.14, 1.0], 0.90, 0.20, [0.25, 0.16, 0.02]),
+    "M_Obsidian_Armor":   surface("343449", 0.27, 0.42),
+    "M_Basalt_Rock":      surface("4a464b", 0.05, 0.8),
+    "M_Molten_Lava":      surface("ff7739", 0.05, 0.29, "ff551a"),
+    "M_Crimson_Crystal":  surface("d65a56", 0.24, 0.23, "cc2920"),
+    "M_Boss_Gold_Crown":  surface("c47b38", 0.52, 0.32, "583014"),
 
     # Phoenix Arcane Crossbow
-    "M_Phoenix_Gold":     ([1.00, 0.80, 0.16, 1.0], 0.90, 0.18, [0.30, 0.20, 0.02]),
-    "M_Sapphire_Body":    ([0.16, 0.38, 0.96, 1.0], 0.30, 0.26, [0.04, 0.12, 0.36]),
+    "M_Phoenix_Gold":     surface("eab362", 0.52, 0.29, "573511"),
+    "M_Sapphire_Body":    surface("296676", 0.32, 0.34, "142b33"),
     "M_Blazing_Arrow":    ([1.00, 0.38, 0.05, 1.0], 0.12, 0.18, [1.00, 0.36, 0.04]),
     "M_Plasma_String":    ([0.10, 0.96, 1.00, 1.0], 0.10, 0.14, [0.08, 0.92, 1.00]),
 
