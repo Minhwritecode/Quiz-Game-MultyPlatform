@@ -1,5 +1,6 @@
 import {
   buildCombinedSourceText,
+  buildReviewedSourceText,
   createScanPage,
   removeScanPage,
   reorderScanPages,
@@ -45,5 +46,17 @@ describe('scanSession multi-page OCR workflow', () => {
     expect(result.truncated).toBe(true);
     expect(result.combinedText.length).toBe(50);
     expect(result.combinedText).toContain('Bài 2');
+  });
+
+  it('keeps pasted notes after selected page edits and removes deselected content', () => {
+    const file = createScanPage({ id: 'file', title: 'Ghi chú', text: 'Nội dung cũ' });
+    const extra = createScanPage({ id: 'extra', title: 'Trang khác', text: 'Nội dung bỏ chọn' });
+    const edited = updatePageText([file, extra], 'file', 'Nội dung đã duyệt');
+    const selected = togglePageSelected(edited, 'extra');
+
+    expect(buildReviewedSourceText(selected, '  Ghi chú bổ sung  '))
+      .toBe('## Ghi chú\nNội dung đã duyệt\n\nGhi chú bổ sung');
+    expect(buildReviewedSourceText(togglePageSelected(selected, 'file'), 'Ghi chú bổ sung'))
+      .toBe('Ghi chú bổ sung');
   });
 });

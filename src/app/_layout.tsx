@@ -121,7 +121,11 @@ function RootLayout() {
     }
     const prev = prevPathRef.current;
     prevPathRef.current = pathname;
-    if (prev !== pathname && PRIMARY_TAB_PATHS.has(pathname)) {
+    if (!PRIMARY_TAB_PATHS.has(pathname)) {
+      setNavLoadingActive(false);
+      return;
+    }
+    if (prev !== pathname) {
       setNavLoadingActive(true);
       const t = setTimeout(() => setNavLoadingActive(false), 185);
       return () => clearTimeout(t);
