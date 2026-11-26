@@ -472,7 +472,7 @@ export default function LeaderboardScreen() {
                   ) : null}
                 </View>
                 <Text style={[typography.caption, { color: palette.inkMuted, marginBottom: spacing.xs }]}>
-                  Tìm nhanh theo Tên hồ sơ chính thức (hỗ trợ có dấu / không dấu) hoặc chạm vào tên để mở Trang cá nhân.
+                  Tìm nhanh theo tên hiển thị hoặc chạm vào tên để mở trang cá nhân.
                 </Text>
                 {user ? (
                   <>

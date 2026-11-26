@@ -1,36 +1,49 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Image, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import {
+  Image,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  Share,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Badge, Button, Card, Screen, TopBar, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { useAuthStore } from '@/core/state/useAuthStore';
-import { usePapyrusStore } from '@/core/state/usePapyrusStore';
-import { seedQuestionSets } from '@/composition/preferences';
+import { isStoryActive24h, type ScholarStory } from '@/features/community/domain/models';
+import { useCommunityStore } from '@/features/community/state/useCommunityStore';
+import { StoryCard916 } from '@/features/community/presentation/StoryCard916';
+import { StoryViewerModal } from '@/features/community/presentation/StoryModalViewer';
 import { useSocialStore } from '@/features/social/state/useSocialStore';
 import {
   areUsersBlocked,
   areUsersFriends,
   canViewerAccessPost,
-  isFollowingAccepted,
   projectSafePostForViewer,
 } from '@/features/social/domain/rankingAndPermissions';
 import { MetaThreadsPostCard } from '@/features/social/presentation/MetaThreadsPostCard';
 
 type UserProfileTab = 'posts' | 'replies' | 'reposts' | 'media' | 'pinned' | 'communities';
 
-/**
- * Modern Facebook + Threads Public/Private User Profile (`/user/[userId]`) — Section 4.2:
- * Navigable from EVERY avatar or name tap across Posts, Comments, Replies, Stories,
- * Reposts, Quotes, Messages, Notifications, Search, Mentions, Reactions & Leaderboards!
- */
 export default function UserProfileScreen() {
   const { userId } = useLocalSearchParams<{ userId: string }>();
   const router = useRouter();
   const palette = usePalette();
   const me = useAuthStore((s) => s.user);
   const viewerId = me?.id ?? 'guest';
-  const viewerName = me?.displayName ?? 'Thành viên Papyrus';
+  const isGuest = !me || viewerId === 'guest';
+  const viewerName = me?.displayName ?? 'Khách';
+
+  const stories = useCommunityStore((s) => s.stories);
+  const markStoryViewed = useCommunityStore((s) => s.markStoryViewed);
+  const reactToStory = useCommunityStore((s) => s.reactToStory);
+  const [nowMs] = useState(() => Date.now());
+  const [viewingStoryGroup, setViewingStoryGroup] = useState<ScholarStory[] | null>(null);
 
   const profilesById = useSocialStore((s) => s.profilesById);
   const posts = useSocialStore((s) => s.posts);
@@ -73,18 +86,26 @@ export default function UserProfileScreen() {
 
   const [tab, setTab] = useState<UserProfileTab>('posts');
   const [safetyModalOpen, setSafetyModalOpen] = useState(false);
-  const [connectionsModal, setConnectionsModal] = useState<'followers' | 'following' | 'friends' | null>(null);
+  const [connectionsModal, setConnectionsModal] = useState<
+    'followers' | 'following' | 'friends' | null
+  >(null);
   const [notice, setNotice] = useState('');
+
+  const ensureAuth = () => {
+    if (!isGuest) return true;
+    setNotice('Vui lòng đăng nhập để thực hiện thao tác này.');
+    return false;
+  };
 
   useEffect(() => {
     if (userId && userId === viewerId) {
       router.replace('/profile');
       return;
     }
-    if (userId) {
+    if (userId && !isGuest) {
       incrementProfileView(userId, viewerId);
     }
-  }, [incrementProfileView, router, userId, viewerId]);
+  }, [incrementProfileView, isGuest, router, userId, viewerId]);
 
   const targetProfile = userId ? profilesById[userId] : undefined;
   const graph = useMemo(
@@ -93,10 +114,16 @@ export default function UserProfileScreen() {
   );
 
   const blocked = Boolean(userId && areUsersBlocked(viewerId, userId, graph));
-  const isMuted = relations.some((r) => r.actorId === viewerId && r.targetId === userId && r.type === 'mute');
-  const isRestricted = relations.some((r) => r.actorId === viewerId && r.targetId === userId && r.type === 'restrict');
+  const isMuted = relations.some(
+    (r) => r.actorId === viewerId && r.targetId === userId && r.type === 'mute'
+  );
+  const isRestricted = relations.some(
+    (r) => r.actorId === viewerId && r.targetId === userId && r.type === 'restrict'
+  );
 
-  const followEdge = follows.find((f) => f.followerId === viewerId && f.followingId === userId);
+  const followEdge = follows.find(
+    (f) => f.followerId === viewerId && f.followingId === userId
+  );
   const isFollowing = followEdge?.status === 'accepted';
   const isFollowRequested = followEdge?.status === 'pending';
   const isCloseFriend = Boolean(followEdge?.isCloseFriend);
@@ -110,20 +137,31 @@ export default function UserProfileScreen() {
   const isTwoWayFriend = areUsersFriends(viewerId, userId || '', graph);
 
   const canSeePrivateContent =
-    !targetProfile?.privacy.isPrivateAccount || isFollowing || isTwoWayFriend || userId === viewerId;
+    !targetProfile?.privacy.isPrivateAccount ||
+    isFollowing ||
+    isTwoWayFriend ||
+    userId === viewerId;
 
   const targetFollowers = useMemo(
-    () => follows.filter((f) => f.followingId === userId && f.status === 'accepted').map((f) => f.followerId),
+    () =>
+      follows
+        .filter((f) => f.followingId === userId && f.status === 'accepted')
+        .map((f) => f.followerId),
     [follows, userId]
   );
   const targetFollowing = useMemo(
-    () => follows.filter((f) => f.followerId === userId && f.status === 'accepted').map((f) => f.followingId),
+    () =>
+      follows
+        .filter((f) => f.followerId === userId && f.status === 'accepted')
+        .map((f) => f.followingId),
     [follows, userId]
   );
   const targetFriends = useMemo(
     () =>
       friendRequests
-        .filter((r) => r.status === 'accepted' && (r.senderId === userId || r.receiverId === userId))
+        .filter(
+          (r) => r.status === 'accepted' && (r.senderId === userId || r.receiverId === userId)
+        )
         .map((r) => (r.senderId === userId ? r.receiverId : r.senderId)),
     [friendRequests, userId]
   );
@@ -141,6 +179,29 @@ export default function UserProfileScreen() {
   const mutualFriendsCount = useMemo(
     () => targetFriends.filter((fid) => myFriendsSet.has(fid)).length,
     [myFriendsSet, targetFriends]
+  );
+
+  // Strictly this user's own active 24h stories and pinned profile stories
+  const targetActiveStories = useMemo(
+    () =>
+      userId
+        ? stories
+            .filter((s) => s.authorId === userId && isStoryActive24h(s, nowMs))
+            .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
+        : [],
+    [nowMs, stories, userId]
+  );
+  const targetPinnedStories = useMemo(
+    () =>
+      userId
+        ? stories
+            .filter(
+              (s) =>
+                s.authorId === userId && Boolean(s.pinnedOnProfile ?? s.isHighlight)
+            )
+            .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
+        : [],
+    [stories, userId]
   );
 
   const visibleAuthorPosts = useMemo(
@@ -184,8 +245,6 @@ export default function UserProfileScreen() {
     [communities, userId]
   );
 
-  const storeSets = usePapyrusStore((s) => s.questionSets);
-  const allSets = useMemo(() => (storeSets.length > 0 ? storeSets : seedQuestionSets), [storeSets]);
   const slice = userSlices[viewerId];
 
   if (!targetProfile || blocked) {
@@ -194,18 +253,20 @@ export default function UserProfileScreen() {
         <TopBar title="Trang cá nhân" />
         <Card style={{ alignItems: 'center', paddingVertical: spacing.xxl, gap: 10 }}>
           <Ionicons name="person-remove-outline" size={40} color={palette.inkMuted} />
-          <Text style={[typography.title, { color: palette.ink }]}>Không thể truy cập Trang cá nhân</Text>
+          <Text style={[typography.title, { color: palette.ink }]}>
+            Không thể truy cập trang cá nhân
+          </Text>
           <Text style={[typography.caption, { color: palette.inkMuted, textAlign: 'center' }]}>
             {blocked
-              ? 'Tài khoản này đang nằm trong danh sách chặn. Bạn có thể bỏ chặn bên dưới nếu muốn.'
+              ? 'Tài khoản này đang nằm trong danh sách chặn của bạn.'
               : 'Hồ sơ người dùng không tồn tại hoặc đã bị vô hiệu hóa.'}
           </Text>
-          {blocked && userId ? (
+          {blocked && userId && !isGuest ? (
             <Button
               variant="secondary"
               onPress={() => toggleUserRelation(viewerId, userId, 'block')}
             >
-              Bỏ chặn người dùng này
+              Bỏ chặn tài khoản
             </Button>
           ) : null}
         </Card>
@@ -221,9 +282,11 @@ export default function UserProfileScreen() {
     const url = `${origin}/user/${targetProfile.id}`;
     if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
       await navigator.clipboard.writeText(url).catch(() => undefined);
-      setNotice('✅ Đã sao chép liên kết Trang cá nhân!');
+      setNotice('Đã sao chép liên kết trang cá nhân.');
     } else {
-      await Share.share({ message: `${targetProfile.displayName} trên Papyrus: ${url}` }).catch(() => undefined);
+      await Share.share({
+        message: `${targetProfile.displayName} trên Papyrus: ${url}`,
+      }).catch(() => undefined);
     }
   };
 
@@ -232,39 +295,65 @@ export default function UserProfileScreen() {
       <TopBar
         title={targetProfile.displayName}
         action={
-          <Pressable onPress={() => setSafetyModalOpen(true)} style={{ padding: 6 }}>
-            <Ionicons name="ellipsis-horizontal" size={20} color={palette.ink} />
-          </Pressable>
+          !isGuest ? (
+            <Pressable onPress={() => setSafetyModalOpen(true)} style={{ padding: 6 }}>
+              <Ionicons name="ellipsis-horizontal" size={20} color={palette.ink} />
+            </Pressable>
+          ) : undefined
         }
       />
 
-      {/* Cover + Avatar + Main Name Identity Card (Facebook + Threads Hybrid) */}
       <Card style={{ padding: 0, overflow: 'hidden', marginBottom: spacing.md }}>
-        <View style={[styles.coverBanner, { backgroundColor: '#312E81' }]}>
+        <View style={[styles.coverBanner, { backgroundColor: palette.indigo }]}>
           {targetProfile.coverUrl ? (
-            <Image source={{ uri: targetProfile.coverUrl }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+            <Image
+              source={{ uri: targetProfile.coverUrl }}
+              style={StyleSheet.absoluteFill}
+              resizeMode="cover"
+            />
           ) : null}
         </View>
 
         <View style={{ padding: spacing.md, marginTop: -36 }}>
-          <View style={styles.avatarWrap}>
+          <View style={[styles.avatarWrap, { borderColor: palette.paperRaised }]}>
             {targetProfile.avatarUrl ? (
               <Image source={{ uri: targetProfile.avatarUrl }} style={styles.avatarImg} />
             ) : (
-              <View style={[styles.avatarImg, { backgroundColor: palette.indigo, alignItems: 'center', justifyContent: 'center' }]}>
-                <Text style={{ color: '#FFF', fontSize: 28, fontWeight: '900' }}>
+              <View
+                style={[
+                  styles.avatarImg,
+                  {
+                    backgroundColor: palette.indigo,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  },
+                ]}
+              >
+                <Text style={{ color: palette.onPrimary, fontSize: 28, fontWeight: '800' }}>
                   {(targetProfile.displayName[0] || 'U').toUpperCase()}
                 </Text>
               </View>
             )}
           </View>
 
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
-            <Text style={[typography.heading, { color: palette.ink }]}>{targetProfile.displayName}</Text>
-            {targetProfile.privacy.isPrivateAccount && <Badge tone="neutral">🔒 Riêng tư</Badge>}
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              flexWrap: 'wrap',
+              marginTop: 8,
+            }}
+          >
+            <Text style={[typography.heading, { color: palette.ink }]}>
+              {targetProfile.displayName}
+            </Text>
+            {targetProfile.privacy.isPrivateAccount ? (
+              <Badge tone="neutral">Riêng tư</Badge>
+            ) : null}
             {targetProfile.badges.map((b) => (
               <Badge key={b} tone="primary">
-                🏅 {b}
+                {b}
               </Badge>
             ))}
           </View>
@@ -275,24 +364,23 @@ export default function UserProfileScreen() {
             </Text>
           ) : null}
 
-          {/* Disambiguation & Personal Info (Privacy-aware) */}
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 8 }}>
             {targetProfile.major ? (
-              <Text style={{ fontSize: 12, color: palette.inkMuted }}>🎓 {targetProfile.major}</Text>
+              <Text style={{ fontSize: 12, color: palette.inkMuted }}>{targetProfile.major}</Text>
             ) : null}
             {targetProfile.university ? (
-              <Text style={{ fontSize: 12, color: palette.inkMuted }}>🏛️ {targetProfile.university}</Text>
+              <Text style={{ fontSize: 12, color: palette.inkMuted }}>
+                {targetProfile.university}
+              </Text>
             ) : null}
             {targetProfile.locationArea ? (
-              <Text style={{ fontSize: 12, color: palette.inkMuted }}>📍 {targetProfile.locationArea}</Text>
+              <Text style={{ fontSize: 12, color: palette.inkMuted }}>
+                {targetProfile.locationArea}
+              </Text>
             ) : null}
-            <Text style={{ fontSize: 12, color: palette.gold, fontWeight: '800' }}>
-              ⭐ Uy tín: {targetProfile.reputationScore}
-            </Text>
           </View>
 
-          {/* Interests & Topics */}
-          {targetProfile.interests.length > 0 && (
+          {targetProfile.interests.length > 0 ? (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
               {targetProfile.interests.map((topic) => (
                 <Badge key={topic} tone="neutral">
@@ -300,58 +388,53 @@ export default function UserProfileScreen() {
                 </Badge>
               ))}
             </View>
-          )}
+          ) : null}
 
-          {/* Followers / Following / Friends / Mutuals Stats */}
+          {/* Real Social Graph Counters (0 when 0 friends/followers) */}
           <View style={styles.statsRow}>
             <Pressable onPress={() => setConnectionsModal('followers')}>
               <Text style={{ fontSize: 13, color: palette.ink }}>
-                <Text style={{ fontWeight: '900' }}>
-                  {targetProfile.followersCount + targetFollowers.length}
-                </Text>{' '}
-                Người theo dõi
+                <Text style={{ fontWeight: '800' }}>{targetFollowers.length}</Text> Người theo dõi
               </Text>
             </Pressable>
             <Pressable onPress={() => setConnectionsModal('following')}>
               <Text style={{ fontSize: 13, color: palette.ink }}>
-                <Text style={{ fontWeight: '900' }}>
-                  {targetProfile.followingCount + targetFollowing.length}
-                </Text>{' '}
-                Đang theo dõi
+                <Text style={{ fontWeight: '800' }}>{targetFollowing.length}</Text> Đang theo dõi
               </Text>
             </Pressable>
             <Pressable onPress={() => setConnectionsModal('friends')}>
               <Text style={{ fontSize: 13, color: palette.ink }}>
-                <Text style={{ fontWeight: '900' }}>
-                  {targetProfile.friendsCount + targetFriends.length}
-                </Text>{' '}
-                Bạn bè
+                <Text style={{ fontWeight: '800' }}>{targetFriends.length}</Text> Bạn bè
               </Text>
             </Pressable>
-            {mutualFriendsCount > 0 && (
-              <Text style={{ fontSize: 12.5, fontWeight: '800', color: palette.indigo }}>
-                · 🤝 {mutualFriendsCount} bạn chung
+            {mutualFriendsCount > 0 ? (
+              <Text style={{ fontSize: 12.5, fontWeight: '700', color: palette.indigo }}>
+                · {mutualFriendsCount} bạn chung
               </Text>
-            )}
+            ) : null}
           </View>
 
-          {!!notice && (
-            <Text style={{ fontSize: 12, fontWeight: '700', color: palette.indigo, marginTop: 6 }}>{notice}</Text>
-          )}
+          {notice ? (
+            <Text
+              style={{ fontSize: 12, fontWeight: '700', color: palette.indigo, marginTop: 6 }}
+            >
+              {notice}
+            </Text>
+          ) : null}
 
-          {/* Distinct Follow (1-way) + Friend (2-way) + Message (-> /messages) + Share Buttons */}
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
             <Button
               variant={isFollowing || isFollowRequested ? 'secondary' : 'primary'}
               icon={isFollowing ? 'checkmark-circle' : 'add-circle-outline'}
               onPress={() => {
+                if (!ensureAuth()) return;
                 const res = toggleFollowUser(viewerId, targetProfile.id);
                 setNotice(
                   res === 'requested'
-                    ? '⏳ Đã gửi yêu cầu theo dõi tài khoản riêng tư!'
+                    ? 'Đã gửi yêu cầu theo dõi.'
                     : res === 'followed'
-                    ? `✅ Đang theo dõi ${targetProfile.displayName}`
-                    : `Đã bỏ theo dõi ${targetProfile.displayName}`
+                    ? `Đang theo dõi ${targetProfile.displayName}.`
+                    : `Đã bỏ theo dõi ${targetProfile.displayName}.`
                 );
               }}
             >
@@ -362,7 +445,10 @@ export default function UserProfileScreen() {
               <Button
                 variant="secondary"
                 icon="people"
-                onPress={() => cancelOrUnfriend(viewerId, targetProfile.id)}
+                onPress={() => {
+                  if (!ensureAuth()) return;
+                  cancelOrUnfriend(viewerId, targetProfile.id);
+                }}
               >
                 Bạn bè (Hủy)
               </Button>
@@ -372,7 +458,7 @@ export default function UserProfileScreen() {
                 icon="close-circle-outline"
                 onPress={() => cancelOrUnfriend(viewerId, targetProfile.id)}
               >
-                Hủy lời mời KB
+                Hủy lời mời
               </Button>
             ) : friendReq?.status === 'pending' && friendReq.receiverId === viewerId ? (
               <Button
@@ -380,15 +466,16 @@ export default function UserProfileScreen() {
                 icon="person-add"
                 onPress={() => respondFriendRequest(friendReq.id, true)}
               >
-                Chấp nhận KB
+                Chấp nhận kết bạn
               </Button>
             ) : (
               <Button
                 variant="secondary"
                 icon="person-add-outline"
                 onPress={() => {
+                  if (!ensureAuth()) return;
                   sendFriendRequest(viewerId, targetProfile.id);
-                  setNotice(`🤝 Đã gửi lời mời kết bạn tới ${targetProfile.displayName}!`);
+                  setNotice(`Đã gửi lời mời kết bạn tới ${targetProfile.displayName}.`);
                 }}
               >
                 Kết bạn
@@ -399,6 +486,7 @@ export default function UserProfileScreen() {
               variant="secondary"
               icon="chatbubble-ellipses-outline"
               onPress={() => {
+                if (!ensureAuth()) return;
                 const conv = openOrCreateDirectConversation(
                   { id: viewerId, name: viewerName, avatar: me?.avatarUrl ?? null },
                   {
@@ -407,6 +495,7 @@ export default function UserProfileScreen() {
                     avatar: targetProfile.avatarUrl,
                   }
                 );
+                if (!conv) return;
                 router.push({ pathname: '/messages', params: { conversationId: conv.id } });
               }}
             >
@@ -416,15 +505,56 @@ export default function UserProfileScreen() {
             <Pressable
               accessibilityLabel="Chia sẻ trang cá nhân"
               onPress={() => void shareProfileUrl()}
-              style={[styles.iconBtn, { borderColor: palette.paperMuted, backgroundColor: palette.paperRaised }]}
+              style={[
+                styles.iconBtn,
+                { borderColor: palette.paperMuted, backgroundColor: palette.paperRaised },
+              ]}
             >
               <Ionicons name="share-social-outline" size={18} color={palette.ink} />
             </Pressable>
           </View>
+
+          {/* User's Own Grouped 24h Story Box & Pinned Highlight Box */}
+          {canSeePrivateContent &&
+          (targetActiveStories.length > 0 || targetPinnedStories.length > 0) ? (
+            <View style={{ marginTop: spacing.md, gap: 6 }}>
+              <Text style={[typography.label, { color: palette.inkMuted }]}>
+                TIN 24 GIỜ & TIN ĐÃ GẮN
+              </Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: 10 }}
+              >
+                {targetActiveStories.length > 0 ? (
+                  <StoryCard916
+                    story={targetActiveStories[targetActiveStories.length - 1]!}
+                    totalCount={targetActiveStories.length}
+                    customLabel="Tin 24h"
+                    seen={targetActiveStories.every((s) => s.viewedByIds.includes(viewerId))}
+                    onPress={() => setViewingStoryGroup(targetActiveStories)}
+                  />
+                ) : null}
+
+                {targetPinnedStories.length > 0 ? (
+                  <StoryCard916
+                    story={targetPinnedStories[targetPinnedStories.length - 1]!}
+                    totalCount={targetPinnedStories.length}
+                    customLabel="Tin đã gắn"
+                    seen={targetPinnedStories.every((s) => s.viewedByIds.includes(viewerId))}
+                    onPress={() => setViewingStoryGroup(targetPinnedStories)}
+                  />
+                ) : null}
+              </ScrollView>
+            </View>
+          ) : null}
         </View>
 
-        {/* Threads-style Profile Content Tabs */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.tabsStrip, { borderTopColor: palette.paperMuted }]}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={[styles.tabsStrip, { borderTopColor: palette.paperMuted }]}
+        >
           {(
             [
               { id: 'posts', label: `Bài viết (${visibleAuthorPosts.length})` },
@@ -432,7 +562,7 @@ export default function UserProfileScreen() {
               { id: 'reposts', label: `Đăng lại (${repostedPosts.length})` },
               { id: 'media', label: 'Ảnh & Video' },
               { id: 'pinned', label: 'Đã ghim' },
-              { id: 'communities', label: `Cộng đồng (${joinedCommunities.length})` },
+              { id: 'communities', label: `Nhóm (${joinedCommunities.length})` },
             ] as const
           ).map((t) => (
             <Pressable
@@ -457,13 +587,14 @@ export default function UserProfileScreen() {
         </ScrollView>
       </Card>
 
-      {/* Private Account Gate */}
       {!canSeePrivateContent ? (
         <Card style={{ alignItems: 'center', paddingVertical: spacing.xl, gap: 8 }}>
           <Ionicons name="lock-closed" size={32} color={palette.indigo} />
-          <Text style={[typography.title, { color: palette.ink }]}>Tài khoản này ở chế độ Riêng tư</Text>
+          <Text style={[typography.title, { color: palette.ink }]}>
+            Tài khoản này ở chế độ riêng tư
+          </Text>
           <Text style={[typography.caption, { color: palette.inkMuted, textAlign: 'center' }]}>
-            Hãy gửi yêu cầu Theo dõi hoặc Kết bạn với {targetProfile.displayName} để xem các bài viết và bộ sưu tập.
+            Gửi yêu cầu theo dõi hoặc kết bạn với {targetProfile.displayName} để xem bài viết.
           </Text>
         </Card>
       ) : tab === 'posts' || tab === 'reposts' || tab === 'pinned' ? (
@@ -487,37 +618,75 @@ export default function UserProfileScreen() {
             collections={slice?.collections ?? []}
             conversations={conversations}
             communities={communities}
-            onToggleFollow={(tid) => toggleFollowUser(viewerId, tid)}
-            onReactPost={(pid, rx) => togglePostEmojiReaction(pid, rx, viewerId)}
-            onTogglePureRepost={(pid) => togglePureRepost(pid, viewerId)}
-            onOpenQuoteComposer={() => router.push({ pathname: '/post/[postId]', params: { postId: post.id } })}
+            onToggleFollow={(tid) => {
+              if (!ensureAuth()) return;
+              toggleFollowUser(viewerId, tid);
+            }}
+            onReactPost={(pid, rx) => {
+              if (!ensureAuth()) return;
+              togglePostEmojiReaction(pid, rx, viewerId);
+            }}
+            onTogglePureRepost={(pid) => {
+              if (!ensureAuth()) return;
+              togglePureRepost(pid, viewerId);
+            }}
+            onOpenQuoteComposer={() =>
+              router.push({ pathname: '/post/[postId]', params: { postId: post.id } })
+            }
             onToggleBookmark={(pid, colId) => toggleSaveBookmark(viewerId, pid, colId)}
             onToggleFavourite={(pid) => toggleFavouritePost(viewerId, pid)}
             onTogglePin={(pid, sc) => togglePinPost(pid, sc)}
             onEditPost={(pid, parts, lf) => editSocialPost(pid, viewerId, parts, lf)}
             onDeleteOrArchive={(pid, mode) => deleteOrArchivePost(pid, viewerId, mode)}
             onSummarizeAi={summarizePostWithAi}
-            onVotePoll={(pid, oid) => voteUnifiedPoll('post', pid, oid, viewerId)}
-            onAddPollOption={(pid, txt) => addUnifiedPollOption('post', pid, txt, { id: viewerId, name: viewerName })}
+            onVotePoll={(pid, oid) => {
+              if (!ensureAuth()) return;
+              voteUnifiedPoll('post', pid, oid, viewerId);
+            }}
+            onAddPollOption={(pid, txt) => {
+              if (!ensureAuth()) return;
+              addUnifiedPollOption('post', pid, txt, { id: viewerId, name: viewerName });
+            }}
             onToggleClosePoll={(pid) => toggleCloseUnifiedPoll('post', pid, viewerId)}
-            onVoteDebate={(pid, side) => voteDebateSide(pid, side, viewerId)}
-            onAddDebateArgument={(pid, side, txt) =>
-              addDebateArgument(pid, side, { id: viewerId, name: viewerName, avatar: me?.avatarUrl ?? null }, txt)
-            }
-            onAddReply={(inp) =>
+            onVoteDebate={(pid, side) => {
+              if (!ensureAuth()) return;
+              voteDebateSide(pid, side, viewerId);
+            }}
+            onAddDebateArgument={(pid, side, txt) => {
+              if (!ensureAuth()) return;
+              addDebateArgument(
+                pid,
+                side,
+                { id: viewerId, name: viewerName, avatar: me?.avatarUrl ?? null },
+                txt
+              );
+            }}
+            onAddReply={(inp) => {
+              if (!ensureAuth()) return;
               addThreadedReply({
                 ...inp,
                 authorId: viewerId,
                 authorName: viewerName,
                 authorAvatar: me?.avatarUrl ?? null,
-              })
+              });
+            }}
+            onEditOrDeleteComment={(pid, cid, txt) =>
+              editOrDeleteComment(pid, cid, viewerId, txt)
             }
-            onEditOrDeleteComment={(pid, cid, txt) => editOrDeleteComment(pid, cid, viewerId, txt)}
-            onReactComment={(pid, cid, rx) => toggleCommentReaction(pid, cid, rx, viewerId)}
+            onReactComment={(pid, cid, rx) => {
+              if (!ensureAuth()) return;
+              toggleCommentReaction(pid, cid, rx, viewerId);
+            }}
             onPinComment={togglePinComment}
-            onShareToTarget={(p, dest, note) =>
-              sharePostToDestination(p, { id: viewerId, name: viewerName, avatar: me?.avatarUrl ?? null }, dest, note)
-            }
+            onShareToTarget={(p, dest, note) => {
+              if (!ensureAuth()) return;
+              sharePostToDestination(
+                p,
+                { id: viewerId, name: viewerName, avatar: me?.avatarUrl ?? null },
+                dest,
+                note
+              );
+            }}
             onAlgoFeedback={(act, p) => {
               if (act === 'not_interested') {
                 updateYourAlgo(viewerId, {
@@ -525,8 +694,12 @@ export default function UserProfileScreen() {
                 });
               }
             }}
-            onBlockOrMuteAuthor={(aid, kind) => toggleUserRelation(viewerId, aid, kind)}
-            onReportTarget={(tType, tId, prev, ownerId) =>
+            onBlockOrMuteAuthor={(aid, kind) => {
+              if (!ensureAuth()) return;
+              toggleUserRelation(viewerId, aid, kind);
+            }}
+            onReportTarget={(tType, tId, prev, ownerId) => {
+              if (!ensureAuth()) return;
               submitModerationReport({
                 reporterId: viewerId,
                 reporterName: viewerName,
@@ -536,8 +709,8 @@ export default function UserProfileScreen() {
                 targetOwnerId: ownerId,
                 reason: 'Vi phạm nguyên tắc cộng đồng',
                 details: '',
-              })
-            }
+              });
+            }}
           />
         ))
       ) : tab === 'replies' ? (
@@ -545,12 +718,16 @@ export default function UserProfileScreen() {
           {userReplies.map(({ comment, parentPost }) => (
             <Card
               key={comment.id}
-              onPress={() => router.push({ pathname: '/post/[postId]', params: { postId: parentPost.id } })}
+              onPress={() =>
+                router.push({ pathname: '/post/[postId]', params: { postId: parentPost.id } })
+              }
             >
               <Text style={{ fontSize: 11.5, color: palette.indigo, fontWeight: '700' }}>
                 Phản hồi tới bài viết của {parentPost.authorName}
               </Text>
-              <Text style={[typography.body, { color: palette.ink, marginTop: 4 }]}>{comment.content}</Text>
+              <Text style={[typography.body, { color: palette.ink, marginTop: 4 }]}>
+                {comment.content}
+              </Text>
             </Card>
           ))}
         </View>
@@ -561,10 +738,16 @@ export default function UserProfileScreen() {
             .map(({ m, postId }) => (
               <Pressable
                 key={m.id}
-                onPress={() => router.push({ pathname: '/post/[postId]', params: { postId } })}
+                onPress={() =>
+                  router.push({ pathname: '/post/[postId]', params: { postId } })
+                }
                 style={styles.mediaGridCell}
               >
-                <Image source={{ uri: m.thumbnailUri || m.uri }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                <Image
+                  source={{ uri: m.thumbnailUri || m.uri }}
+                  style={{ width: '100%', height: '100%' }}
+                  resizeMode="cover"
+                />
               </Pressable>
             ))}
         </View>
@@ -572,9 +755,11 @@ export default function UserProfileScreen() {
         <View style={{ gap: 8 }}>
           {joinedCommunities.map((c) => (
             <Card key={c.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <Text style={{ fontSize: 24 }}>{c.avatarEmoji}</Text>
+              <Ionicons name="people" size={22} color={palette.indigo} />
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ fontSize: 14, fontWeight: '800', color: palette.ink }}>{c.name}</Text>
+                <Text style={{ fontSize: 14, fontWeight: '800', color: palette.ink }}>
+                  {c.name}
+                </Text>
                 <Text style={{ fontSize: 12, color: palette.inkMuted }} numberOfLines={2}>
                   {c.description}
                 </Text>
@@ -584,15 +769,27 @@ export default function UserProfileScreen() {
         </View>
       )}
 
-      {/* Safety Sheet: Close Friend, Mute, Restrict, Block, Report */}
-      {safetyModalOpen && (
-        <Modal visible transparent animationType="fade" onRequestClose={() => setSafetyModalOpen(false)}>
+      <StoryViewerModal
+        stories={viewingStoryGroup}
+        viewerId={viewerId}
+        onClose={() => setViewingStoryGroup(null)}
+        onMarkViewed={(sid) => markStoryViewed(sid, viewerId)}
+        onReact={(sid, emo) => reactToStory(sid, emo, viewerId)}
+      />
+
+      {safetyModalOpen ? (
+        <Modal
+          visible
+          transparent
+          animationType="fade"
+          onRequestClose={() => setSafetyModalOpen(false)}
+        >
           <Pressable style={styles.backdrop} onPress={() => setSafetyModalOpen(false)}>
             <Card style={[styles.modalCard, { backgroundColor: palette.paper }]}>
               <Text style={[typography.title, { color: palette.ink }]}>
-                🛡️ Quyền riêng tư & Tương tác với {targetProfile.displayName}
+                Quyền riêng tư & tương tác với {targetProfile.displayName}
               </Text>
-              {isFollowing && (
+              {isFollowing ? (
                 <Button
                   variant="secondary"
                   icon="star"
@@ -601,9 +798,9 @@ export default function UserProfileScreen() {
                     setSafetyModalOpen(false);
                   }}
                 >
-                  {isCloseFriend ? 'Gỡ khỏi danh sách Bạn thân' : 'Thêm vào danh sách Bạn thân (Close Friends)'}
+                  {isCloseFriend ? 'Gỡ khỏi Bạn thân' : 'Thêm vào Bạn thân'}
                 </Button>
-              )}
+              ) : null}
               <Button
                 variant="secondary"
                 icon="volume-mute-outline"
@@ -612,7 +809,7 @@ export default function UserProfileScreen() {
                   setSafetyModalOpen(false);
                 }}
               >
-                {isMuted ? 'Bỏ tạm ẩn (Unmute)' : 'Tạm ẩn bài viết (Mute)'}
+                {isMuted ? 'Bỏ tạm ẩn bài viết' : 'Tạm ẩn bài viết'}
               </Button>
               <Button
                 variant="secondary"
@@ -622,7 +819,7 @@ export default function UserProfileScreen() {
                   setSafetyModalOpen(false);
                 }}
               >
-                {isRestricted ? 'Bỏ hạn chế (Unrestrict)' : 'Hạn chế tương tác (Restrict)'}
+                {isRestricted ? 'Bỏ hạn chế tương tác' : 'Hạn chế tương tác'}
               </Button>
               <Button
                 variant="danger"
@@ -632,7 +829,7 @@ export default function UserProfileScreen() {
                   setSafetyModalOpen(false);
                 }}
               >
-                Chặn tài khoản (Block)
+                Chặn tài khoản
               </Button>
               <Button
                 variant="secondary"
@@ -645,23 +842,27 @@ export default function UserProfileScreen() {
                     targetId: targetProfile.id,
                     targetPreview: targetProfile.displayName,
                     targetOwnerId: targetProfile.id,
-                    reason: 'Tài khoản vi phạm / Giả mạo',
+                    reason: 'Báo cáo tài khoản',
                     details: '',
                   });
                   setSafetyModalOpen(false);
-                  setNotice('✅ Đã gửi báo cáo tài khoản tới Bộ phận Kiểm duyệt.');
+                  setNotice('Đã gửi báo cáo tới bộ phận kiểm duyệt.');
                 }}
               >
-                Báo cáo tài khoản (Report User)
+                Báo cáo tài khoản
               </Button>
             </Card>
           </Pressable>
         </Modal>
-      )}
+      ) : null}
 
-      {/* Followers / Following / Friends Directory Modal */}
-      {connectionsModal && (
-        <Modal visible transparent animationType="fade" onRequestClose={() => setConnectionsModal(null)}>
+      {connectionsModal ? (
+        <Modal
+          visible
+          transparent
+          animationType="fade"
+          onRequestClose={() => setConnectionsModal(null)}
+        >
           <View style={styles.backdrop}>
             <Card style={[styles.modalCard, { backgroundColor: palette.paper }]}>
               <Text style={[typography.title, { color: palette.ink }]}>
@@ -669,7 +870,7 @@ export default function UserProfileScreen() {
                   ? 'Người theo dõi'
                   : connectionsModal === 'following'
                   ? 'Đang theo dõi'
-                  : 'Danh sách Bạn bè'}
+                  : 'Bạn bè'}
               </Text>
               <ScrollView style={{ maxHeight: 280 }}>
                 {(connectionsModal === 'followers'
@@ -679,7 +880,8 @@ export default function UserProfileScreen() {
                   : targetFriends
                 ).map((uid) => {
                   const p = profilesById[uid];
-                  const label = p?.displayName || (uid === viewerId ? viewerName : 'Thành viên Papyrus');
+                  const label =
+                    p?.displayName || (uid === viewerId ? viewerName : 'Thành viên Papyrus');
                   return (
                     <Pressable
                       key={uid}
@@ -687,10 +889,24 @@ export default function UserProfileScreen() {
                         setConnectionsModal(null);
                         router.push({ pathname: '/user/[userId]', params: { userId: uid } });
                       }}
-                      style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 }}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 10,
+                        paddingVertical: 8,
+                      }}
                     >
                       <Ionicons name="person-circle" size={26} color={palette.indigo} />
-                      <Text style={{ fontSize: 13.5, fontWeight: '800', color: palette.ink, flex: 1 }}>{label}</Text>
+                      <Text
+                        style={{
+                          fontSize: 13.5,
+                          fontWeight: '800',
+                          color: palette.ink,
+                          flex: 1,
+                        }}
+                      >
+                        {label}
+                      </Text>
                       <Ionicons name="chevron-forward" size={16} color={palette.inkMuted} />
                     </Pressable>
                   );
@@ -702,7 +918,7 @@ export default function UserProfileScreen() {
             </Card>
           </View>
         </Modal>
-      )}
+      ) : null}
     </Screen>
   );
 }
@@ -714,7 +930,6 @@ const styles = StyleSheet.create({
     height: 78,
     borderRadius: 39,
     borderWidth: 3,
-    borderColor: '#0F172A',
     overflow: 'hidden',
   },
   avatarImg: { width: '100%', height: '100%' },

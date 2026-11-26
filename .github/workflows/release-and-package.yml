@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: 'Optional release tag to publish (e.g. v0.2.0). Leave empty to only publish Docker package.'
+        description: 'Optional release tag to publish (e.g. v3.0.0). Leave empty to only publish Docker package.'
         required: false
         default: ''
 
@@ -57,7 +57,7 @@ jobs:
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}
           labels: |
             org.opencontainers.image.title=Papyrus Web
-            org.opencontainers.image.description=AI-Powered Gamified Study & Multiplayer Quiz Platform (Expo Router + Three.js 3D)
+            org.opencontainers.image.description=AI-Powered Gamified Study, 3D Arena & Social Learning Platform (Expo Router + Three.js + Supabase)
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.url=https://github.com/${{ github.repository }}
             org.opencontainers.image.vendor=${{ github.repository_owner }}
@@ -74,6 +74,7 @@ jobs:
             APP_VARIANT=production
             EXPO_PUBLIC_SUPABASE_URL=${{ vars.EXPO_PUBLIC_SUPABASE_URL || '' }}
             EXPO_PUBLIC_SUPABASE_ANON_KEY=${{ vars.EXPO_PUBLIC_SUPABASE_ANON_KEY || '' }}
+            EXPO_PUBLIC_GIPHY_API_KEY=${{ vars.EXPO_PUBLIC_GIPHY_API_KEY || 'Mh4EFv3xXfqWSMPOp1Jb8C9N9RCCM3yE' }}
             EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY=${{ vars.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || '' }}
             EXPO_PUBLIC_SENTRY_DSN=${{ vars.EXPO_PUBLIC_SENTRY_DSN || '' }}
           cache-from: type=gha
@@ -112,6 +113,7 @@ jobs:
           APP_VARIANT: production
           EXPO_PUBLIC_SUPABASE_URL: ${{ vars.EXPO_PUBLIC_SUPABASE_URL || '' }}
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.EXPO_PUBLIC_SUPABASE_ANON_KEY || '' }}
+          EXPO_PUBLIC_GIPHY_API_KEY: ${{ vars.EXPO_PUBLIC_GIPHY_API_KEY || 'Mh4EFv3xXfqWSMPOp1Jb8C9N9RCCM3yE' }}
           EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ vars.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || '' }}
           EXPO_PUBLIC_SENTRY_DSN: ${{ vars.EXPO_PUBLIC_SENTRY_DSN || '' }}
         run: npx --no-install expo export --platform web
@@ -136,13 +138,15 @@ jobs:
           cat <<EOF > release-notes.md
           ## Papyrus ${RELEASE_TAG}
 
-          **From Ancient Scroll to AI Power** — Cross-platform AI Study, 3D Gamified Quiz Arena & Real-Time Multiplayer Platform.
+          **From Ancient Scroll to AI Power** — Cross-platform AI Study Studio, 3D Gamified Quiz Arena, Real-Time Multiplayer & Academic Social Network.
 
-          ### Highlights
-          - **3D Morph Splash & Optical-Illusion Onboarding**: Blender 4.2 Shape Keys morphing GLB (\`96 KB\`) rendered with Three.js GPU morph canvas + deterministic Remotion optical-illusion onboarding intro (\`662 KB\` WebM / \`1.1 MB\` MP4).
-          - **AI Quiz Generation & Papybot RAG Tutor**: Scan/PDF/DOCX/TXT ingestion with streaming AI quiz creation and document-grounded tutoring.
-          - **Gamified Study Modes**: Survival Boss Arena, Match Pairs, Ranked 1v1 ELO Duels, Real-Time Multiplayer Rooms, Daily Streaks, and Global/Friends Leaderboards.
-          - **Offline-First & Performance Optimized**: SQLite local persistence with Supabase cloud sync, WebP-compressed UI assets, native-driver animations, and leak-free animation/timer lifecycles.
+          ### Highlights in ${RELEASE_TAG}
+          - **Warm Paper & Egyptian Ink Design System**: Glare-free, mobile-first responsive interface across iOS, Android, and Web with Light/Dark theme support, tactile pull-to-refresh, and distinct navigation loaders vs. offline skeletons.
+          - **Social Threads, Study Communities & Dedicated Messaging**: Connected multi-part Threads, public/private Study Communities with RBAC roles and events, Dedicated Messaging Center (\`/messages\`), interactive polls, GIPHY GIF/Sticker integration, and custom video cover frame selection.
+          - **24-Hour Grouped Stories & Profile Story Manager**: Per-author single-box 9:16 Stories with tap-left/right slide flipping, full-length video playback, strict 24-hour feed expiration, and selective Profile Story Pinning.
+          - **Real-Time Multi-Source Search Engine**: Live search and daily feed across Google News, Wikipedia, OpenAlex, and Hacker News with article hero thumbnails and one-tap AI Quiz generation or document saving.
+          - **4 Gamified 3D Modes & Live Kahoot / 1v1 ELO Arena**: 3D Target Archer, 3D Alchemy Cauldron, 3D Survival Boss Arena, Memory Match, 6-digit PIN / QR Kahoot Live rooms, and server-authoritative 1v1 ELO duels.
+          - **Multimodal Papybot AI, Security Center & Admin Console**: Camera/Gallery OCR, PDF/DOCX/TXT ingestion, Voice I/O, \`pgvector\` RAG tutoring, WebAuthn Passkeys + 2FA TOTP + Device Session management, and Enterprise Admin Console with Document Gift distribution.
 
           ### Quick Start via Docker (GitHub Packages)
           \`\`\`bash

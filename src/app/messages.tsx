@@ -46,7 +46,8 @@ export default function DedicatedMessagesScreen() {
 
   const user = useAuthStore((s) => s.user);
   const viewerId = user?.id ?? 'guest';
-  const viewerName = user?.displayName?.trim() || 'Thành viên Papyrus';
+  const isGuest = !user || viewerId === 'guest';
+  const viewerName = user?.displayName?.trim() || 'Khách';
   const viewerAvatar = user?.avatarUrl ?? null;
 
   const profilesById = useSocialStore((s) => s.profilesById);
@@ -70,7 +71,7 @@ export default function DedicatedMessagesScreen() {
   const [inboxTab, setInboxTab] = useState<InboxTab>('inbox');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedConvId, setSelectedConvId] = useState<string>(
-    params.convId || conversations[0]?.id || 'conv-grp-software'
+    params.convId || conversations[0]?.id || ''
   );
   const [mobileRoomOpen, setMobileRoomOpen] = useState<boolean>(
     Boolean(params.convId || params.peerId)
@@ -115,11 +116,12 @@ export default function DedicatedMessagesScreen() {
 
   // Handle deep-linked `?peerId=...&peerName=...` or `?convId=...`
   useEffect(() => {
-    if (params.peerId && params.peerName) {
+    if (params.peerId && params.peerName && !isGuest) {
       const conv = openOrCreateDirectConversation(
         { id: viewerId, name: viewerName, avatar: viewerAvatar },
         { id: params.peerId, name: params.peerName }
       );
+      if (!conv) return undefined;
       const t = setTimeout(() => {
         setSelectedConvId(conv.id);
         setInboxTab(conv.requestState === 'pending' ? 'requests' : 'inbox');
@@ -136,6 +138,7 @@ export default function DedicatedMessagesScreen() {
     }
     return undefined;
   }, [
+    isGuest,
     openOrCreateDirectConversation,
     params.convId,
     params.peerId,
@@ -225,6 +228,10 @@ export default function DedicatedMessagesScreen() {
   };
 
   const handleToggleVoiceNote = () => {
+    if (isGuest) {
+      showToast('Vui lòng đăng nhập để gửi tin nhắn.');
+      return;
+    }
     if (!recordingVoice) {
       setRecordingVoice(true);
       return;
@@ -236,7 +243,7 @@ export default function DedicatedMessagesScreen() {
       senderId: viewerId,
       senderName: viewerName,
       senderAvatar: viewerAvatar,
-      text: '🎙️ Tin nhắn thoại (0:08) · Ghi âm nhanh từ Trung tâm Tin nhắn',
+      text: 'Tin nhắn thoại (0:08)',
       mediaAttachments: [
         {
           id: `voice-${Date.now()}`,
@@ -252,6 +259,10 @@ export default function DedicatedMessagesScreen() {
   };
 
   const handleSend = () => {
+    if (isGuest) {
+      showToast('Vui lòng đăng nhập để gửi tin nhắn.');
+      return;
+    }
     if (!activeConversation) return;
     if (!draftText.trim() && pendingAttachments.length === 0) return;
 
@@ -270,6 +281,10 @@ export default function DedicatedMessagesScreen() {
   };
 
   const handlePublishPollInChat = () => {
+    if (isGuest) {
+      showToast('Vui lòng đăng nhập để tạo khảo sát.');
+      return;
+    }
     if (!activeConversation || !pollQuestion.trim()) return;
     const validOpts = pollOptions.map((o) => o.trim()).filter(Boolean);
     if (validOpts.length < 2) return;
@@ -297,7 +312,7 @@ export default function DedicatedMessagesScreen() {
       senderId: viewerId,
       senderName: viewerName,
       senderAvatar: viewerAvatar,
-      text: `📊 Đã tạo bình chọn: ${newPoll.question}`,
+      text: `Khảo sát: ${newPoll.question}`,
       poll: newPoll,
     });
 
@@ -318,8 +333,8 @@ export default function DedicatedMessagesScreen() {
     <Screen scroll={false}>
       <View style={styles.rootWrap}>
         <TopBar
-          title="Trung Tâm Tin Nhắn"
-          subtitle="Trò chuyện 1-1 · Nhóm học tập · Phòng Live · Poll Zalo"
+          title="Tin nhắn"
+          subtitle="Trò chuyện cá nhân & nhóm học tập"
           onBack={() => {
             if (!isSplitDesktop && mobileRoomOpen) {
               setMobileRoomOpen(false);
@@ -333,11 +348,19 @@ export default function DedicatedMessagesScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Tạo nhóm trò chuyện mới"
-              onPress={() => setCreateGroupOpen(true)}
+              onPress={() => {
+                if (isGuest) {
+                  showToast('Vui lòng đăng nhập để tạo nhóm trò chuyện.');
+                  return;
+                }
+                setCreateGroupOpen(true);
+              }}
               style={[styles.newGroupBtn, { backgroundColor: palette.indigo }]}
             >
-              <Ionicons name="people" size={15} color="#FFFFFF" />
-              <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '800' }}>+ Tạo nhóm</Text>
+              <Ionicons name="people" size={15} color={palette.onPrimary} />
+              <Text style={{ color: palette.onPrimary, fontSize: 12, fontWeight: '800' }}>
+                Tạo nhóm
+              </Text>
             </Pressable>
           }
         />
@@ -395,13 +418,13 @@ export default function DedicatedMessagesScreen() {
                 >
                   {(
                     [
-                      { id: 'inbox', label: '💬 Hộp thư chính' },
+                      { id: 'inbox', label: 'Hộp thư' },
                       {
                         id: 'requests',
-                        label: `📩 Tin nhắn chờ${requestCount > 0 ? ` (${requestCount})` : ''}`,
+                        label: `Tin nhắn chờ${requestCount > 0 ? ` (${requestCount})` : ''}`,
                       },
-                      { id: 'live', label: '🔴 Phòng Live' },
-                      { id: 'archived', label: '🗄️ Đã lưu trữ' },
+                      { id: 'live', label: 'Phòng thảo luận' },
+                      { id: 'archived', label: 'Đã lưu trữ' },
                     ] as const
                   ).map((tb) => {
                     const active = inboxTab === tb.id;
@@ -1357,12 +1380,12 @@ export default function DedicatedMessagesScreen() {
           <View style={styles.modalBackdrop}>
             <Card style={[styles.menuSheet, { backgroundColor: palette.paper }]}>
               <Text style={[typography.title, { color: palette.ink }]}>
-                👥 Tạo Nhóm Trò Chuyện Học Tập
+                Tạo nhóm trò chuyện
               </Text>
               <TextInput
                 value={groupTitle}
                 onChangeText={setGroupTitle}
-                placeholder="Tên nhóm (vd: Nhóm Giải Đề Hệ Điều Hành & AI)..."
+                placeholder="Tên nhóm..."
                 placeholderTextColor={palette.inkMuted}
                 style={[
                   styles.modalInput,
@@ -1376,7 +1399,7 @@ export default function DedicatedMessagesScreen() {
               <TextInput
                 value={groupTopic}
                 onChangeText={setGroupTopic}
-                placeholder="Mô tả / Thông báo ghim đầu nhóm..."
+                placeholder="Mô tả nhóm..."
                 placeholderTextColor={palette.inkMuted}
                 style={[
                   styles.modalInput,
@@ -1444,16 +1467,17 @@ export default function DedicatedMessagesScreen() {
                       topic: groupTopic.trim(),
                       memberIds: selectedMemberIds,
                     });
+                    if (!created) return;
                     setGroupTitle('');
                     setSelectedMemberIds([]);
                     setCreateGroupOpen(false);
                     setInboxTab('inbox');
                     setSelectedConvId(created.id);
                     setMobileRoomOpen(true);
-                    showToast(`Đã tạo nhóm «${created.title}»!`);
+                    showToast(`Đã tạo nhóm ${created.title}.`);
                   }}
                 >
-                  Tạo nhóm ngay
+                  Tạo nhóm
                 </Button>
               </View>
             </Card>
@@ -1461,7 +1485,7 @@ export default function DedicatedMessagesScreen() {
         </Modal>
       ) : null}
 
-      {/* Unified Zalo Poll Builder Modal */}
+      {/* Poll Builder Modal */}
       {pollModalOpen ? (
         <Modal
           visible
@@ -1472,7 +1496,7 @@ export default function DedicatedMessagesScreen() {
           <View style={styles.modalBackdrop}>
             <Card style={[styles.menuSheet, { backgroundColor: palette.paper }]}>
               <Text style={[typography.title, { color: palette.ink }]}>
-                📊 Tạo Bình Chọn Kiểu Zalo
+                Tạo khảo sát
               </Text>
               <TextInput
                 value={pollQuestion}

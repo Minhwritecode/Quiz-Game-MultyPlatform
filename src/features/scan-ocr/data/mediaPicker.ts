@@ -97,11 +97,12 @@ function cropAndCompressDataUrl(
 }
 
 /**
- * Extracts a crisp first-frame JPEG thumbnail from a video URL/DataURI on Web.
+ * Extracts ONLY a crisp JPEG cover image from a video URL/DataURI on Web
+ * while keeping 100% of the original video duration untouched!
  */
-function captureFirstVideoFrameWeb(videoSrc: string): Promise<{ thumbnailUri: string; durationSec: number }> {
+function captureFirstVideoFrameWeb(videoSrc: string): Promise<{ thumbnailUri: string; durationSec?: number }> {
   if (typeof document === 'undefined') {
-    return Promise.resolve({ thumbnailUri: '', durationSec: 10 });
+    return Promise.resolve({ thumbnailUri: '' });
   }
   return new Promise((resolve) => {
     const video = document.createElement('video');
@@ -113,7 +114,7 @@ function captureFirstVideoFrameWeb(videoSrc: string): Promise<{ thumbnailUri: st
     }
 
     let done = false;
-    const finish = (thumb: string, dur: number) => {
+    const finish = (thumb: string, dur?: number) => {
       if (done) return;
       done = true;
       try {
@@ -123,13 +124,20 @@ function captureFirstVideoFrameWeb(videoSrc: string): Promise<{ thumbnailUri: st
       } catch {
         // Ignore
       }
-      resolve({ thumbnailUri: thumb, durationSec: dur || 10 });
+      const validDur = dur && Number.isFinite(dur) && dur > 0 ? Math.ceil(dur) : undefined;
+      resolve({ thumbnailUri: thumb, durationSec: validDur });
     };
 
-    const timer = setTimeout(() => finish('', 10), 6000);
+    const timer = setTimeout(() => {
+      const validDur =
+        Number.isFinite(video.duration) && video.duration > 0 ? Math.ceil(video.duration) : undefined;
+      finish('', validDur);
+    }, 7000);
 
     const drawFrame = () => {
       clearTimeout(timer);
+      const realDur =
+        Number.isFinite(video.duration) && video.duration > 0 ? Math.ceil(video.duration) : undefined;
       try {
         const vw = video.videoWidth || 540;
         const vh = video.videoHeight || 960;
@@ -143,18 +151,18 @@ function captureFirstVideoFrameWeb(videoSrc: string): Promise<{ thumbnailUri: st
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.drawImage(video, 0, 0, cw, ch);
-          const thumb = canvas.toDataURL('image/jpeg', 0.82);
-          finish(thumb, Math.round(video.duration || 10));
+          const thumb = canvas.toDataURL('image/jpeg', 0.84);
+          finish(thumb, realDur);
           return;
         }
       } catch {
         // Fallback
       }
-      finish('', Math.round(video.duration || 10));
+      finish('', realDur);
     };
 
     video.onloadeddata = () => {
-      if (video.duration > 0.25) {
+      if (Number.isFinite(video.duration) && video.duration > 0.25) {
         video.currentTime = 0.15;
       } else {
         drawFrame();
@@ -163,7 +171,7 @@ function captureFirstVideoFrameWeb(videoSrc: string): Promise<{ thumbnailUri: st
     video.onseeked = drawFrame;
     video.onerror = () => {
       clearTimeout(timer);
-      finish('', 10);
+      finish('');
     };
     video.src = videoSrc;
   });
@@ -207,27 +215,82 @@ export async function pickAvatarImageDataUrl(): Promise<string | null> {
 
 export async function pickStoryMedia(kind: 'image' | 'video'): Promise<PickedStoryMedia | null> {
   if (Platform.OS === 'web') {
-    const picked = await readWebFileAsDataUrl(kind === 'video' ? 'video/*' : 'image/*');
-    if (!picked) return null;
-    if (kind === 'image' || picked.file.type.startsWith('image/')) {
-      const portraitUri = await cropAndCompressDataUrl(picked.dataUrl, 540, 960, 0.84);
-      return { mediaType: 'image', uri: portraitUri, thumbnailUri: portraitUri };
+    if (kind === 'video' && typeof document !== 'undefined') {
+      // Pick raw Video File directly without truncating or re-encoding — only extract JPEG poster!
+      return new Promise((resolve) => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'video/*';
+        input.style.position = 'fixed';
+        input.style.left = '-9999px';
+        input.style.opacity = '0';
+        document.body.appendChild(input);
+        const cleanup = () => {
+          setTimeout(() => {
+            try {
+              document.body.removeChild(input);
+            } catch {
+              // Ignore
+            }
+          }, 300);
+        };
+        input.onchange = async () => {
+          const file = input.files?.[0];
+          cleanup();
+          if (!file) {
+            resolve(null);
+            return;
+          }
+          const objectUrl = URL.createObjectURL(file);
+          const { thumbnailUri, durationSec } = await captureFirstVideoFrameWeb(objectUrl);
+          // Persist dataURL for compact videos (<= 3.5MB), otherwise keep full-length objectURL
+          if (file.size <= 3_500_000) {
+            const reader = new FileReader();
+            reader.onload = () => {
+              const fullVideoDataUrl =
+                typeof reader.result === 'string' ? reader.result : objectUrl;
+              if (fullVideoDataUrl !== objectUrl) URL.revokeObjectURL(objectUrl);
+              resolve({
+                mediaType: 'video',
+                uri: fullVideoDataUrl,
+                thumbnailUri: thumbnailUri || '',
+                durationSec,
+              });
+            };
+            reader.onerror = () =>
+              resolve({
+                mediaType: 'video',
+                uri: objectUrl,
+                thumbnailUri: thumbnailUri || '',
+                durationSec,
+              });
+            reader.readAsDataURL(file);
+          } else {
+            resolve({
+              mediaType: 'video',
+              uri: objectUrl,
+              thumbnailUri: thumbnailUri || '',
+              durationSec,
+            });
+          }
+        };
+        input.oncancel = () => {
+          cleanup();
+          resolve(null);
+        };
+        input.click();
+      });
     }
-    // Video story: use object URL or compact dataUrl (if <= 4.5MB persistable, else objectURL for session)
-    const playableUri =
-      picked.file.size <= 4_500_000 ? picked.dataUrl : URL.createObjectURL(picked.file);
-    const { thumbnailUri, durationSec } = await captureFirstVideoFrameWeb(playableUri);
-    return {
-      mediaType: 'video',
-      uri: playableUri,
-      thumbnailUri: thumbnailUri || '',
-      durationSec,
-    };
+
+    const picked = await readWebFileAsDataUrl('image/*');
+    if (!picked) return null;
+    const portraitUri = await cropAndCompressDataUrl(picked.dataUrl, 540, 960, 0.84);
+    return { mediaType: 'image', uri: portraitUri, thumbnailUri: portraitUri };
   }
 
   const result = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: kind === 'video' ? ['videos'] : ['images'],
-    quality: 0.82,
+    quality: 0.85,
   });
   if (result.canceled || !result.assets?.[0]) return null;
   const asset = result.assets[0];
@@ -236,6 +299,6 @@ export async function pickStoryMedia(kind: 'image' | 'video'): Promise<PickedSto
     mediaType: isVid ? 'video' : 'image',
     uri: asset.uri,
     thumbnailUri: asset.uri,
-    durationSec: asset.duration ? Math.round(asset.duration / 1000) : 10,
+    durationSec: asset.duration ? Math.ceil(asset.duration / 1000) : undefined,
   };
 }

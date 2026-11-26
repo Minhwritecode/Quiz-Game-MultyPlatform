@@ -32,7 +32,12 @@ import { useAssistantUiStore } from '@/core/state/useAssistantUiStore';
 import { useCommunityStore } from '@/features/community/state/useCommunityStore';
 import { CreateStoryCard916, StoryCard916 } from '@/features/community/presentation/StoryCard916';
 import { StoryComposerModal, StoryViewerModal } from '@/features/community/presentation/StoryModalViewer';
-import type { ScholarStory } from '@/features/community/domain/models';
+import {
+  groupStoriesByAuthor,
+  isStoryActive24h,
+  type ScholarStory,
+} from '@/features/community/domain/models';
+import { useSocialStore } from '@/features/social/state/useSocialStore';
 import { getScholarRankInfo } from '@/core/domain/scholarRank';
 import { getLocalDateString } from '@/features/streak/domain/models';
 import { useI18n } from '@/core/i18n';
@@ -65,12 +70,20 @@ export default function HomeScreen() {
   const todayCompleted = useStreakStore((state) => state.todayCompleted);
   const checkInToday = useStreakStore((state) => state.checkInToday);
   const stories = useCommunityStore((state) => state.stories);
-  const posts = useCommunityStore((state) => state.posts);
+  const socialPosts = useSocialStore((state) => state.posts);
   const addStory = useCommunityStore((state) => state.addStory);
   const markStoryViewed = useCommunityStore((state) => state.markStoryViewed);
   const reactToStory = useCommunityStore((state) => state.reactToStory);
-  const [viewingHomeStory, setViewingHomeStory] = useState<ScholarStory | null>(null);
+  const [viewingHomeStoryGroup, setViewingHomeStoryGroup] = useState<ScholarStory[] | null>(null);
   const [homeStoryComposerOpen, setHomeStoryComposerOpen] = useState(false);
+  const groupedHomeStories = useMemo(
+    () => groupStoriesByAuthor(stories.filter((s) => isStoryActive24h(s))).slice(0, 8),
+    [stories]
+  );
+  const latestCommunityPost = useMemo(
+    () => socialPosts.find((p) => p.lifecycleStatus === 'published' && p.audience === 'public'),
+    [socialPosts]
+  );
 
   const { language, toggleLanguage, t } = useI18n();
   const { width } = useWindowDimensions();
@@ -923,35 +936,41 @@ export default function HomeScreen() {
             <CreateStoryCard916
               avatarUrl={user?.avatarUrl}
               displayName={user?.displayName || 'Papyrus'}
-              onPress={() => setHomeStoryComposerOpen(true)}
+              onPress={() => {
+                if (!user) {
+                  router.push('/auth');
+                  return;
+                }
+                setHomeStoryComposerOpen(true);
+              }}
             />
 
-            {stories.slice(0, 8).map((st) => {
+            {groupedHomeStories.map((grp) => {
               const viewerId = user?.id ?? 'guest';
               return (
                 <StoryCard916
-                  key={st.id}
-                  story={st}
-                  seen={st.viewedByIds.includes(viewerId)}
+                  key={grp.authorId}
+                  story={grp.coverStory}
+                  totalCount={grp.stories.length}
+                  seen={grp.stories.every((s) => s.viewedByIds.includes(viewerId))}
                   onPress={() => {
-                    markStoryViewed(st.id, viewerId);
-                    setViewingHomeStory(st);
+                    setViewingHomeStoryGroup(grp.stories);
                   }}
                 />
               );
             })}
           </ScrollView>
 
-          {posts[0] ? (
+          {latestCommunityPost ? (
             <Card onPress={() => router.push('/community')} style={{ marginTop: spacing.sm, padding: spacing.md }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                <Badge tone="primary">{posts[0].templateBadge || 'THẢO LUẬN NỔI BẬT'}</Badge>
+                <Badge tone="primary">BÀI VIẾT MỚI</Badge>
                 <Text style={[typography.caption, { color: palette.indigo, fontWeight: '800' }]}>
-                  {posts[0].comments.length} bình luận · Xem →
+                  {latestCommunityPost.comments.length} bình luận · Xem →
                 </Text>
               </View>
               <Text style={[typography.body, { color: palette.ink, fontWeight: '700', marginTop: 6 }]} numberOfLines={2}>
-                {posts[0].authorName}: “{posts[0].threadParts[0]}”
+                {latestCommunityPost.authorName}: “{latestCommunityPost.threadParts[0]}”
               </Text>
             </Card>
           ) : null}
@@ -959,14 +978,15 @@ export default function HomeScreen() {
       </Screen>
 
       <StoryViewerModal
-        story={viewingHomeStory}
+        stories={viewingHomeStoryGroup}
         viewerId={user?.id ?? 'guest'}
-        onClose={() => setViewingHomeStory(null)}
+        onClose={() => setViewingHomeStoryGroup(null)}
+        onMarkViewed={(sid) => markStoryViewed(sid, user?.id ?? 'guest')}
         onReact={(sid, emo) => reactToStory(sid, emo, user?.id ?? 'guest')}
         onDirectMessage={(author) => {
           router.push({
-            pathname: '/community',
-            params: { tab: 'messenger', dmUserId: author.id, dmName: author.name },
+            pathname: '/messages',
+            params: { peerId: author.id, peerName: author.name },
           });
         }}
       />
@@ -974,14 +994,16 @@ export default function HomeScreen() {
         visible={homeStoryComposerOpen}
         onClose={() => setHomeStoryComposerOpen(false)}
         onPublish={(data) => {
-          addStory({
-            authorId: user?.id ?? 'guest',
-            authorName: user?.displayName ?? 'Học giả Papyrus',
-            authorAvatar: user?.avatarUrl ?? null,
+          if (!user) return;
+          const created = addStory({
+            authorId: user.id,
+            authorName: user.displayName || 'Thành viên Papyrus',
+            authorAvatar: user.avatarUrl ?? null,
             authorLevel: rankInfo.level,
-            badgeLabel: `${rankInfo.badge} ${rankInfo.titleVi}`,
+            badgeLabel: rankInfo.titleVi,
             ...data,
           });
+          if (!created) return;
           addBonusXp(20);
           sfx.playLevelUp();
         }}
