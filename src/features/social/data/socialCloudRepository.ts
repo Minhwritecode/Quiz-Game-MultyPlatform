@@ -50,6 +50,8 @@ export async function syncUnifiedProfileToSupabase(profile: Partial<SocialUserPr
 export async function fetchRealProfilesDirectory(limit = 50): Promise<SocialUserProfile[]> {
   if (!supabase) return [];
   try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData.session?.user) return [];
     const { data, error } = await supabase
       .from('profiles')
       .select(
@@ -130,12 +132,19 @@ export async function persistSocialPostToSupabase(post: SocialPostItem): Promise
   }
 }
 
+let serverLifecycleRpcAvailable = process.env.EXPO_PUBLIC_ENABLE_SOCIAL_LIFECYCLE_RPC === '1';
+
 export async function triggerServerPostLifecycleSweep(): Promise<void> {
-  if (!supabase) return;
+  if (!supabase || !serverLifecycleRpcAvailable) return;
   try {
-    await supabase.rpc('process_social_post_schedules_and_expiry');
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData.session?.user) return;
+    const { error } = await supabase.rpc('process_social_post_schedules_and_expiry');
+    if (error) {
+      serverLifecycleRpcAvailable = false;
+    }
   } catch {
-    // Migration may not yet be applied on remote instance; client Store also enforces ISO timestamps
+    serverLifecycleRpcAvailable = false;
   }
 }
 

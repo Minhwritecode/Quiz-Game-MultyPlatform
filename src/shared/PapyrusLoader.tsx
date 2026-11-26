@@ -44,13 +44,14 @@ export const PapyrusMorphLoader = memo(function PapyrusMorphLoader({
 
   useEffect(() => {
     outerSpin.setValue(0);
+    const useNative = Platform.OS !== 'web';
     const duration = reduceMotion ? 6000 : 1650;
     const spinLoop = Animated.loop(
       Animated.timing(outerSpin, {
         toValue: 1,
         duration,
         easing: Easing.linear,
-        useNativeDriver: true,
+        useNativeDriver: useNative,
       })
     );
     spinLoop.start();
@@ -66,13 +67,13 @@ export const PapyrusMorphLoader = memo(function PapyrusMorphLoader({
           toValue: 1,
           duration: 720,
           easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
+          useNativeDriver: useNative,
         }),
         Animated.timing(innerFloat, {
           toValue: 0,
           duration: 720,
           easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
+          useNativeDriver: useNative,
         }),
       ])
     );
@@ -210,10 +211,11 @@ const WaveSkeletonBar = memo(function WaveSkeletonBar({
       wave.setValue(0.5);
       return;
     }
+    const useNative = Platform.OS !== 'web';
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(wave, { toValue: 0.78, duration: 850, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-        Animated.timing(wave, { toValue: 0.28, duration: 850, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(wave, { toValue: 0.78, duration: 850, easing: Easing.inOut(Easing.quad), useNativeDriver: useNative }),
+        Animated.timing(wave, { toValue: 0.28, duration: 850, easing: Easing.inOut(Easing.quad), useNativeDriver: useNative }),
       ])
     );
     loop.start();
