@@ -15,6 +15,20 @@ import {
 } from '@/features/social/domain/rankingAndPermissions';
 import { useSocialStore } from '@/features/social/state/useSocialStore';
 
+jest.mock('@/composition/social', () => ({
+  broadcastCommunityEvent: jest.fn(),
+  fetchRealProfilesDirectory: jest.fn().mockResolvedValue([]),
+  generatePapyAiPostSummary: jest.fn(),
+  persistModerationCaseToSupabase: jest.fn().mockResolvedValue(false),
+  persistSocialPostToSupabase: jest.fn().mockResolvedValue(false),
+  syncUnifiedProfileToSupabase: jest.fn().mockResolvedValue(false),
+  triggerServerPostLifecycleSweep: jest.fn().mockResolvedValue(undefined),
+  uploadAdminDocumentToSupabase: jest.fn().mockResolvedValue({
+    syncedToCloud: false,
+    storagePath: null,
+  }),
+}));
+
 describe('Papyrus v3.0 — Urgent Bug Fixes + Production Social Media & Community Suite', () => {
   beforeEach(() => {
     useSocialStore.setState(useSocialStore.getInitialState(), true);
@@ -22,7 +36,8 @@ describe('Papyrus v3.0 — Urgent Bug Fixes + Production Social Media & Communit
 
   it('Urgent Bug #1: webVersionCheck records session baseline build and never loops infinitely on reload', async () => {
     const origWindow = (globalThis as { window?: unknown }).window;
-    const origFetch = globalThis.fetch;
+    // Reading Expo's lazy fetch getter would initialize a native module in Jest.
+    const origFetch = Object.getOwnPropertyDescriptor(globalThis, 'fetch');
 
     const memStorage = new Map<string, string>();
     (globalThis as { window?: unknown }).window = {
@@ -37,10 +52,13 @@ describe('Papyrus v3.0 — Urgent Bug Fixes + Production Social Media & Communit
     };
 
     let servedBuild = '20261126-0100';
-    globalThis.fetch = jest.fn(async () => ({
-      ok: true,
-      json: async () => ({ version: '3.0.0', build: servedBuild }),
-    })) as unknown as typeof fetch;
+    Object.defineProperty(globalThis, 'fetch', {
+      configurable: true,
+      value: jest.fn(async () => ({
+        ok: true,
+        json: async () => ({ version: '3.0.0', build: servedBuild }),
+      })),
+    });
 
     try {
       // Initial check on fresh tab load establishes baseline -> MUST return false
@@ -57,7 +75,11 @@ describe('Papyrus v3.0 — Urgent Bug Fixes + Production Social Media & Communit
       expect(await checkWebAppVersionUpdate()).toBe(false);
     } finally {
       (globalThis as { window?: unknown }).window = origWindow;
-      globalThis.fetch = origFetch;
+      if (origFetch) {
+        Object.defineProperty(globalThis, 'fetch', origFetch);
+      } else {
+        Reflect.deleteProperty(globalThis, 'fetch');
+      }
     }
   });
 

@@ -4,6 +4,13 @@ const expoConfig = require('eslint-config-expo/flat');
 module.exports = defineConfig([
   expoConfig,
   { ignores: ['agentic-awesome-skills/**', 'src/skills/**', 'QuizPulse-main/**', 'StudyWars-master/**', 'buzrr-main/**', 'dev-quiz-battle-main/**', 'supabase/**', 'dist/**', 'coverage/**', 'node_modules/**', 'android/**', 'ios/**'] },
+  {
+    settings: {
+      'import/resolver': {
+        typescript: { project: 'tsconfig.json' },
+      },
+    },
+  },
   // Legacy compiler diagnostics remain visible. Game code is owned by the team;
   // changing its timer/state behavior is outside this release infrastructure task.
   {
