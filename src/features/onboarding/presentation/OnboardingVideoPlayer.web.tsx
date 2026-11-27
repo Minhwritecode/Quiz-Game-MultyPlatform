@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useI18n } from '@/core/i18n';
@@ -175,7 +175,7 @@ export default function OnboardingVideoPlayerWeb({
           { top: Math.max(16, insets.top + 12), opacity: pressed ? 0.72 : 1 },
         ]}
       >
-        <Ionicons
+        <AppIcon
           name={muted ? 'volume-mute-outline' : 'volume-high-outline'}
           size={16}
           color="#F8FAFC"

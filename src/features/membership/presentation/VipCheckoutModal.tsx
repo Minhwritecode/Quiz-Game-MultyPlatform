@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Alert, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon, type IconName } from '@/shared/AppIcon';
 import { Badge, Button, Card, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import {
@@ -16,7 +16,7 @@ import {
 import { useMembershipStore } from '../state/useMembershipStore';
 import { useAiQuizStore } from '@/features/ai-quiz/state/useAiQuizStore';
 
-const PROVIDERS: Array<{ id: BillingProvider; label: string; icon: keyof typeof Ionicons.glyphMap }> = [
+const PROVIDERS: Array<{ id: BillingProvider; label: string; icon: IconName }> = [
   { id: 'stripe', label: 'Stripe Card', icon: 'card-outline' },
   { id: 'payos', label: 'VietQR / PayOS', icon: 'qr-code-outline' },
   { id: 'iap_apple', label: 'Apple Pay / IAP', icon: 'logo-apple' },
@@ -86,7 +86,7 @@ export function VipCheckoutModal({
               </Text>
             </View>
             <Pressable onPress={onClose} style={styles.closeBtn} accessibilityRole="button" accessibilityLabel="Đóng">
-              <Ionicons name="close" size={22} color={palette.ink} />
+              <AppIcon name="close" size={22} color={palette.ink} />
             </Pressable>
           </View>
 
@@ -156,7 +156,7 @@ export function VipCheckoutModal({
                       },
                     ]}
                   >
-                    <Ionicons name={p.icon} size={16} color={active ? '#FFFFFF' : palette.ink} />
+                    <AppIcon name={p.icon} size={16} color={active ? '#FFFFFF' : palette.ink} />
                     <Text style={{ fontSize: 12, fontWeight: '700', color: active ? '#FFFFFF' : palette.ink }}>
                       {p.label}
                     </Text>

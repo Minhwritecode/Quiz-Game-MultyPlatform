@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Pressable, Text } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { Screen, TopBar, usePalette } from '@/shared/ui';
 import { radii } from '@/core/theme/tokens';
 import { useAuthStore } from '@/core/state/useAuthStore';
@@ -38,7 +38,7 @@ export default function FriendsScreen() {
               backgroundColor: palette.goldTint,
             }}
           >
-            <Ionicons name="trophy" size={14} color={palette.gold} />
+            <AppIcon name="trophy" size={14} color={palette.gold} />
             <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.gold }}>Bảng xếp hạng</Text>
           </Pressable>
         }

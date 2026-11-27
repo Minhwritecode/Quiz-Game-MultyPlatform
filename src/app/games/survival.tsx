@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon, type IconName } from '@/shared/AppIcon';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -36,7 +36,7 @@ const DARK = '#0F172A';
 interface Competitor {
   id: string;
   name: string;
-  avatar: string;
+  avatar: IconName;
   lives: number;
   score: number;
   isBot: boolean;
@@ -509,11 +509,11 @@ export default function SurvivalGameScreen() {
               accessibilityRole="button"
               accessibilityLabel="Switch question set"
             >
-              <Ionicons name="folder-outline" size={15} color={CYAN} />
+              <AppIcon name="folder-outline" size={15} color={CYAN} />
               <Text style={[styles.pickerPillText, { color: CYAN }]} numberOfLines={1}>
                 {currentSet?.title || t.survival.selectSet}
               </Text>
-              <Ionicons name="chevron-down" size={14} color={CYAN} />
+              <AppIcon name="chevron-down" size={14} color={CYAN} />
             </Pressable>
           }
         />
@@ -587,8 +587,8 @@ export default function SurvivalGameScreen() {
                 ]}
               >
                 <View style={[styles.rosterAvatar, { backgroundColor: isMe ? 'rgba(79,70,229,0.3)' : 'rgba(255,255,255,0.08)' }]}>
-                  <Ionicons
-                    name={isAlive ? (c.avatar as any) : 'skull'}
+                  <AppIcon
+                    name={isAlive ? c.avatar : 'skull'}
                     size={16}
                     color={isAlive ? (isMe ? INDIGO : '#E0E7FF') : '#EF4444'}
                   />
@@ -680,7 +680,7 @@ export default function SurvivalGameScreen() {
 
             {isAnswerLocked && currentQuestion.explanation && (
               <View style={[styles.explanationBox, { backgroundColor: 'rgba(6,182,212,0.1)', borderColor: CYAN }]}>
-                <Ionicons name="information-circle" size={18} color={CYAN} />
+                <AppIcon name="information-circle" size={18} color={CYAN} />
                 <Text style={[typography.caption, { color: '#BAE6FD', flex: 1, lineHeight: 18 }]}>
                   {currentQuestion.explanation}
                 </Text>
@@ -689,7 +689,7 @@ export default function SurvivalGameScreen() {
           </View>
         ) : (
           <View style={[styles.glassCard, { alignItems: 'center', paddingVertical: spacing.xl }]}>
-            <Ionicons name="alert-circle" size={44} color={GOLD} />
+            <AppIcon name="alert-circle" size={44} color={GOLD} />
             <Text style={[typography.title, { color: '#E0E7FF', marginTop: spacing.md }]}>
               Chưa có câu hỏi nào trong bộ này
             </Text>
@@ -702,8 +702,8 @@ export default function SurvivalGameScreen() {
             <View style={[styles.modalContent, { backgroundColor: DARK, borderColor: CYAN, borderWidth: 1 }]}>
               <View style={styles.modalHeader}>
                 <Text style={[typography.title, { color: '#E0F7FF' }]}>{t.survival.selectSet}</Text>
-                <Pressable onPress={() => setShowSetPicker(false)} style={styles.closeBtn}>
-                  <Ionicons name="close" size={24} color="#E0F7FF" />
+                <Pressable accessibilityRole="button" accessibilityLabel="Đóng" onPress={() => setShowSetPicker(false)} style={styles.closeBtn}>
+                  <AppIcon name="close" size={24} color="#E0F7FF" />
                 </Pressable>
               </View>
 
@@ -723,7 +723,7 @@ export default function SurvivalGameScreen() {
                       },
                     ]}
                   >
-                    <Ionicons name="book" size={20} color={CYAN} />
+                    <AppIcon name="book" size={20} color={CYAN} />
                     <View style={{ flex: 1 }}>
                       <Text style={[typography.title, { fontSize: 15, color: '#E0F7FF' }]}>
                         {s.title}
@@ -733,7 +733,7 @@ export default function SurvivalGameScreen() {
                       </Text>
                     </View>
                     {s.id === currentSet?.id && (
-                      <Ionicons name="checkmark-circle" size={22} color={CYAN} />
+                      <AppIcon name="checkmark-circle" size={22} color={CYAN} />
                     )}
                   </Pressable>
                 ))}

@@ -12,7 +12,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { useRouter } from 'expo-router';
 import { Badge, Button, Card, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
@@ -265,13 +265,13 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
         <View style={styles.contextHeader}>
           {post.isPinnedProfile || post.isPinnedCommunity ? (
             <View style={styles.contextPill}>
-              <Ionicons name="pin" size={12} color={palette.gold} />
+              <AppIcon name="pin" size={12} color={palette.gold} />
               <Text style={{ fontSize: 11, fontWeight: '800', color: palette.gold }}>Đã ghim</Text>
             </View>
           ) : null}
           {post.communityName ? (
             <View style={styles.contextPill}>
-              <Ionicons name="people" size={12} color={palette.indigo} />
+              <AppIcon name="people" size={12} color={palette.indigo} />
               <Text style={{ fontSize: 11, fontWeight: '800', color: palette.indigo }} numberOfLines={1}>
                 {post.communityName}
               </Text>
@@ -366,7 +366,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
           onPress={() => setMoreMenuOpen(true)}
           style={styles.moreIconBtn}
         >
-          <Ionicons name="ellipsis-horizontal" size={19} color={palette.inkMuted} />
+          <AppIcon name="ellipsis-horizontal" size={19} color={palette.inkMuted} />
         </Pressable>
       </View>
 
@@ -377,7 +377,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
           onPress={() => setSpoilerRevealed(true)}
           style={[styles.spoilerCoverBox, { backgroundColor: palette.paper, borderColor: palette.gold }]}
         >
-          <Ionicons name="eye-off" size={24} color={palette.gold} />
+          <AppIcon name="eye-off" size={24} color={palette.gold} />
           <Text style={[typography.body, { color: palette.ink, fontWeight: '800', textAlign: 'center' }]}>
             ⚠️ Cảnh báo Spoiler: {post.spoilerWarning || 'Nội dung ẩn tránh lộ tình tiết/đáp án'}
           </Text>
@@ -460,7 +460,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                   }}
                   style={[styles.aiSummarizeBtn, { backgroundColor: palette.indigoTint, borderColor: palette.indigo }]}
                 >
-                  <Ionicons name="sparkles" size={13} color={palette.indigo} />
+                  <AppIcon name="sparkles" size={13} color={palette.indigo} />
                   <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.indigo }}>
                     {summarizingAi ? 'PapyAI đang tóm tắt…' : 'Tóm tắt bằng PapyAI'}
                   </Text>
@@ -480,7 +480,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
               }}
               style={[styles.aiSummarizeBtn, { alignSelf: 'flex-start', marginTop: 6, backgroundColor: palette.indigoTint, borderColor: palette.indigo }]}
             >
-              <Ionicons name="sparkles" size={13} color={palette.indigo} />
+              <AppIcon name="sparkles" size={13} color={palette.indigo} />
               <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.indigo }}>
                 {summarizingAi ? 'PapyAI đang tóm tắt…' : '✨ PapyAI Tóm tắt nhanh chuỗi Thread'}
               </Text>
@@ -491,7 +491,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
           {post.aiSummary ? (
             <View style={[styles.aiSummaryCard, { backgroundColor: palette.indigoTint, borderColor: palette.indigo }]}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Ionicons name="sparkles" size={15} color={palette.indigo} />
+                <AppIcon name="sparkles" size={15} color={palette.indigo} />
                 <Text style={{ fontSize: 11.5, fontWeight: '900', color: palette.indigoDeep }}>
                   BẢN TÓM TẮT DO PAPYAI TẠO (KHÔNG THAY THẾ BÀI VIẾT GỐC)
                 </Text>
@@ -583,7 +583,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                             {isVid && (
                               <View style={styles.videoPlayOverlay}>
                                 <View style={styles.playCircle}>
-                                  <Ionicons name="play" size={24} color="#FFFFFF" />
+                                  <AppIcon name="play" size={24} color="#FFFFFF" />
                                 </View>
                                 <View style={styles.durationTag}>
                                   <Text style={{ color: '#FFF', fontSize: 11, fontWeight: '800' }}>
@@ -621,7 +621,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                         }}
                         style={[styles.carouselArrowBtn, { left: 8 }]}
                       >
-                        <Ionicons name="chevron-back" size={16} color="#FFFFFF" />
+                        <AppIcon name="chevron-back" size={16} color="#FFFFFF" />
                       </Pressable>
                     )}
 
@@ -642,7 +642,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                         }}
                         style={[styles.carouselArrowBtn, { right: 8 }]}
                       >
-                        <Ionicons name="chevron-forward" size={16} color="#FFFFFF" />
+                        <AppIcon name="chevron-forward" size={16} color="#FFFFFF" />
                       </Pressable>
                     )}
                   </>
@@ -799,6 +799,8 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                   style={[styles.inlineInput, { color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paperRaised }]}
                 />
                 <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Gửi"
                   onPress={() => {
                     if (debateArgDraft.trim()) {
                       onAddDebateArgument(post.id, debateSidePick, debateArgDraft);
@@ -807,7 +809,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                   }}
                   style={[styles.sendMiniBtn, { backgroundColor: palette.indigo }]}
                 >
-                  <Ionicons name="send" size={14} color={palette.onPrimary} />
+                  <AppIcon name="send" size={14} color={palette.onPrimary} />
                 </Pressable>
               </View>
             </View>
@@ -819,7 +821,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
               onPress={() => router.push({ pathname: '/study/[setId]', params: { setId: post.attachedQuiz!.setId } })}
               style={[styles.quizCard, { backgroundColor: palette.indigoTint, borderColor: palette.indigoBorder }]}
             >
-              <Ionicons name="school" size={22} color={palette.indigo} />
+              <AppIcon name="school" size={22} color={palette.indigo} />
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={{ fontSize: 13, fontWeight: '900', color: palette.indigoDeep }} numberOfLines={1}>
                   📜 {post.attachedQuiz.title}
@@ -828,7 +830,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                   {post.attachedQuiz.subject} · {post.attachedQuiz.questionCount} câu hỏi · Chạm làm thử ngay!
                 </Text>
               </View>
-              <Ionicons name="play-circle" size={26} color={palette.indigo} />
+              <AppIcon name="play-circle" size={26} color={palette.indigo} />
             </Pressable>
           ) : null}
 
@@ -838,7 +840,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
               onPress={() => void Linking.openURL(post.linkPreview!.url)}
               style={[styles.linkCard, { backgroundColor: palette.paper, borderColor: palette.paperMuted }]}
             >
-              <Ionicons name="link" size={18} color={palette.indigo} />
+              <AppIcon name="link" size={18} color={palette.indigo} />
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={{ fontSize: 11, color: palette.indigo, fontWeight: '800' }}>{post.linkPreview.siteName}</Text>
                 <Text style={{ fontSize: 13, color: palette.ink, fontWeight: '800' }} numberOfLines={1}>
@@ -923,7 +925,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
           {myReactionMeta ? (
             <Text style={{ fontSize: 15 }}>{myReactionMeta.emoji}</Text>
           ) : (
-            <Ionicons name="heart-outline" size={18} color={palette.inkMuted} />
+            <AppIcon name="heart-outline" size={18} color={palette.inkMuted} />
           )}
           <Text
             style={{
@@ -942,7 +944,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
           onPress={() => setCommentsOpen((o) => !o)}
           style={styles.actionBtn}
         >
-          <Ionicons name="chatbubble-outline" size={17} color={palette.inkMuted} />
+          <AppIcon name="chatbubble-outline" size={17} color={palette.inkMuted} />
           <Text style={{ fontSize: 12, fontWeight: '700', color: palette.inkMuted }}>
             {post.comments.length}
           </Text>
@@ -955,7 +957,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
           onPress={() => setRepostSheetOpen(true)}
           style={styles.actionBtn}
         >
-          <Ionicons name="repeat" size={19} color={hasReposted ? palette.mint : palette.inkMuted} />
+          <AppIcon name="repeat" size={19} color={hasReposted ? palette.mint : palette.inkMuted} />
           <Text style={{ fontSize: 12, fontWeight: '800', color: hasReposted ? palette.mint : palette.inkMuted }}>
             {post.repostedByIds.length + post.quoteCount || ''}
           </Text>
@@ -968,7 +970,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
           onPress={() => setShareSheetOpen(true)}
           style={styles.actionBtn}
         >
-          <Ionicons name="paper-plane-outline" size={17} color={palette.inkMuted} />
+          <AppIcon name="paper-plane-outline" size={17} color={palette.inkMuted} />
         </Pressable>
 
         {/* 5. Distinct Save Bookmark vs Favourite Star */}
@@ -978,7 +980,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
             accessibilityLabel="Đánh dấu Yêu thích đặc biệt"
             onPress={() => onToggleFavourite(post.id)}
           >
-            <Ionicons
+            <AppIcon
               name={isFavourited ? 'star' : 'star-outline'}
               size={18}
               color={isFavourited ? '#F59E0B' : palette.inkMuted}
@@ -989,7 +991,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
             accessibilityLabel="Lưu vào Bộ sưu tập Bookmark"
             onPress={() => onToggleBookmark(post.id)}
           >
-            <Ionicons
+            <AppIcon
               name={isSavedBookmark ? 'bookmark' : 'bookmark-outline'}
               size={18}
               color={isSavedBookmark ? palette.indigo : palette.inkMuted}
@@ -1055,13 +1057,15 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                             style={[styles.inlineInput, { color: palette.ink, borderColor: palette.indigo }]}
                           />
                           <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel="Xác nhận"
                             onPress={() => {
                               onEditOrDeleteComment(post.id, rootCmt.id, editingCommentText);
                               setEditingCommentId(null);
                             }}
                             style={[styles.sendMiniBtn, { backgroundColor: palette.indigo }]}
                           >
-                            <Ionicons name="checkmark" size={14} color="#FFF" />
+                            <AppIcon name="checkmark" size={14} color="#FFF" />
                           </Pressable>
                         </View>
                       ) : (
@@ -1188,8 +1192,8 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
               {replyMedia && (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <Image source={{ uri: replyMedia.uri }} style={{ width: 52, height: 52, borderRadius: 8 }} />
-                  <Pressable onPress={() => setReplyMedia(null)}>
-                    <Ionicons name="close-circle" size={18} color={palette.danger} />
+                  <Pressable accessibilityRole="button" accessibilityLabel="Bỏ chọn" onPress={() => setReplyMedia(null)}>
+                    <AppIcon name="close-circle" size={18} color={palette.danger} />
                   </Pressable>
                 </View>
               )}
@@ -1199,7 +1203,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                   onPress={() => setStickerPickerOpen(true)}
                   style={[styles.stickerBtn, { backgroundColor: palette.paper }]}
                 >
-                  <Ionicons name="happy-outline" size={19} color={palette.indigo} />
+                  <AppIcon name="happy-outline" size={19} color={palette.indigo} />
                 </Pressable>
                 <TextInput
                   value={replyDraft}
@@ -1212,6 +1216,8 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                   ]}
                 />
                 <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Gửi"
                   disabled={!replyDraft.trim() && !replyMedia}
                   onPress={() => {
                     onAddReply({
@@ -1232,7 +1238,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                     },
                   ]}
                 >
-                  <Ionicons name="send" size={14} color="#FFFFFF" />
+                  <AppIcon name="send" size={14} color="#FFFFFF" />
                 </Pressable>
               </View>
             </View>
@@ -1255,7 +1261,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
           }
           style={[styles.ghostDmBtn, { borderColor: palette.indigoBorder }]}
         >
-          <Ionicons name="chatbubble-ellipses-outline" size={14} color={palette.indigo} />
+          <AppIcon name="chatbubble-ellipses-outline" size={14} color={palette.indigo} />
           <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.indigo }}>
             Phản hồi riêng tư Ghost Post qua Tin nhắn cho {post.authorName}
           </Text>
@@ -1275,7 +1281,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                 }}
                 style={[styles.sheetActionRow, { borderColor: palette.paperMuted }]}
               >
-                <Ionicons name="repeat" size={20} color={hasReposted ? palette.danger : palette.mint} />
+                <AppIcon name="repeat" size={20} color={hasReposted ? palette.danger : palette.mint} />
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 14, fontWeight: '800', color: palette.ink }}>
                     {hasReposted ? 'Hoàn tác đăng lại' : 'Đăng lại'}
@@ -1293,7 +1299,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                 }}
                 style={[styles.sheetActionRow, { borderColor: palette.paperMuted }]}
               >
-                <Ionicons name="create-outline" size={20} color={palette.indigo} />
+                <AppIcon name="create-outline" size={20} color={palette.indigo} />
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 14, fontWeight: '800', color: palette.ink }}>
                     Trích dẫn bài viết
@@ -1315,8 +1321,8 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
             <Card style={[styles.sheetCard, { backgroundColor: palette.paper }]}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Text style={[typography.title, { color: palette.ink }]}>Chia sẻ bài viết</Text>
-                <Pressable onPress={() => setShareSheetOpen(false)}>
-                  <Ionicons name="close" size={22} color={palette.inkMuted} />
+                <Pressable accessibilityRole="button" accessibilityLabel="Đóng" onPress={() => setShareSheetOpen(false)}>
+                  <AppIcon name="close" size={22} color={palette.inkMuted} />
                 </Pressable>
               </View>
 
@@ -1343,7 +1349,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                     }}
                     style={[styles.destPill, { borderColor: palette.indigo, backgroundColor: palette.indigoTint }]}
                   >
-                    <Ionicons name="chatbubbles" size={14} color={palette.indigo} />
+                    <AppIcon name="chatbubbles" size={14} color={palette.indigo} />
                     <Text style={{ fontSize: 12, fontWeight: '800', color: palette.indigo }} numberOfLines={1}>
                       {conv.title}
                     </Text>
@@ -1365,7 +1371,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                     }}
                     style={[styles.destPill, { borderColor: palette.paperMuted, backgroundColor: palette.paperRaised }]}
                   >
-                    <Ionicons name="people" size={14} color={palette.ink} />
+                    <AppIcon name="people" size={14} color={palette.ink} />
                     <Text style={{ fontSize: 12, fontWeight: '700', color: palette.ink }} numberOfLines={1}>
                       {cm.name}
                     </Text>
@@ -1422,7 +1428,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                 }}
                 style={[styles.menuItemRow, { borderColor: palette.paperMuted }]}
               >
-                <Ionicons name="trending-up" size={18} color={palette.mint} />
+                <AppIcon name="trending-up" size={18} color={palette.mint} />
                 <Text style={{ fontSize: 13, fontWeight: '700', color: palette.ink }}>
                   Ưu tiên nội dung tương tự
                 </Text>
@@ -1435,7 +1441,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                 }}
                 style={[styles.menuItemRow, { borderColor: palette.paperMuted }]}
               >
-                <Ionicons name="trending-down" size={18} color={palette.gold} />
+                <AppIcon name="trending-down" size={18} color={palette.gold} />
                 <Text style={{ fontSize: 13, fontWeight: '700', color: palette.ink }}>
                   Giảm hiển thị nội dung này
                 </Text>
@@ -1448,7 +1454,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                 }}
                 style={[styles.menuItemRow, { borderColor: palette.paperMuted }]}
               >
-                <Ionicons name="eye-off-outline" size={18} color={palette.inkMuted} />
+                <AppIcon name="eye-off-outline" size={18} color={palette.inkMuted} />
                 <Text style={{ fontSize: 13, fontWeight: '700', color: palette.ink }}>
                   Không quan tâm bài viết này
                 </Text>
@@ -1461,7 +1467,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                 }}
                 style={[styles.menuItemRow, { borderColor: palette.paperMuted }]}
               >
-                <Ionicons name="analytics-outline" size={18} color={palette.indigo} />
+                <AppIcon name="analytics-outline" size={18} color={palette.indigo} />
                 <Text style={{ fontSize: 13, fontWeight: '700', color: palette.ink }}>
                   Số liệu bài viết
                 </Text>
@@ -1475,7 +1481,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                   }}
                   style={[styles.menuItemRow, { borderColor: palette.paperMuted }]}
                 >
-                  <Ionicons name="time-outline" size={18} color={palette.indigo} />
+                  <AppIcon name="time-outline" size={18} color={palette.indigo} />
                   <Text style={{ fontSize: 13, fontWeight: '700', color: palette.ink }}>
                     Lịch sử chỉnh sửa ({post.editHistory.length})
                   </Text>
@@ -1491,7 +1497,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                     }}
                     style={[styles.menuItemRow, { borderColor: palette.paperMuted }]}
                   >
-                    <Ionicons name="pin-outline" size={18} color={palette.gold} />
+                    <AppIcon name="pin-outline" size={18} color={palette.gold} />
                     <Text style={{ fontSize: 13, fontWeight: '700', color: palette.ink }}>
                       {post.isPinnedProfile ? 'Bỏ ghim khỏi trang cá nhân' : 'Ghim lên đầu trang cá nhân'}
                     </Text>
@@ -1504,7 +1510,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                     }}
                     style={[styles.menuItemRow, { borderColor: palette.paperMuted }]}
                   >
-                    <Ionicons name="create-outline" size={18} color={palette.indigo} />
+                    <AppIcon name="create-outline" size={18} color={palette.indigo} />
                     <Text style={{ fontSize: 13, fontWeight: '700', color: palette.ink }}>Chỉnh sửa bài viết</Text>
                   </Pressable>
                   <Pressable
@@ -1514,7 +1520,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                     }}
                     style={[styles.menuItemRow, { borderColor: palette.paperMuted }]}
                   >
-                    <Ionicons name="archive-outline" size={18} color={palette.inkMuted} />
+                    <AppIcon name="archive-outline" size={18} color={palette.inkMuted} />
                     <Text style={{ fontSize: 13, fontWeight: '700', color: palette.ink }}>Lưu trữ bài viết</Text>
                   </Pressable>
                   <Pressable
@@ -1524,7 +1530,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                     }}
                     style={[styles.menuItemRow, { borderColor: palette.danger }]}
                   >
-                    <Ionicons name="trash-outline" size={18} color={palette.danger} />
+                    <AppIcon name="trash-outline" size={18} color={palette.danger} />
                     <Text style={{ fontSize: 13, fontWeight: '800', color: palette.danger }}>Xóa bài viết</Text>
                   </Pressable>
                 </>
@@ -1539,7 +1545,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                         }}
                         style={[styles.menuItemRow, { borderColor: palette.paperMuted }]}
                       >
-                        <Ionicons name="volume-mute-outline" size={18} color={palette.inkMuted} />
+                        <AppIcon name="volume-mute-outline" size={18} color={palette.inkMuted} />
                         <Text style={{ fontSize: 13, fontWeight: '700', color: palette.ink }}>
                           Tạm ẩn bài từ {post.authorName}
                         </Text>
@@ -1551,7 +1557,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                         }}
                         style={[styles.menuItemRow, { borderColor: palette.danger }]}
                       >
-                        <Ionicons name="ban-outline" size={18} color={palette.danger} />
+                        <AppIcon name="ban-outline" size={18} color={palette.danger} />
                         <Text style={{ fontSize: 13, fontWeight: '800', color: palette.danger }}>
                           Chặn {post.authorName}
                         </Text>
@@ -1570,7 +1576,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                     }}
                     style={[styles.menuItemRow, { borderColor: palette.danger }]}
                   >
-                    <Ionicons name="flag-outline" size={18} color={palette.danger} />
+                    <AppIcon name="flag-outline" size={18} color={palette.danger} />
                     <Text style={{ fontSize: 13, fontWeight: '800', color: palette.danger }}>
                       Báo cáo bài viết
                     </Text>
@@ -1696,7 +1702,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                       >
                         <Text style={{ fontSize: 18 }}>{meta.emoji}</Text>
                         <Text style={{ fontSize: 13, fontWeight: '800', color: palette.ink, flex: 1 }}>{name}</Text>
-                        <Ionicons name="chevron-forward" size={16} color={palette.inkMuted} />
+                        <AppIcon name="chevron-forward" size={16} color={palette.inkMuted} />
                       </Pressable>
                     );
                   });
@@ -1714,8 +1720,8 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
       {lightboxMedia && (
         <Modal visible transparent animationType="fade" onRequestClose={() => setLightboxMedia(null)}>
           <View style={styles.lightboxBackdrop}>
-            <Pressable onPress={() => setLightboxMedia(null)} style={styles.lightboxClose}>
-              <Ionicons name="close" size={26} color="#FFFFFF" />
+            <Pressable accessibilityRole="button" accessibilityLabel="Đóng" onPress={() => setLightboxMedia(null)} style={styles.lightboxClose}>
+              <AppIcon name="close" size={26} color="#FFFFFF" />
             </Pressable>
             <Image source={{ uri: lightboxMedia.uri }} style={{ width: '94%', height: '82%' }} resizeMode="contain" />
           </View>

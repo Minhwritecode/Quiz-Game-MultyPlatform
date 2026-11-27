@@ -1,6 +1,6 @@
 import { errorMessage } from '@/core/domain/failure';
 import { createElement, useCallback, useEffect, useState } from 'react';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon, type IconName } from '@/shared/AppIcon';
 import { useRouter } from 'expo-router';
 import {
   AppState,
@@ -47,7 +47,7 @@ function PreferenceRow({
   subtitle,
   children,
 }: {
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: IconName;
   title: string;
   subtitle: string;
   children: React.ReactNode;
@@ -56,7 +56,7 @@ function PreferenceRow({
   return (
     <View style={styles.row}>
       <View style={[styles.iconWrap, { backgroundColor: palette.paper }]}>
-        <Ionicons name={icon} size={20} color={palette.indigo} />
+        <AppIcon name={icon} size={20} color={palette.indigo} />
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={[typography.body, { color: palette.ink, fontWeight: '700' }]}>{title}</Text>
@@ -353,7 +353,7 @@ export default function SettingsScreen() {
             style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
           >
             <Badge tone="success">{t.settings.badgeAuth}</Badge>
-            <Ionicons name="chevron-forward" size={18} color={palette.inkMuted} />
+            <AppIcon name="chevron-forward" size={18} color={palette.inkMuted} />
           </Pressable>
         ) : (
           <Pressable
@@ -389,7 +389,7 @@ export default function SettingsScreen() {
             <View style={{ gap: 8 }}>
               <View style={styles.secHeaderRow}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
-                  <Ionicons name="finger-print-outline" size={20} color={palette.indigo} />
+                  <AppIcon name="finger-print-outline" size={20} color={palette.indigo} />
                   <View style={{ flex: 1 }}>
                     <Text style={[typography.body, { color: palette.ink, fontWeight: '800' }]}>
                       Khóa đăng nhập Passkey (FIDO2)
@@ -425,7 +425,7 @@ export default function SettingsScreen() {
                     key={pk.id}
                     style={[styles.deviceItem, { backgroundColor: palette.paper, borderColor: palette.paperMuted }]}
                   >
-                    <Ionicons name="key-outline" size={18} color={palette.indigo} />
+                    <AppIcon name="key-outline" size={18} color={palette.indigo} />
                     <View style={{ flex: 1, minWidth: 0 }}>
                       {renamingId === pk.id ? (
                         <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
@@ -460,7 +460,7 @@ export default function SettingsScreen() {
                       }}
                       hitSlop={8}
                     >
-                      <Ionicons name="create-outline" size={17} color={palette.inkMuted} />
+                      <AppIcon name="create-outline" size={17} color={palette.inkMuted} />
                     </Pressable>
                     <Pressable
                       accessibilityRole="button"
@@ -468,7 +468,7 @@ export default function SettingsScreen() {
                       onPress={() => void handleDeletePasskey(pk.id)}
                       hitSlop={8}
                     >
-                      <Ionicons name="trash-outline" size={17} color={palette.danger} />
+                      <AppIcon name="trash-outline" size={17} color={palette.danger} />
                     </Pressable>
                   </View>
                 ))
@@ -480,7 +480,7 @@ export default function SettingsScreen() {
             {/* 2. Two-Factor Authentication (2FA Authenticator) */}
             <View style={styles.secHeaderRow}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
-                <Ionicons name="shield-checkmark-outline" size={20} color={palette.mint} />
+                <AppIcon name="shield-checkmark-outline" size={20} color={palette.mint} />
                 <View style={{ flex: 1 }}>
                   <Text style={[typography.body, { color: palette.ink, fontWeight: '800' }]}>
                     Xác thực 2 lớp (2FA Authenticator)
@@ -509,7 +509,7 @@ export default function SettingsScreen() {
             <View style={{ gap: 8 }}>
               <View style={styles.secHeaderRow}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
-                  <Ionicons name="laptop-outline" size={20} color={palette.gold} />
+                  <AppIcon name="laptop-outline" size={20} color={palette.gold} />
                   <View style={{ flex: 1 }}>
                     <Text style={[typography.body, { color: palette.ink, fontWeight: '800' }]}>
                       Quản lý Thiết bị Đăng nhập ({securitySnap?.devices.length || 1})
@@ -535,7 +535,7 @@ export default function SettingsScreen() {
                     key={dev.deviceId}
                     style={[styles.deviceItem, { backgroundColor: palette.paper, borderColor: palette.paperMuted }]}
                   >
-                    <Ionicons name={dev.icon} size={20} color={isCurrent ? palette.mint : palette.indigo} />
+                    <AppIcon name={dev.icon} size={20} color={isCurrent ? palette.mint : palette.indigo} />
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                         <Text style={{ fontSize: 13, fontWeight: '800', color: palette.ink }} numberOfLines={1}>
@@ -574,7 +574,7 @@ export default function SettingsScreen() {
         <View style={styles.themeBlockRow}>
           <View style={styles.themeHeaderRow}>
             <View style={[styles.iconWrap, { backgroundColor: palette.paper }]}>
-              <Ionicons name="moon-outline" size={20} color={palette.indigo} />
+              <AppIcon name="moon-outline" size={20} color={palette.indigo} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={[typography.body, { color: palette.ink, fontWeight: '700' }]}>
@@ -685,13 +685,13 @@ export default function SettingsScreen() {
             title={t.settings.accountLibraryTitle}
             subtitle={t.settings.accountLibrarySub}
           >
-            <Ionicons name="chevron-forward" size={20} color={palette.indigo} />
+            <AppIcon name="chevron-forward" size={20} color={palette.indigo} />
           </PreferenceRow>
         </Pressable>
         <View style={[styles.separator, { backgroundColor: palette.paperMuted }]} />
         <Pressable accessibilityRole="button" style={styles.row} onPress={() => router.push('/sets')}>
           <View style={[styles.iconWrap, { backgroundColor: palette.paper }]}>
-            <Ionicons name="server-outline" size={20} color={palette.indigo} />
+            <AppIcon name="server-outline" size={20} color={palette.indigo} />
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={[typography.body, { color: palette.ink, fontWeight: '700' }]}>
@@ -701,12 +701,12 @@ export default function SettingsScreen() {
               {t.settings.manageLocalSub}
             </Text>
           </View>
-          <Ionicons name="chevron-forward" size={20} color={palette.indigo} />
+          <AppIcon name="chevron-forward" size={20} color={palette.indigo} />
         </Pressable>
         <View style={[styles.separator, { backgroundColor: palette.paperMuted }]} />
         <Pressable accessibilityRole="button" style={styles.row} onPress={() => void handleClearStudyDraftsCache()}>
           <View style={[styles.iconWrap, { backgroundColor: palette.paper }]}>
-            <Ionicons name="trash-bin-outline" size={20} color={palette.inkMuted} />
+            <AppIcon name="trash-bin-outline" size={20} color={palette.inkMuted} />
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={[typography.body, { color: palette.ink, fontWeight: '700' }]}>
@@ -724,7 +724,7 @@ export default function SettingsScreen() {
         <View style={[styles.separator, { backgroundColor: palette.paperMuted }]} />
         <Pressable accessibilityRole="button" style={styles.row} onPress={() => setBillingOpen(true)}>
           <View style={[styles.iconWrap, { backgroundColor: palette.paper }]}>
-            <Ionicons name="card-outline" size={20} color={palette.gold} />
+            <AppIcon name="card-outline" size={20} color={palette.gold} />
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={[typography.body, { color: palette.ink, fontWeight: '700' }]}>
@@ -789,7 +789,7 @@ export default function SettingsScreen() {
             },
           ]}
         >
-          <Ionicons name="log-out-outline" size={20} color={palette.danger} />
+          <AppIcon name="log-out-outline" size={20} color={palette.danger} />
           <Text style={[typography.body, { color: palette.danger, fontWeight: '800' }]}>
             {t.settings.signOut}
           </Text>
@@ -800,7 +800,7 @@ export default function SettingsScreen() {
           onPress={() => router.push('/auth')}
           style={[styles.signOutBtnCard, { backgroundColor: palette.indigoTint, borderColor: palette.indigoBorder }]}
         >
-          <Ionicons name="log-in-outline" size={20} color={palette.indigo} />
+          <AppIcon name="log-in-outline" size={20} color={palette.indigo} />
           <Text style={[typography.body, { color: palette.indigo, fontWeight: '800' }]}>
             {t.settings.signIn}
           </Text>
@@ -927,8 +927,8 @@ export default function SettingsScreen() {
           <Card style={{ width: '100%', maxWidth: 430, gap: 12, backgroundColor: palette.paper }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <Text style={[typography.title, { color: palette.ink }]}>🛡️ Thiết lập Bảo mật 2 lớp (2FA)</Text>
-              <Pressable onPress={() => setTotpModalOpen(false)}>
-                <Ionicons name="close" size={22} color={palette.inkMuted} />
+              <Pressable accessibilityRole="button" accessibilityLabel="Đóng" onPress={() => setTotpModalOpen(false)}>
+                <AppIcon name="close" size={22} color={palette.inkMuted} />
               </Pressable>
             </View>
 

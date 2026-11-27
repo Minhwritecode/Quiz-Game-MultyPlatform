@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { Button, Card, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { pickCoverImageDataUrl } from '@/composition/platform';
@@ -86,8 +86,8 @@ export function VideoCoverEditorModal({
         <Card style={[styles.card, { backgroundColor: palette.paper }]}>
           <View style={styles.header}>
             <Text style={[typography.title, { color: palette.ink }]}>Chọn ảnh bìa video</Text>
-            <Pressable onPress={onClose} hitSlop={8}>
-              <Ionicons name="close" size={22} color={palette.inkMuted} />
+            <Pressable accessibilityRole="button" accessibilityLabel="Đóng" onPress={onClose} hitSlop={8}>
+              <AppIcon name="close" size={22} color={palette.inkMuted} />
             </Pressable>
           </View>
 
@@ -125,7 +125,7 @@ export function VideoCoverEditorModal({
               <Image source={{ uri: selectedThumb }} style={styles.previewImg} resizeMode="contain" />
             ) : null}
             <View style={styles.previewTag}>
-              <Ionicons name="sparkles" size={12} color="#FDE68A" />
+              <AppIcon name="sparkles" size={12} color="#FDE68A" />
               <Text style={{ color: '#FFF', fontSize: 11, fontWeight: '800' }}>
                 Khung hình {selectedSecond.toFixed(1)}s / {durationSec}s · Tỷ lệ {aspect}
               </Text>
@@ -161,7 +161,7 @@ export function VideoCoverEditorModal({
               onPress={() => void handleUploadCustomCover()}
               style={[styles.customCoverBtn, { borderColor: palette.indigo, backgroundColor: palette.indigoTint }]}
             >
-              <Ionicons name="image-outline" size={16} color={palette.indigo} />
+              <AppIcon name="image-outline" size={16} color={palette.indigo} />
               <Text style={{ fontSize: 12, fontWeight: '800', color: palette.indigo }}>
                 Tải ảnh bìa tùy chỉnh từ thiết bị
               </Text>

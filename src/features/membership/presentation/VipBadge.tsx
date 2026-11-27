@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { Pressable, StyleSheet, Text } from 'react-native';
 import { useMembershipStore } from '../state/useMembershipStore';
 import { radii, spacing, typography } from '@/core/theme/tokens';
@@ -29,7 +29,7 @@ export function VipBadge() {
           },
         ]}
       >
-        <Ionicons
+        <AppIcon
           name={isVip ? 'diamond' : 'sparkles-outline'}
           size={13}
           color={isVip ? palette.gold : palette.indigo}

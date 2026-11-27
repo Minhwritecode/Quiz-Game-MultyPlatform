@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import * as Updates from 'expo-updates';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { radii, spacing, typography } from '@/core/theme/tokens';
@@ -35,7 +35,7 @@ export function AppUpdateBanner() {
   return (
     <View style={[styles.wrap, { bottom: Math.max(76, insets.bottom + 72) }]}>
       <View style={styles.card}>
-        <Ionicons name="sparkles" size={18} color="#FDE68A" />
+        <AppIcon name="sparkles" size={18} color="#FDE68A" />
         <Text style={[typography.caption, styles.copy]} numberOfLines={2}>
           Nhà phát triển đã có bản cập nhật mới. Chạm Tải lại ngay!
         </Text>
@@ -50,8 +50,8 @@ export function AppUpdateBanner() {
         >
           <Text style={styles.reloadText}>{reloading ? '...' : 'Tải lại'}</Text>
         </Pressable>
-        <Pressable hitSlop={8} onPress={() => setDismissed(true)}>
-          <Ionicons name="close" size={16} color="#CBD5E1" />
+        <Pressable accessibilityRole="button" accessibilityLabel="Đóng" hitSlop={8} onPress={() => setDismissed(true)}>
+          <AppIcon name="close" size={16} color="#CBD5E1" />
         </Pressable>
       </View>
     </View>

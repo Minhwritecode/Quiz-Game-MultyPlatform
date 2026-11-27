@@ -9,7 +9,7 @@ import {
   View,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { Badge, Button, Card, Screen, TopBar, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { gameApi, roomApi } from '@/composition/platform';
@@ -220,7 +220,7 @@ export default function HostRoomScreen() {
                       gap: 10,
                     }}
                   >
-                    <Ionicons name="book-outline" size={20} color={palette.indigo} />
+                    <AppIcon name="book-outline" size={20} color={palette.indigo} />
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <Text
                         style={[typography.body, { color: palette.ink, fontWeight: '800' }]}
@@ -243,6 +243,8 @@ export default function HostRoomScreen() {
                       </Text>
                       <View style={styles.stepperWrap}>
                         <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="Giảm số lượng"
                           onPress={() => {
                             const next = Math.max(2, maxPlayers - 1);
                             setMaxPlayers(next);
@@ -251,12 +253,14 @@ export default function HostRoomScreen() {
                           disabled={maxPlayers <= 2}
                           style={[styles.stepBtn, { backgroundColor: palette.paperMuted, opacity: maxPlayers <= 2 ? 0.4 : 1 }]}
                         >
-                          <Ionicons name="remove" size={16} color={palette.ink} />
+                          <AppIcon name="remove" size={16} color={palette.ink} />
                         </Pressable>
                         <Text style={[typography.title, { color: palette.indigo, minWidth: 26, textAlign: 'center', fontSize: 15 }]}>
                           {maxPlayers}
                         </Text>
                         <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="Tăng số lượng"
                           onPress={() => {
                             const next = Math.min(10, maxPlayers + 1);
                             setMaxPlayers(next);
@@ -265,7 +269,7 @@ export default function HostRoomScreen() {
                           disabled={maxPlayers >= 10}
                           style={[styles.stepBtn, { backgroundColor: palette.paperMuted, opacity: maxPlayers >= 10 ? 0.4 : 1 }]}
                         >
-                          <Ionicons name="add" size={16} color={palette.ink} />
+                          <AppIcon name="add" size={16} color={palette.ink} />
                         </Pressable>
                       </View>
                     </View>
@@ -476,7 +480,7 @@ export default function HostRoomScreen() {
                     onPress={() => handleKickPlayer(item.playerId, item.nickname)}
                     style={[styles.kickBtn, { backgroundColor: palette.dangerTint }]}
                   >
-                    <Ionicons name="person-remove-outline" size={16} color={palette.danger} />
+                    <AppIcon name="person-remove-outline" size={16} color={palette.danger} />
                   </Pressable>
                 )}
               </View>
@@ -484,7 +488,7 @@ export default function HostRoomScreen() {
           )}
           ListEmptyComponent={
             <Card style={styles.emptyCard}>
-              <Ionicons name="people-outline" size={36} color={palette.inkMuted} />
+              <AppIcon name="people-outline" size={36} color={palette.inkMuted} />
               <Text style={[typography.caption, { color: palette.inkMuted, marginTop: spacing.sm }]}>
                 Đang chờ người chơi quét mã hoặc nhập mã phòng...
               </Text>

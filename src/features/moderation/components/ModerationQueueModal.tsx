@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { Badge, Button, Card, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import {
@@ -67,7 +67,7 @@ export function ModerationQueueModal({
               </Text>
             </View>
             <Pressable onPress={onClose} style={styles.closeBtn} accessibilityRole="button" accessibilityLabel="Đóng">
-              <Ionicons name="close" size={22} color={palette.ink} />
+              <AppIcon name="close" size={22} color={palette.ink} />
             </Pressable>
           </View>
 
@@ -120,7 +120,7 @@ export function ModerationQueueModal({
                   onPress={() => void runAiAutoModerationAll()}
                   style={[styles.aiScanBtn, { backgroundColor: palette.indigo }]}
                 >
-                  <Ionicons name="sparkles" size={14} color="#FFFFFF" />
+                  <AppIcon name="sparkles" size={14} color="#FFFFFF" />
                   <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '800' }}>
                     {aiScanning ? 'Đang quét...' : 'AI Quét ngay'}
                   </Text>
@@ -166,7 +166,7 @@ export function ModerationQueueModal({
                 <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
                   {filtered.length === 0 ? (
                     <View style={styles.emptyBox}>
-                      <Ionicons name="shield-checkmark-outline" size={38} color={palette.mint} />
+                      <AppIcon name="shield-checkmark-outline" size={38} color={palette.mint} />
                       <Text style={[typography.caption, { color: palette.inkMuted, marginTop: spacing.xs }]}>
                         Không có báo cáo nào trong mục này.
                       </Text>
@@ -218,7 +218,7 @@ export function ModerationQueueModal({
                               onPress={() => void updateStatus(item.id, 'reviewed')}
                               style={[styles.actionChip, { backgroundColor: palette.mintTint, borderColor: palette.mint }]}
                             >
-                              <Ionicons name="checkmark-circle-outline" size={16} color={palette.mint} />
+                              <AppIcon name="checkmark-circle-outline" size={16} color={palette.mint} />
                               <Text style={[typography.caption, { color: palette.mint, fontWeight: '700' }]}>
                                 Đánh dấu đã sửa
                               </Text>
@@ -229,7 +229,7 @@ export function ModerationQueueModal({
                               onPress={() => void updateStatus(item.id, 'dismissed')}
                               style={[styles.actionChip, { backgroundColor: palette.paper, borderColor: palette.paperMuted }]}
                             >
-                              <Ionicons name="close-circle-outline" size={16} color={palette.inkMuted} />
+                              <AppIcon name="close-circle-outline" size={16} color={palette.inkMuted} />
                               <Text style={[typography.caption, { color: palette.inkMuted, fontWeight: '700' }]}>
                                 Bỏ qua
                               </Text>

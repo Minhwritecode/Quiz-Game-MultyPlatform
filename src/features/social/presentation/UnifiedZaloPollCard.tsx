@@ -1,6 +1,6 @@
 import { memo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { useRouter } from 'expo-router';
 import { Badge, Button, Card, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
@@ -88,7 +88,7 @@ export const UnifiedZaloPollCard = memo(function UnifiedZaloPollCard({
                 ]}
               />
               <View style={styles.optionRow}>
-                <Ionicons
+                <AppIcon
                   name={
                     poll.allowMultiple
                       ? voted
@@ -127,7 +127,7 @@ export const UnifiedZaloPollCard = memo(function UnifiedZaloPollCard({
               onPress={() => setAddingOpen(true)}
               style={styles.addOptTrigger}
             >
-              <Ionicons name="add-circle-outline" size={16} color={palette.indigo} />
+              <AppIcon name="add-circle-outline" size={16} color={palette.indigo} />
               <Text style={{ fontSize: 12, fontWeight: '800', color: palette.indigo }}>
                 + Thêm phương án bình chọn
               </Text>
@@ -192,8 +192,8 @@ export const UnifiedZaloPollCard = memo(function UnifiedZaloPollCard({
             <Card style={[styles.modalCard, { backgroundColor: palette.paper }]}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Text style={[typography.title, { color: palette.ink }]}>📊 Chi tiết người bình chọn</Text>
-                <Pressable onPress={() => setVotersModalOpen(false)}>
-                  <Ionicons name="close" size={22} color={palette.inkMuted} />
+                <Pressable accessibilityRole="button" accessibilityLabel="Đóng" onPress={() => setVotersModalOpen(false)}>
+                  <AppIcon name="close" size={22} color={palette.inkMuted} />
                 </Pressable>
               </View>
               <ScrollView style={{ maxHeight: 320, marginTop: 10 }}>
@@ -214,7 +214,7 @@ export const UnifiedZaloPollCard = memo(function UnifiedZaloPollCard({
                           }}
                           style={styles.voterRow}
                         >
-                          <Ionicons name="person-circle-outline" size={18} color={palette.indigo} />
+                          <AppIcon name="person-circle-outline" size={18} color={palette.indigo} />
                           <Text style={{ fontSize: 12.5, fontWeight: '700', color: palette.ink }}>{display}</Text>
                         </Pressable>
                       );

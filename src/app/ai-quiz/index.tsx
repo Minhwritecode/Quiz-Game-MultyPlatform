@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { Badge, Button, Card, Screen, TopBar, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { useAiQuizStore } from '@/features/ai-quiz/state/useAiQuizStore';
@@ -188,7 +188,7 @@ export default function AiQuizScreen() {
           <>
             <View style={styles.headerBox}>
               <View style={[styles.sparkIconWrap, { backgroundColor: palette.indigo }]}>
-                <Ionicons name="sparkles" size={28} color={palette.white} />
+                <AppIcon name="sparkles" size={28} color={palette.white} />
               </View>
               <Text style={[typography.heading, { color: palette.ink, marginTop: spacing.sm }]}>
                 Tạo Quiz tự động với AI
@@ -204,7 +204,7 @@ export default function AiQuizScreen() {
                 onPress={() => setMode('topic')}
                 style={[styles.tabBtn, mode === 'topic' && { backgroundColor: palette.indigo }]}
               >
-                <Ionicons
+                <AppIcon
                   name="bulb-outline"
                   size={18}
                   color={mode === 'topic' ? palette.white : palette.inkMuted}
@@ -218,7 +218,7 @@ export default function AiQuizScreen() {
                 onPress={() => setMode('pdf')}
                 style={[styles.tabBtn, mode === 'pdf' && { backgroundColor: palette.indigo }]}
               >
-                <Ionicons
+                <AppIcon
                   name="document-text-outline"
                   size={17}
                   color={mode === 'pdf' ? palette.white : palette.inkMuted}
@@ -232,7 +232,7 @@ export default function AiQuizScreen() {
                 onPress={() => setMode('space')}
                 style={[styles.tabBtn, mode === 'space' && { backgroundColor: palette.indigo }]}
               >
-                <Ionicons
+                <AppIcon
                   name="folder-open-outline"
                   size={17}
                   color={mode === 'space' ? palette.white : palette.inkMuted}
@@ -264,7 +264,7 @@ export default function AiQuizScreen() {
                       },
                     ]}
                   >
-                    <Ionicons
+                    <AppIcon
                       name={includeCodeSnippet ? 'checkbox' : 'square-outline'}
                       size={18}
                       color={includeCodeSnippet ? palette.indigo : palette.inkMuted}
@@ -281,7 +281,7 @@ export default function AiQuizScreen() {
                     onPress={handlePickDocument}
                     style={[styles.dropZone, { borderColor: palette.indigo, backgroundColor: palette.paperRaised }]}
                   >
-                    <Ionicons name="cloud-upload-outline" size={42} color={palette.indigo} />
+                    <AppIcon name="cloud-upload-outline" size={42} color={palette.indigo} />
                     <Text
                       numberOfLines={1}
                       ellipsizeMode="middle"
@@ -364,7 +364,7 @@ export default function AiQuizScreen() {
                       </Text>
                       {activeSpace.documents.map((doc) => (
                         <View key={doc.id} style={[styles.docRow, { borderColor: palette.paperMuted }]}>
-                          <Ionicons name="document-attach-outline" size={16} color={palette.indigo} />
+                          <AppIcon name="document-attach-outline" size={16} color={palette.indigo} />
                           <View style={{ flex: 1, minWidth: 0 }}>
                             <Text style={[typography.caption, { color: palette.ink, fontWeight: '700' }]} numberOfLines={1}>
                               {doc.name}
@@ -373,8 +373,8 @@ export default function AiQuizScreen() {
                               {doc.excerpt}
                             </Text>
                           </View>
-                          <Pressable onPress={() => removeDocument(activeSpace.id, doc.id)}>
-                            <Ionicons name="trash-outline" size={16} color={palette.danger} />
+                          <Pressable accessibilityRole="button" accessibilityLabel="Xóa câu hỏi" onPress={() => removeDocument(activeSpace.id, doc.id)}>
+                            <AppIcon name="trash-outline" size={16} color={palette.danger} />
                           </Pressable>
                         </View>
                       ))}

@@ -1,6 +1,6 @@
 import React, { lazy, Suspense, useCallback, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View, type ViewStyle } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { Model3DErrorBoundary } from './Model3DErrorBoundary';
 
 export type Model3DType =
@@ -66,7 +66,7 @@ export function Model3DView({
   if (!webglOk || failedModel === model) {
     return (
       <View style={[styles.container, styles.fallback, { height }, style]}>
-        <Ionicons name="cube-outline" size={28} color="#818CF8" />
+        <AppIcon name="cube-outline" size={28} color="#818CF8" />
         <Text style={styles.fallbackText}>Papyrus 3D Stage</Text>
       </View>
     );
@@ -77,7 +77,7 @@ export function Model3DView({
       <Model3DErrorBoundary
         fallback={
           <View style={[styles.fallback, StyleSheet.absoluteFill]}>
-            <Ionicons name="cube-outline" size={28} color="#818CF8" />
+            <AppIcon name="cube-outline" size={28} color="#818CF8" />
             <Text style={styles.fallbackText}>Papyrus 3D Stage</Text>
           </View>
         }

@@ -1,5 +1,5 @@
 import { errorMessage } from '@/core/domain/failure';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { createElement, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Image,
@@ -803,7 +803,7 @@ export default function ProfileScreen() {
               { backgroundColor: palette.paperRaised, borderColor: palette.indigoBorder },
             ]}
           >
-            <Ionicons name="chatbubble-ellipses-outline" size={16} color={palette.indigo} />
+            <AppIcon name="chatbubble-ellipses-outline" size={16} color={palette.indigo} />
             <Text style={{ fontSize: 12, fontWeight: '800', color: palette.ink }}>Tin nhắn</Text>
           </Pressable>
         }
@@ -858,7 +858,7 @@ export default function ProfileScreen() {
                         variant="pill"
                         onPickFile={(file) => void handleWebCoverFilePicked(file)}
                       >
-                        <Ionicons name="camera" size={14} color="#FFFFFF" />
+                        <AppIcon name="camera" size={14} color="#FFFFFF" />
                         <Text style={{ color: '#FFFFFF', fontSize: 11.5, fontWeight: '800' }}>
                           {coverBusy ? 'Đang tải…' : 'Đổi ảnh bìa'}
                         </Text>
@@ -870,7 +870,7 @@ export default function ProfileScreen() {
                         onPress={() => void handlePickCoverPhoto()}
                         style={styles.changeCoverBtn}
                       >
-                        <Ionicons name="camera" size={14} color="#FFFFFF" />
+                        <AppIcon name="camera" size={14} color="#FFFFFF" />
                         <Text style={{ color: '#FFFFFF', fontSize: 11.5, fontWeight: '800' }}>
                           {coverBusy ? 'Đang tải…' : 'Đổi ảnh bìa'}
                         </Text>
@@ -922,7 +922,7 @@ export default function ProfileScreen() {
                           },
                         ]}
                       >
-                        <Ionicons name="camera" size={15} color={palette.ink} />
+                        <AppIcon name="camera" size={15} color={palette.ink} />
                       </View>
                     ) : null}
                   </Pressable>
@@ -1031,7 +1031,7 @@ export default function ProfileScreen() {
                           { backgroundColor: palette.paper, borderColor: palette.paperMuted },
                         ]}
                       >
-                        <Ionicons name="share-social-outline" size={18} color={palette.ink} />
+                        <AppIcon name="share-social-outline" size={18} color={palette.ink} />
                       </Pressable>
                     </>
                   )}
@@ -1063,7 +1063,7 @@ export default function ProfileScreen() {
                           },
                         ]}
                       >
-                        <Ionicons name="albums-outline" size={13} color={palette.indigo} />
+                        <AppIcon name="albums-outline" size={13} color={palette.indigo} />
                         <Text style={{ fontSize: 11.5, fontWeight: '700', color: palette.indigo }}>
                           Quản lý tin
                         </Text>
@@ -1177,7 +1177,7 @@ export default function ProfileScreen() {
             <View style={{ marginTop: spacing.md, gap: spacing.sm }}>
               {myAuthoredPosts.length === 0 ? (
                 <Card style={{ alignItems: 'center', gap: 10, paddingVertical: spacing.xl }}>
-                  <Ionicons name="newspaper-outline" size={30} color={palette.indigo} />
+                  <AppIcon name="newspaper-outline" size={30} color={palette.indigo} />
                   <Text style={[typography.title, { color: palette.ink }]}>
                     Chưa có bài viết nào
                   </Text>
@@ -1338,7 +1338,7 @@ export default function ProfileScreen() {
                       {bp.threadParts[0]}
                     </Text>
                   </View>
-                  <Ionicons name="open-outline" size={20} color={palette.indigo} />
+                  <AppIcon name="open-outline" size={20} color={palette.indigo} />
                 </Pressable>
               ))}
             </View>
@@ -1800,15 +1800,15 @@ export default function ProfileScreen() {
                     Tin tự động ẩn khỏi Bảng tin sau 24 giờ. Chọn từng tin để gắn cố định trên trang cá nhân.
                   </Text>
                 </View>
-                <Pressable onPress={() => setStoryManagerOpen(false)} hitSlop={8}>
-                  <Ionicons name="close" size={22} color={palette.inkMuted} />
+                <Pressable accessibilityRole="button" accessibilityLabel="Đóng" onPress={() => setStoryManagerOpen(false)} hitSlop={8}>
+                  <AppIcon name="close" size={22} color={palette.inkMuted} />
                 </Pressable>
               </View>
 
               <ScrollView style={{ maxHeight: 400 }} contentContainerStyle={{ gap: 8 }}>
                 {myOwnStories.length === 0 ? (
                   <View style={{ alignItems: 'center', paddingVertical: 28, gap: 8 }}>
-                    <Ionicons name="albums-outline" size={28} color={palette.inkMuted} />
+                    <AppIcon name="albums-outline" size={28} color={palette.inkMuted} />
                     <Text style={{ fontSize: 13, color: palette.inkMuted }}>
                       Bạn chưa đăng tin 24 giờ nào.
                     </Text>
@@ -1910,7 +1910,7 @@ export default function ProfileScreen() {
                               },
                             ]}
                           >
-                            <Ionicons
+                            <AppIcon
                               name={isPinned ? 'bookmark' : 'bookmark-outline'}
                               size={14}
                               color={isPinned ? palette.onPrimary : palette.indigo}
@@ -1932,7 +1932,7 @@ export default function ProfileScreen() {
                             onPress={() => deleteStory(st.id, viewerId)}
                             style={{ padding: 6 }}
                           >
-                            <Ionicons name="trash-outline" size={17} color={palette.danger} />
+                            <AppIcon name="trash-outline" size={17} color={palette.danger} />
                           </Pressable>
                         </View>
                       </View>
@@ -1985,8 +1985,8 @@ export default function ProfileScreen() {
               <Text style={[typography.title, { color: palette.ink }]}>
                 Chỉnh sửa hồ sơ & quyền riêng tư
               </Text>
-              <Pressable onPress={() => setEditModalOpen(false)} hitSlop={8}>
-                <Ionicons name="close" size={22} color={palette.inkMuted} />
+              <Pressable accessibilityRole="button" accessibilityLabel="Đóng" onPress={() => setEditModalOpen(false)} hitSlop={8}>
+                <AppIcon name="close" size={22} color={palette.inkMuted} />
               </Pressable>
             </View>
 
@@ -1999,7 +1999,7 @@ export default function ProfileScreen() {
                     variant="block"
                     onPickFile={(file) => void handleWebCoverFilePicked(file)}
                   >
-                    <Ionicons name="image-outline" size={18} color={palette.indigo} />
+                    <AppIcon name="image-outline" size={18} color={palette.indigo} />
                     <Text style={{ fontSize: 13, fontWeight: '800', color: palette.indigo }}>
                       {coverBusy ? 'Đang tải ảnh bìa…' : 'Chọn ảnh bìa mới từ thiết bị'}
                     </Text>
@@ -2109,7 +2109,7 @@ export default function ProfileScreen() {
                 onPress={() => setIsPrivateAccount((v) => !v)}
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
               >
-                <Ionicons
+                <AppIcon
                   name={isPrivateAccount ? 'checkbox' : 'square-outline'}
                   size={20}
                   color={palette.indigo}
@@ -2123,7 +2123,7 @@ export default function ProfileScreen() {
                 onPress={() => setShowOnlineStatus((v) => !v)}
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
               >
-                <Ionicons
+                <AppIcon
                   name={showOnlineStatus ? 'checkbox' : 'square-outline'}
                   size={20}
                   color={palette.indigo}
@@ -2167,8 +2167,8 @@ export default function ProfileScreen() {
                 <Text style={[typography.title, { color: palette.ink }]}>
                   Cập nhật ảnh đại diện
                 </Text>
-                <Pressable onPress={() => setAvatarModalOpen(false)}>
-                  <Ionicons name="close" size={22} color={palette.inkMuted} />
+                <Pressable accessibilityRole="button" accessibilityLabel="Đóng" onPress={() => setAvatarModalOpen(false)}>
+                  <AppIcon name="close" size={22} color={palette.inkMuted} />
                 </Pressable>
               </View>
               <Button
@@ -2194,7 +2194,7 @@ export default function ProfileScreen() {
                     ]}
                   >
                     <View style={[styles.presetCircle, { backgroundColor: preset.bg }]}>
-                      <Ionicons name={preset.icon} size={20} color={preset.fg} />
+                      <AppIcon name={preset.icon} size={20} color={preset.fg} />
                     </View>
                     <Text style={{ fontSize: 11, color: palette.ink }} numberOfLines={1}>
                       {preset.label}
@@ -2235,8 +2235,8 @@ export default function ProfileScreen() {
                 <Text style={[typography.title, { color: palette.ink, flex: 1 }]}>
                   {readingAdminDoc.title}
                 </Text>
-                <Pressable onPress={() => setReadingAdminDoc(null)}>
-                  <Ionicons name="close" size={22} color={palette.inkMuted} />
+                <Pressable accessibilityRole="button" accessibilityLabel="Đóng" onPress={() => setReadingAdminDoc(null)}>
+                  <AppIcon name="close" size={22} color={palette.inkMuted} />
                 </Pressable>
               </View>
               <ScrollView style={{ maxHeight: 420 }}>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import {
   acknowledgeWebBuildUpdate,
@@ -109,7 +109,7 @@ export function AppUpdateBanner() {
     <View style={styles.wrap}>
       <View style={styles.card}>
         <View style={styles.iconPill}>
-          <Ionicons name="rocket" size={16} color="#FDE68A" />
+          <AppIcon name="rocket" size={16} color="#FDE68A" />
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={[typography.caption, styles.title]} numberOfLines={1}>
@@ -120,7 +120,7 @@ export function AppUpdateBanner() {
           </Text>
         </View>
         <Pressable accessibilityRole="button" onPress={handleReload} style={styles.reloadBtn}>
-          <Ionicons name="refresh" size={13} color="#0F172A" />
+          <AppIcon name="refresh" size={13} color="#0F172A" />
           <Text style={styles.reloadText}>Tải lại</Text>
         </Pressable>
         <Pressable
@@ -130,7 +130,7 @@ export function AppUpdateBanner() {
           onPress={handleDismiss}
           style={styles.closeBtn}
         >
-          <Ionicons name="close" size={16} color="#CBD5E1" />
+          <AppIcon name="close" size={16} color="#CBD5E1" />
         </Pressable>
       </View>
     </View>

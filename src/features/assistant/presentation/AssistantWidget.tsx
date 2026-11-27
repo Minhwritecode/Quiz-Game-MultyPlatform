@@ -25,9 +25,9 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import { usePathname, useRouter } from 'expo-router';
+import { usePathname, useRouter, useSegments } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon, type IconName } from '@/shared/AppIcon';
 import { usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 
@@ -72,7 +72,7 @@ const ActionIcon = memo(function ActionIcon({
   color,
   active = false,
 }: {
-  name: keyof typeof Ionicons.glyphMap;
+  name: IconName;
   label: string;
   onPress: () => void;
   disabled?: boolean;
@@ -96,7 +96,7 @@ const ActionIcon = memo(function ActionIcon({
         opacity: disabled ? 0.38 : 1,
       }}
     >
-      <Ionicons name={name} size={20} color={color} />
+      <AppIcon name={name} size={20} color={color} />
     </Pressable>
   );
 });
@@ -104,6 +104,7 @@ const ActionIcon = memo(function ActionIcon({
 export function AssistantWidget() {
   const palette = usePalette();
   const path = usePathname();
+  const segments = useSegments();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
@@ -540,7 +541,7 @@ export function AssistantWidget() {
     })();
   };
 
-  const showFloatingFab = path.startsWith('/study/');
+  const showFloatingFab = path.startsWith('/study/') && segments[1] !== '[setId]';
 
   return (
     <>
@@ -559,7 +560,7 @@ export function AssistantWidget() {
             },
           ]}
         >
-          <Ionicons name="sparkles" size={22} color="#FFFFFF" />
+          <AppIcon name="sparkles" size={22} color="#FFFFFF" />
         </Pressable>
       )}
 
@@ -594,7 +595,7 @@ export function AssistantWidget() {
               {/* Multimodal AI Tutor Header */}
               <View style={[styles.header, { borderBottomColor: palette.paperMuted, backgroundColor: palette.paperRaised }]}>
                 <View style={[styles.botAvatar, { backgroundColor: palette.indigoTint }]}>
-                  <Ionicons name="sparkles" size={20} color={palette.indigo} />
+                  <AppIcon name="sparkles" size={20} color={palette.indigo} />
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text accessibilityRole="header" style={[typography.title, { color: palette.ink }]}>
@@ -724,7 +725,7 @@ export function AssistantWidget() {
                     {messages.length === 0 && (
                       <View style={styles.welcomeWrap}>
                         <View style={[styles.welcomeIcon, { backgroundColor: palette.indigoTint }]}>
-                          <Ionicons name="sparkles" size={28} color={palette.indigo} />
+                          <AppIcon name="sparkles" size={28} color={palette.indigo} />
                         </View>
                         <Text style={[typography.title, { color: palette.ink, textAlign: 'center', marginTop: spacing.sm }]}>
                           Gia sư Papybot AI
@@ -742,7 +743,7 @@ export function AssistantWidget() {
                             }}
                             style={[styles.signInBanner, { backgroundColor: palette.indigo }]}
                           >
-                            <Ionicons name="log-in-outline" size={18} color="#FFFFFF" />
+                            <AppIcon name="log-in-outline" size={18} color="#FFFFFF" />
                             <Text style={[typography.caption, { color: '#FFFFFF', fontWeight: '800' }]}>
                               Đăng nhập để chat với Papybot AI
                             </Text>
@@ -763,11 +764,11 @@ export function AssistantWidget() {
                                   },
                                 ]}
                               >
-                                <Ionicons name={item.icon} size={17} color={palette.indigo} />
+                                <AppIcon name={item.icon} size={17} color={palette.indigo} />
                                 <Text style={[typography.caption, { color: palette.ink, fontWeight: '700', flex: 1 }]}>
                                   {item.label}
                                 </Text>
-                                <Ionicons name="arrow-up-circle-outline" size={18} color={palette.inkMuted} />
+                                <AppIcon name="arrow-up-circle-outline" size={18} color={palette.inkMuted} />
                               </Pressable>
                             ))}
                           </View>
@@ -808,7 +809,7 @@ export function AssistantWidget() {
                                 hitSlop={8}
                                 style={styles.ttsBtn}
                               >
-                                <Ionicons
+                                <AppIcon
                                   name={speakingIdx === i ? 'stop-circle-outline' : 'volume-high-outline'}
                                   size={15}
                                   color={speakingIdx === i ? palette.danger : palette.indigo}
@@ -851,7 +852,7 @@ export function AssistantWidget() {
 
                     {!!notice && (
                       <View style={[styles.noticeBox, { backgroundColor: palette.indigoTint, borderColor: palette.indigoBorder }]}>
-                        <Ionicons name="information-circle-outline" size={16} color={palette.indigoDeep} />
+                        <AppIcon name="information-circle-outline" size={16} color={palette.indigoDeep} />
                         <Text accessibilityLiveRegion="polite" style={[typography.caption, { color: palette.indigoDeep, flex: 1 }]}>
                           {notice}
                         </Text>
@@ -867,7 +868,7 @@ export function AssistantWidget() {
                   {attachedImageUri ? (
                     <Image source={{ uri: attachedImageUri }} style={styles.attachThumb} />
                   ) : (
-                    <Ionicons name="document-attach" size={18} color={palette.indigo} />
+                    <AppIcon name="document-attach" size={18} color={palette.indigo} />
                   )}
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text numberOfLines={1} style={[typography.caption, { color: palette.ink, fontWeight: '800' }]}>
@@ -885,7 +886,7 @@ export function AssistantWidget() {
                     onPress={clearAttachments}
                     hitSlop={8}
                   >
-                    <Ionicons name="close-circle" size={20} color={palette.inkMuted} />
+                    <AppIcon name="close-circle" size={20} color={palette.inkMuted} />
                   </Pressable>
                 </View>
               )}
@@ -897,7 +898,7 @@ export function AssistantWidget() {
                   onPress={() => void attachImage(true)}
                   style={[styles.mediaChip, { borderColor: palette.paperMuted, backgroundColor: palette.paper }]}
                 >
-                  <Ionicons name="camera-outline" size={15} color={palette.indigo} />
+                  <AppIcon name="camera-outline" size={15} color={palette.indigo} />
                   <Text style={[styles.mediaChipText, { color: palette.ink }]}>Chụp ảnh</Text>
                 </Pressable>
                 <Pressable
@@ -905,7 +906,7 @@ export function AssistantWidget() {
                   onPress={() => void attachImage(false)}
                   style={[styles.mediaChip, { borderColor: palette.paperMuted, backgroundColor: palette.paper }]}
                 >
-                  <Ionicons name="images-outline" size={15} color={palette.mint} />
+                  <AppIcon name="images-outline" size={15} color={palette.mint} />
                   <Text style={[styles.mediaChipText, { color: palette.ink }]}>Thư viện</Text>
                 </Pressable>
                 <Pressable
@@ -913,7 +914,7 @@ export function AssistantWidget() {
                   onPress={() => void attachDocumentOrPdf()}
                   style={[styles.mediaChip, { borderColor: palette.paperMuted, backgroundColor: palette.paper }]}
                 >
-                  <Ionicons name="document-attach-outline" size={15} color={palette.gold} />
+                  <AppIcon name="document-attach-outline" size={15} color={palette.gold} />
                   <Text style={[styles.mediaChipText, { color: palette.ink }]}>PDF/DOCX</Text>
                 </Pressable>
                 <Pressable
@@ -927,7 +928,7 @@ export function AssistantWidget() {
                     },
                   ]}
                 >
-                  <Ionicons name={listening ? 'mic' : 'mic-outline'} size={15} color={listening ? palette.danger : palette.indigo} />
+                  <AppIcon name={listening ? 'mic' : 'mic-outline'} size={15} color={listening ? palette.danger : palette.indigo} />
                   <Text style={[styles.mediaChipText, { color: listening ? palette.danger : palette.ink }]}>
                     {listening ? 'Đang nghe…' : 'Giọng nói'}
                   </Text>
@@ -978,7 +979,7 @@ export function AssistantWidget() {
                       },
                     ]}
                   >
-                    <Ionicons name="send" size={17} color={canSendNow ? '#FFFFFF' : palette.inkMuted} />
+                    <AppIcon name="send" size={17} color={canSendNow ? '#FFFFFF' : palette.inkMuted} />
                   </Pressable>
                 )}
               </View>

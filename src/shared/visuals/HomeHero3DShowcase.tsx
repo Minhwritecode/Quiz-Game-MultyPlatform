@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { Model3DView, type Model3DActionEffect, type Model3DType } from '@/shared/Model3DView';
 import { Model3DErrorBoundary } from '@/shared/Model3DErrorBoundary';
 import { usePalette } from '@/shared/ui';
@@ -77,7 +77,7 @@ export const HomeHero3DShowcase = memo(function HomeHero3DShowcase({
           ]}
           pointerEvents="none"
         >
-          <Ionicons name="move-outline" size={11} color={palette.inkMuted} />
+          <AppIcon name="move-outline" size={11} color={palette.inkMuted} />
           <Text style={[styles.dragHintText, { color: palette.inkMuted }]}>Xoay 360°</Text>
         </View>
 
@@ -94,7 +94,7 @@ export const HomeHero3DShowcase = memo(function HomeHero3DShowcase({
             },
           ]}
         >
-          <Ionicons name="sparkles" size={12} color={palette.gold} />
+          <AppIcon name="sparkles" size={12} color={palette.gold} />
           <Text style={[styles.castText, { color: palette.gold }]}>Hiệu ứng</Text>
         </Pressable>
       </View>
@@ -122,7 +122,7 @@ export const HomeHero3DShowcase = memo(function HomeHero3DShowcase({
                     },
                   ]}
                 >
-                  <Ionicons
+                  <AppIcon
                     name={item.icon}
                     size={13}
                     color={active ? palette.indigo : palette.inkMuted}

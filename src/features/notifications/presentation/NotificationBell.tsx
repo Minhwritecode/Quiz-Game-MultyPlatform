@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { usePathname, useRouter } from 'expo-router';
 import { Button, Card, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
@@ -159,7 +159,7 @@ export function NotificationBell() {
           },
         ]}
       >
-        <Ionicons
+        <AppIcon
           name={unreadCount > 0 ? 'notifications' : 'notifications-outline'}
           size={19}
           color={unreadCount > 0 ? palette.indigo : palette.inkMuted}
@@ -177,7 +177,7 @@ export function NotificationBell() {
             <Card style={[styles.sheetCard, { backgroundColor: palette.paper }]}>
               <View style={styles.header}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
-                  <Ionicons name="notifications" size={20} color={palette.indigo} />
+                  <AppIcon name="notifications" size={20} color={palette.indigo} />
                   <Text style={[typography.title, { color: palette.ink }]}>Trung tâm Thông báo</Text>
                 </View>
                 {unreadCount > 0 ? (
@@ -187,8 +187,8 @@ export function NotificationBell() {
                     </Text>
                   </Pressable>
                 ) : null}
-                <Pressable onPress={() => setOpen(false)} hitSlop={8}>
-                  <Ionicons name="close" size={22} color={palette.inkMuted} />
+                <Pressable accessibilityRole="button" accessibilityLabel="Đóng" onPress={() => setOpen(false)} hitSlop={8}>
+                  <AppIcon name="close" size={22} color={palette.inkMuted} />
                 </Pressable>
               </View>
 
@@ -206,7 +206,7 @@ export function NotificationBell() {
                     backgroundColor: quietModeEnabled ? palette.indigo : palette.paperRaised,
                   }}
                 >
-                  <Ionicons
+                  <AppIcon
                     name={quietModeEnabled ? 'moon' : 'moon-outline'}
                     size={13}
                     color={quietModeEnabled ? '#FFFFFF' : palette.inkMuted}
@@ -234,7 +234,7 @@ export function NotificationBell() {
                     backgroundColor: groupSimilar ? palette.indigoTint : palette.paperRaised,
                   }}
                 >
-                  <Ionicons name="layers-outline" size={13} color={palette.indigo} />
+                  <AppIcon name="layers-outline" size={13} color={palette.indigo} />
                   <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.indigo }}>
                     {groupSimilar ? 'Gộp thông báo: Bật' : 'Gộp thông báo: Tắt'}
                   </Text>
@@ -243,7 +243,7 @@ export function NotificationBell() {
 
               {permState !== 'granted' && permState !== 'unsupported' ? (
                 <View style={[styles.pushBanner, { backgroundColor: palette.indigoTint, borderColor: palette.indigoBorder }]}>
-                  <Ionicons name="radio-outline" size={18} color={palette.indigo} />
+                  <AppIcon name="radio-outline" size={18} color={palette.indigo} />
                   <Text style={[typography.caption, { color: palette.indigoDeep, flex: 1 }]}>
                     Bật thông báo đẩy để nhận quà Admin, lời mời đấu 1v1 và nhắc giữ chuỗi ngay cả khi ở ngoài app.
                   </Text>
@@ -290,7 +290,7 @@ export function NotificationBell() {
 
                 {myNotifications.length === 0 ? (
                   <View style={{ alignItems: 'center', paddingVertical: spacing.xl }}>
-                    <Ionicons name="checkmark-done-circle-outline" size={36} color={palette.inkMuted} />
+                    <AppIcon name="checkmark-done-circle-outline" size={36} color={palette.inkMuted} />
                     <Text style={[typography.caption, { color: palette.inkMuted, marginTop: spacing.xs }]}>
                       {user
                         ? 'Bạn đã xem hết mọi thông báo quan trọng.'
@@ -329,7 +329,7 @@ export function NotificationBell() {
                         ]}
                       >
                         <View style={[styles.notifIcon, { backgroundColor: palette.paper }]}>
-                          <Ionicons name={iconName} size={17} color={palette.indigo} />
+                          <AppIcon name={iconName} size={17} color={palette.indigo} />
                         </View>
                         <View style={{ flex: 1, minWidth: 0, paddingRight: 80 }}>
                           <Text style={[typography.caption, { color: palette.ink, fontWeight: '800' }]} numberOfLines={1}>
@@ -345,7 +345,7 @@ export function NotificationBell() {
                         <View style={[styles.topRightStatus, { flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
                           {isRead ? (
                             <View style={[styles.readPill, { backgroundColor: palette.mintTint }]}>
-                              <Ionicons name="checkmark-done-circle" size={14} color={palette.mint} />
+                              <AppIcon name="checkmark-done-circle" size={14} color={palette.mint} />
                               <Text style={{ fontSize: 10, fontWeight: '800', color: palette.mint }}>Đã đọc</Text>
                             </View>
                           ) : (
@@ -363,7 +363,7 @@ export function NotificationBell() {
                               dismissNotification(item.id, viewerId);
                             }}
                           >
-                            <Ionicons name="close" size={15} color={palette.inkMuted} />
+                            <AppIcon name="close" size={15} color={palette.inkMuted} />
                           </Pressable>
                         </View>
                       </Pressable>

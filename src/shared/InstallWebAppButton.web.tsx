@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useI18n } from '@/core/i18n';
@@ -122,7 +122,7 @@ export const InstallWebAppButton = memo(function InstallWebAppButton() {
             },
           ]}
         >
-          <Ionicons name="download-outline" size={15} color={palette.indigoDeep} />
+          <AppIcon name="download-outline" size={15} color={palette.indigoDeep} />
           <Text style={[typography.caption, { color: palette.indigoDeep, fontWeight: '800' }]}>
             {language === 'vi' ? 'Cài App' : 'Install App'}
           </Text>

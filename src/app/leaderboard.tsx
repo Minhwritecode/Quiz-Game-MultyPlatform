@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import {
   AppState,
   FlatList,
@@ -143,7 +143,7 @@ const PlayerRow = memo(function PlayerRow({
             onPress={() => onAddFriend(player.id)}
             style={[styles.miniAddBtn, { backgroundColor: palette.indigoTint, borderColor: palette.indigo }]}
           >
-            <Ionicons name="person-add-outline" size={12} color={palette.indigoDeep} />
+            <AppIcon name="person-add-outline" size={12} color={palette.indigoDeep} />
             <Text style={{ fontSize: 11, fontWeight: '800', color: palette.indigoDeep }}>
               {addingId === player.id ? '...' : 'Kết bạn'}
             </Text>
@@ -431,7 +431,7 @@ export default function LeaderboardScreen() {
                     },
                   ]}
                 >
-                  <Ionicons name={sc.icon} size={15} color={scope === sc.key ? palette.onPrimary : palette.inkMuted} />
+                  <AppIcon name={sc.icon} size={15} color={scope === sc.key ? palette.onPrimary : palette.inkMuted} />
                   <Text
                     style={[
                       typography.caption,
@@ -464,7 +464,7 @@ export default function LeaderboardScreen() {
                         backgroundColor: palette.indigoTint,
                       }}
                     >
-                      <Ionicons name="copy-outline" size={13} color={palette.indigo} />
+                      <AppIcon name="copy-outline" size={13} color={palette.indigo} />
                       <Text style={{ fontSize: 11, fontWeight: '800', color: palette.indigo }}>
                         Sao chép liên kết kết bạn của {user.displayName}
                       </Text>
@@ -527,7 +527,7 @@ export default function LeaderboardScreen() {
                               onPress={() => void handleAddFriend(cand.id)}
                               style={[styles.addFriendBtn, { backgroundColor: palette.indigo }]}
                             >
-                              <Ionicons name="person-add" size={14} color={palette.onPrimary} />
+                              <AppIcon name="person-add" size={14} color={palette.onPrimary} />
                               <Text style={{ color: palette.onPrimary, fontSize: 12, fontWeight: '800' }}>
                                 {addingFriendId === cand.id ? '...' : 'Kết bạn'}
                               </Text>
@@ -567,7 +567,7 @@ export default function LeaderboardScreen() {
                               onPress={() => void handleAddFriend(cand.id)}
                               style={[styles.addFriendBtn, { backgroundColor: palette.indigo }]}
                             >
-                              <Ionicons name="person-add" size={14} color={palette.onPrimary} />
+                              <AppIcon name="person-add" size={14} color={palette.onPrimary} />
                               <Text style={{ color: palette.onPrimary, fontSize: 12, fontWeight: '800' }}>
                                 {addingFriendId === cand.id ? '...' : 'Kết bạn'}
                               </Text>
@@ -630,7 +630,7 @@ export default function LeaderboardScreen() {
             {/* Streak highlight card */}
             <Card color={palette.goldTint} style={styles.streakCard}>
               <View style={[styles.medal, { backgroundColor: palette.gold }]}>
-                <Ionicons name="flame" size={20} color={palette.onGold} />
+                <AppIcon name="flame" size={20} color={palette.onGold} />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={[typography.label, { color: palette.gold }]} numberOfLines={1}>
@@ -649,7 +649,7 @@ export default function LeaderboardScreen() {
             {/* My rank snapshot + ELO */}
             {myEntry ? (
               <Card onPress={() => router.push('/profile')} style={[styles.myRank, { borderColor: palette.indigo }]}>
-                <Ionicons name="person-circle" size={20} color={palette.indigo} />
+                <AppIcon name="person-circle" size={20} color={palette.indigo} />
                 <Text style={[typography.caption, { color: palette.indigo, flex: 1, fontWeight: '700' }]} numberOfLines={1}>
                   Hạng #{myEntry.rank} · {eloTier.badge} {eloRating} ELO
                 </Text>
@@ -657,7 +657,7 @@ export default function LeaderboardScreen() {
                   <Text style={[typography.caption, { color: palette.ink, fontWeight: '800' }]}>
                     {myEntry.scoreLabel}
                   </Text>
-                  <Ionicons name="chevron-forward" size={14} color={palette.indigo} />
+                  <AppIcon name="chevron-forward" size={14} color={palette.indigo} />
                 </View>
               </Card>
             ) : null}
@@ -751,7 +751,7 @@ export default function LeaderboardScreen() {
             </View>
           ) : (
             <View style={{ alignItems: 'center', paddingVertical: spacing.xxl }}>
-              <Ionicons name="trophy-outline" size={34} color={palette.inkMuted} />
+              <AppIcon name="trophy-outline" size={34} color={palette.inkMuted} />
               <Text style={[typography.caption, { color: palette.inkMuted, marginTop: spacing.sm }]}>
                 Chưa có dữ liệu cho bộ lọc này
               </Text>
@@ -769,7 +769,7 @@ export default function LeaderboardScreen() {
                 disabled={safePage === 0}
                 style={[styles.pageBtn, { opacity: safePage === 0 ? 0.4 : 1, backgroundColor: palette.paperMuted }]}
               >
-                <Ionicons name="chevron-back" size={18} color={palette.ink} />
+                <AppIcon name="chevron-back" size={18} color={palette.ink} />
               </Pressable>
               {Array.from({ length: totalPages }, (_, i) => (
                 <Pressable
@@ -804,7 +804,7 @@ export default function LeaderboardScreen() {
                   { opacity: safePage >= totalPages - 1 ? 0.4 : 1, backgroundColor: palette.paperMuted },
                 ]}
               >
-                <Ionicons name="chevron-forward" size={18} color={palette.ink} />
+                <AppIcon name="chevron-forward" size={18} color={palette.ink} />
               </Pressable>
             </View>
           ) : (

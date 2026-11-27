@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { Image, Platform, Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import type { ScholarStory } from '../domain/models';
 import { usePalette } from '@/shared/ui';
 
@@ -59,7 +59,7 @@ export const CreateStoryCard916 = memo(function CreateStoryCard916({
             { backgroundColor: palette.indigo, borderColor: palette.paperRaised },
           ]}
         >
-          <Ionicons name="add" size={20} color={palette.onPrimary} />
+          <AppIcon name="add" size={20} color={palette.onPrimary} />
         </View>
         <Text style={[styles.createLabel, { color: palette.ink }]} numberOfLines={1}>
           Tạo tin
@@ -179,14 +179,14 @@ export const StoryCard916 = memo(function StoryCard916({
 
           {totalCount > 1 ? (
             <View style={styles.videoBadge}>
-              <Ionicons name="albums-outline" size={10} color="#FFFFFF" />
+              <AppIcon name="albums-outline" size={10} color="#FFFFFF" />
               <Text style={{ color: '#FFFFFF', fontSize: 9.5, fontWeight: '800' }}>
                 {totalCount} tin
               </Text>
             </View>
           ) : isVideo ? (
             <View style={styles.videoBadge}>
-              <Ionicons name="play" size={10} color="#FFFFFF" />
+              <AppIcon name="play" size={10} color="#FFFFFF" />
               <Text style={{ color: '#FFFFFF', fontSize: 9.5, fontWeight: '800' }}>
                 {story.durationSec ? `${story.durationSec}s` : 'Video'}
               </Text>

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { FlatList, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { Button, Card, EmptyState, Screen, TopBar, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { useQuizStore } from '@/features/quiz-library/state/useQuizStore';
@@ -76,7 +76,7 @@ export default function QuizLibraryScreen() {
 
               {/* Search Input */}
               <View style={[styles.searchBox, { backgroundColor: palette.paperRaised, borderColor: palette.paperMuted }]}>
-                <Ionicons name="search-outline" size={20} color={palette.inkMuted} />
+                <AppIcon name="search-outline" size={20} color={palette.inkMuted} />
                 <TextInput
                   value={search}
                   onChangeText={setSearch}
@@ -85,12 +85,9 @@ export default function QuizLibraryScreen() {
                   style={[styles.searchInput, { color: palette.ink }]}
                 />
                 {search ? (
-                  <Ionicons
-                    name="close-circle"
-                    size={18}
-                    color={palette.inkMuted}
-                    onPress={() => setSearch('')}
-                  />
+                  <Pressable accessibilityRole="button" accessibilityLabel="Xóa tìm kiếm" hitSlop={10} onPress={() => setSearch('')}>
+                    <AppIcon name="close-circle" size={18} color={palette.inkMuted} />
+                  </Pressable>
                 ) : null}
               </View>
             </>

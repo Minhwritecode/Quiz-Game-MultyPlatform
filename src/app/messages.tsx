@@ -11,7 +11,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Badge, Button, Card, Screen, TopBar, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
@@ -357,7 +357,7 @@ export default function DedicatedMessagesScreen() {
               }}
               style={[styles.newGroupBtn, { backgroundColor: palette.indigo }]}
             >
-              <Ionicons name="people" size={15} color={palette.onPrimary} />
+              <AppIcon name="people" size={15} color={palette.onPrimary} />
               <Text style={{ color: palette.onPrimary, fontSize: 12, fontWeight: '800' }}>
                 Tạo nhóm
               </Text>
@@ -367,7 +367,7 @@ export default function DedicatedMessagesScreen() {
 
         {toastMsg ? (
           <View style={[styles.toastBanner, { backgroundColor: palette.indigo }]}>
-            <Ionicons name="checkmark-circle" size={16} color="#FFFFFF" />
+            <AppIcon name="checkmark-circle" size={16} color="#FFFFFF" />
             <Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '800', flexShrink: 1 }}>
               {toastMsg}
             </Text>
@@ -395,7 +395,7 @@ export default function DedicatedMessagesScreen() {
                     { backgroundColor: palette.paperRaised, borderColor: palette.paperMuted },
                   ]}
                 >
-                  <Ionicons name="search" size={16} color={palette.inkMuted} />
+                  <AppIcon name="search" size={16} color={palette.inkMuted} />
                   <TextInput
                     value={searchQuery}
                     onChangeText={setSearchQuery}
@@ -404,8 +404,8 @@ export default function DedicatedMessagesScreen() {
                     style={[styles.searchInput, { color: palette.ink }]}
                   />
                   {searchQuery.length > 0 ? (
-                    <Pressable onPress={() => setSearchQuery('')}>
-                      <Ionicons name="close-circle" size={17} color={palette.inkMuted} />
+                    <Pressable accessibilityRole="button" accessibilityLabel="Xóa tìm kiếm" onPress={() => setSearchQuery('')}>
+                      <AppIcon name="close-circle" size={17} color={palette.inkMuted} />
                     </Pressable>
                   ) : null}
                 </View>
@@ -462,7 +462,7 @@ export default function DedicatedMessagesScreen() {
               >
                 {filteredConversations.length === 0 ? (
                   <Card style={{ alignItems: 'center', gap: 8, paddingVertical: spacing.lg }}>
-                    <Ionicons name="chatbubbles-outline" size={28} color={palette.inkMuted} />
+                    <AppIcon name="chatbubbles-outline" size={28} color={palette.inkMuted} />
                     <Text style={[typography.body, { color: palette.ink, fontWeight: '800' }]}>
                       Chưa có cuộc trò chuyện nào trong mục này
                     </Text>
@@ -519,7 +519,7 @@ export default function DedicatedMessagesScreen() {
                         <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                             {conv.isPinned ? (
-                              <Ionicons name="pin" size={12} color={palette.gold} />
+                              <AppIcon name="pin" size={12} color={palette.gold} />
                             ) : null}
                             <Text
                               style={{
@@ -533,7 +533,7 @@ export default function DedicatedMessagesScreen() {
                               {conv.title}
                             </Text>
                             {conv.isMuted ? (
-                              <Ionicons name="volume-mute" size={13} color={palette.inkMuted} />
+                              <AppIcon name="volume-mute" size={13} color={palette.inkMuted} />
                             ) : null}
                           </View>
                           <Text
@@ -580,7 +580,7 @@ export default function DedicatedMessagesScreen() {
                     onPress={() => setMobileRoomOpen(false)}
                     style={{ padding: 4 }}
                   >
-                    <Ionicons name="arrow-back" size={20} color={palette.ink} />
+                    <AppIcon name="arrow-back" size={20} color={palette.ink} />
                   </Pressable>
                 ) : null}
 
@@ -621,7 +621,7 @@ export default function DedicatedMessagesScreen() {
                     }}
                     style={[styles.iconCircle, { backgroundColor: palette.paperRaised }]}
                   >
-                    <Ionicons
+                    <AppIcon
                       name={activeConversation.isPinned ? 'pin' : 'pin-outline'}
                       size={16}
                       color={activeConversation.isPinned ? palette.gold : palette.inkMuted}
@@ -641,7 +641,7 @@ export default function DedicatedMessagesScreen() {
                     }}
                     style={[styles.iconCircle, { backgroundColor: palette.paperRaised }]}
                   >
-                    <Ionicons
+                    <AppIcon
                       name={activeConversation.isMuted ? 'notifications-off' : 'notifications-outline'}
                       size={16}
                       color={palette.inkMuted}
@@ -664,7 +664,7 @@ export default function DedicatedMessagesScreen() {
                     }}
                     style={[styles.iconCircle, { backgroundColor: palette.paperRaised }]}
                   >
-                    <Ionicons name="archive-outline" size={16} color={palette.inkMuted} />
+                    <AppIcon name="archive-outline" size={16} color={palette.inkMuted} />
                   </Pressable>
                 </View>
               </View>
@@ -706,7 +706,7 @@ export default function DedicatedMessagesScreen() {
                     { backgroundColor: palette.paperRaised, borderBottomColor: palette.paperMuted },
                   ]}
                 >
-                  <Ionicons name="megaphone-outline" size={15} color={palette.indigo} />
+                  <AppIcon name="megaphone-outline" size={15} color={palette.indigo} />
                   <Text
                     style={{ fontSize: 12, color: palette.ink, fontWeight: '700', flex: 1 }}
                     numberOfLines={1}
@@ -787,11 +787,13 @@ export default function DedicatedMessagesScreen() {
                             <Badge tone="neutral">↪ Chuyển tiếp</Badge>
                           ) : null}
                           <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel="Tùy chọn tin nhắn"
                             hitSlop={8}
                             onPress={() => setActiveMessageMenu(msg)}
                             style={{ marginLeft: 'auto' }}
                           >
-                            <Ionicons name="ellipsis-horizontal" size={16} color={palette.inkMuted} />
+                            <AppIcon name="ellipsis-horizontal" size={16} color={palette.inkMuted} />
                           </Pressable>
                         </View>
 
@@ -879,7 +881,7 @@ export default function DedicatedMessagesScreen() {
                                         { backgroundColor: palette.paperRaised },
                                       ]}
                                     >
-                                      <Ionicons name="mic" size={16} color={palette.indigo} />
+                                      <AppIcon name="mic" size={16} color={palette.indigo} />
                                       <Text
                                         style={{
                                           fontSize: 12,
@@ -903,7 +905,7 @@ export default function DedicatedMessagesScreen() {
                                       />
                                       {att.kind === 'video' ? (
                                         <View style={styles.vidOverlayBadge}>
-                                          <Ionicons name="play" size={13} color="#FFF" />
+                                          <AppIcon name="play" size={13} color="#FFF" />
                                           <Text
                                             style={{ color: '#FFF', fontSize: 10.5, fontWeight: '800' }}
                                           >
@@ -1027,8 +1029,8 @@ export default function DedicatedMessagesScreen() {
                         {replyTarget.preview}
                       </Text>
                     </View>
-                    <Pressable onPress={() => setReplyTarget(null)}>
-                      <Ionicons name="close-circle" size={18} color={palette.inkMuted} />
+                    <Pressable accessibilityRole="button" accessibilityLabel="Hủy trả lời tin nhắn" onPress={() => setReplyTarget(null)}>
+                      <AppIcon name="close-circle" size={18} color={palette.inkMuted} />
                     </Pressable>
                   </View>
                 ) : null}
@@ -1056,12 +1058,14 @@ export default function DedicatedMessagesScreen() {
                           </Pressable>
                         ) : null}
                         <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="Đóng"
                           onPress={() =>
                             setPendingAttachments((prev) => prev.filter((x) => x.id !== att.id))
                           }
                           style={styles.removePendingBtn}
                         >
-                          <Ionicons name="close" size={12} color="#FFF" />
+                          <AppIcon name="close" size={12} color="#FFF" />
                         </Pressable>
                       </View>
                     ))}
@@ -1076,7 +1080,7 @@ export default function DedicatedMessagesScreen() {
                     onPress={() => void handlePickPhotos()}
                     style={[styles.toolChip, { backgroundColor: palette.paperRaised }]}
                   >
-                    <Ionicons name="images-outline" size={16} color={palette.indigo} />
+                    <AppIcon name="images-outline" size={16} color={palette.indigo} />
                     <Text style={{ fontSize: 11.5, fontWeight: '700', color: palette.ink }}>
                       Ảnh
                     </Text>
@@ -1088,7 +1092,7 @@ export default function DedicatedMessagesScreen() {
                     onPress={() => void handlePickVideo()}
                     style={[styles.toolChip, { backgroundColor: palette.paperRaised }]}
                   >
-                    <Ionicons name="videocam-outline" size={16} color="#E11D48" />
+                    <AppIcon name="videocam-outline" size={16} color="#E11D48" />
                     <Text style={{ fontSize: 11.5, fontWeight: '700', color: palette.ink }}>
                       Video
                     </Text>
@@ -1100,7 +1104,7 @@ export default function DedicatedMessagesScreen() {
                     onPress={() => setStickerOpen(true)}
                     style={[styles.toolChip, { backgroundColor: palette.paperRaised }]}
                   >
-                    <Ionicons name="happy-outline" size={16} color={palette.gold} />
+                    <AppIcon name="happy-outline" size={16} color={palette.gold} />
                     <Text style={{ fontSize: 11.5, fontWeight: '700', color: palette.ink }}>
                       Sticker · GIF
                     </Text>
@@ -1112,7 +1116,7 @@ export default function DedicatedMessagesScreen() {
                     onPress={() => setPollModalOpen(true)}
                     style={[styles.toolChip, { backgroundColor: palette.paperRaised }]}
                   >
-                    <Ionicons name="stats-chart-outline" size={15} color={palette.mint} />
+                    <AppIcon name="stats-chart-outline" size={15} color={palette.mint} />
                     <Text style={{ fontSize: 11.5, fontWeight: '700', color: palette.ink }}>
                       Bình chọn
                     </Text>
@@ -1129,7 +1133,7 @@ export default function DedicatedMessagesScreen() {
                       },
                     ]}
                   >
-                    <Ionicons
+                    <AppIcon
                       name={recordingVoice ? 'stop-circle' : 'mic-outline'}
                       size={16}
                       color={recordingVoice ? '#FFFFFF' : palette.indigo}
@@ -1176,7 +1180,7 @@ export default function DedicatedMessagesScreen() {
                       },
                     ]}
                   >
-                    <Ionicons name="send" size={17} color="#FFFFFF" />
+                    <AppIcon name="send" size={17} color="#FFFFFF" />
                   </Pressable>
                 </View>
               </View>
@@ -1211,7 +1215,7 @@ export default function DedicatedMessagesScreen() {
                 }}
                 style={styles.menuRow}
               >
-                <Ionicons name="arrow-undo-outline" size={18} color={palette.indigo} />
+                <AppIcon name="arrow-undo-outline" size={18} color={palette.indigo} />
                 <Text style={{ fontSize: 13.5, fontWeight: '700', color: palette.ink }}>
                   Trả lời tin nhắn này
                 </Text>
@@ -1224,7 +1228,7 @@ export default function DedicatedMessagesScreen() {
                 }}
                 style={styles.menuRow}
               >
-                <Ionicons name="arrow-redo-outline" size={18} color={palette.indigo} />
+                <AppIcon name="arrow-redo-outline" size={18} color={palette.indigo} />
                 <Text style={{ fontSize: 13.5, fontWeight: '700', color: palette.ink }}>
                   Chuyển tiếp tới hội thoại khác
                 </Text>
@@ -1240,7 +1244,7 @@ export default function DedicatedMessagesScreen() {
                 }}
                 style={styles.menuRow}
               >
-                <Ionicons name="copy-outline" size={18} color={palette.ink} />
+                <AppIcon name="copy-outline" size={18} color={palette.ink} />
                 <Text style={{ fontSize: 13.5, fontWeight: '700', color: palette.ink }}>
                   Sao chép văn bản
                 </Text>
@@ -1255,7 +1259,7 @@ export default function DedicatedMessagesScreen() {
                   }}
                   style={styles.menuRow}
                 >
-                  <Ionicons name="pin-outline" size={18} color={palette.gold} />
+                  <AppIcon name="pin-outline" size={18} color={palette.gold} />
                   <Text style={{ fontSize: 13.5, fontWeight: '700', color: palette.ink }}>
                     Ghim tin nhắn trong hội thoại
                   </Text>
@@ -1272,7 +1276,7 @@ export default function DedicatedMessagesScreen() {
                     }}
                     style={styles.menuRow}
                   >
-                    <Ionicons name="create-outline" size={18} color={palette.indigo} />
+                    <AppIcon name="create-outline" size={18} color={palette.indigo} />
                     <Text style={{ fontSize: 13.5, fontWeight: '700', color: palette.ink }}>
                       Chỉnh sửa tin nhắn
                     </Text>
@@ -1286,7 +1290,7 @@ export default function DedicatedMessagesScreen() {
                     }}
                     style={styles.menuRow}
                   >
-                    <Ionicons name="refresh-circle-outline" size={18} color={palette.danger} />
+                    <AppIcon name="refresh-circle-outline" size={18} color={palette.danger} />
                     <Text style={{ fontSize: 13.5, fontWeight: '800', color: palette.danger }}>
                       Thu hồi tin nhắn (Unsend)
                     </Text>
@@ -1310,7 +1314,7 @@ export default function DedicatedMessagesScreen() {
                   }}
                   style={styles.menuRow}
                 >
-                  <Ionicons name="flag-outline" size={18} color={palette.danger} />
+                  <AppIcon name="flag-outline" size={18} color={palette.danger} />
                   <Text style={{ fontSize: 13.5, fontWeight: '800', color: palette.danger }}>
                     Báo cáo tin nhắn vi phạm
                   </Text>
@@ -1354,7 +1358,7 @@ export default function DedicatedMessagesScreen() {
                     }}
                     style={styles.menuRow}
                   >
-                    <Ionicons name="chatbubble-ellipses-outline" size={17} color={palette.indigo} />
+                    <AppIcon name="chatbubble-ellipses-outline" size={17} color={palette.indigo} />
                     <Text style={{ fontSize: 13, fontWeight: '700', color: palette.ink }}>
                       {c.title}
                     </Text>
@@ -1434,7 +1438,7 @@ export default function DedicatedMessagesScreen() {
                         },
                       ]}
                     >
-                      <Ionicons
+                      <AppIcon
                         name={picked ? 'checkbox' : 'square-outline'}
                         size={18}
                         color={picked ? palette.indigo : palette.inkMuted}
@@ -1536,7 +1540,7 @@ export default function DedicatedMessagesScreen() {
                   onPress={() => setPollOptions((prev) => [...prev, ''])}
                   style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
                 >
-                  <Ionicons name="add-circle-outline" size={16} color={palette.indigo} />
+                  <AppIcon name="add-circle-outline" size={16} color={palette.indigo} />
                   <Text style={{ fontSize: 12, fontWeight: '800', color: palette.indigo }}>
                     + Thêm phương án
                   </Text>
@@ -1548,7 +1552,7 @@ export default function DedicatedMessagesScreen() {
                   onPress={() => setPollAllowMultiple((v) => !v)}
                   style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
                 >
-                  <Ionicons
+                  <AppIcon
                     name={pollAllowMultiple ? 'checkbox' : 'square-outline'}
                     size={18}
                     color={palette.indigo}
@@ -1562,7 +1566,7 @@ export default function DedicatedMessagesScreen() {
                   onPress={() => setPollIsAnonymous((v) => !v)}
                   style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
                 >
-                  <Ionicons
+                  <AppIcon
                     name={pollIsAnonymous ? 'checkbox' : 'square-outline'}
                     size={18}
                     color={palette.indigo}
@@ -1576,7 +1580,7 @@ export default function DedicatedMessagesScreen() {
                   onPress={() => setPollAllowAddOptions((v) => !v)}
                   style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
                 >
-                  <Ionicons
+                  <AppIcon
                     name={pollAllowAddOptions ? 'checkbox' : 'square-outline'}
                     size={18}
                     color={palette.indigo}

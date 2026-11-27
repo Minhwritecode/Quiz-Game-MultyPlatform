@@ -11,7 +11,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Badge, Button, Card, Screen, TopBar, usePalette } from '@/shared/ui';
 import { PapyrusPageSkeleton } from '@/shared/PapyrusLoader';
@@ -711,7 +711,7 @@ export default function CommunityScreen() {
                   { backgroundColor: palette.paperRaised, borderColor: palette.indigoBorder },
                 ]}
               >
-                <Ionicons name="chatbubble-ellipses-outline" size={16} color={palette.indigo} />
+                <AppIcon name="chatbubble-ellipses-outline" size={16} color={palette.indigo} />
                 {!isCompactHeader ? (
                   <Text style={{ fontSize: 12, fontWeight: '800', color: palette.ink }}>
                     Tin nhắn
@@ -738,7 +738,7 @@ export default function CommunityScreen() {
                 }}
                 style={[styles.composeTopBtn, { backgroundColor: palette.indigo }]}
               >
-                <Ionicons name="create-outline" size={15} color={palette.onPrimary} />
+                <AppIcon name="create-outline" size={15} color={palette.onPrimary} />
                 <Text style={{ color: palette.onPrimary, fontSize: 12, fontWeight: '800' }}>
                   {isCompactHeader ? 'Đăng' : 'Đăng bài'}
                 </Text>
@@ -749,7 +749,7 @@ export default function CommunityScreen() {
 
         {statusToast ? (
           <View style={[styles.toastBar, { backgroundColor: palette.indigo }]}>
-            <Ionicons name="information-circle-outline" size={16} color={palette.onPrimary} />
+            <AppIcon name="information-circle-outline" size={16} color={palette.onPrimary} />
             <Text
               style={{
                 color: palette.onPrimary,
@@ -791,7 +791,7 @@ export default function CommunityScreen() {
                   },
                 ]}
               >
-                <Ionicons
+                <AppIcon
                   name={sec.icon}
                   size={14}
                   color={active ? palette.onPrimary : palette.indigo}
@@ -975,7 +975,7 @@ export default function CommunityScreen() {
                     },
                   ]}
                 >
-                  <Ionicons name="sparkles-outline" size={13} color={palette.indigo} />
+                  <AppIcon name="sparkles-outline" size={13} color={palette.indigo} />
                   <Text style={{ fontSize: 11.5, fontWeight: '700', color: palette.indigo }}>
                     Lọc bằng AI
                   </Text>
@@ -993,7 +993,7 @@ export default function CommunityScreen() {
                     },
                   ]}
                 >
-                  <Ionicons name="options-outline" size={14} color={palette.inkMuted} />
+                  <AppIcon name="options-outline" size={14} color={palette.inkMuted} />
                   <Text style={{ fontSize: 11.5, fontWeight: '700', color: palette.ink }}>
                     Tùy chỉnh
                   </Text>
@@ -1011,7 +1011,7 @@ export default function CommunityScreen() {
                     },
                   ]}
                 >
-                  <Ionicons name="bookmark-outline" size={14} color={palette.inkMuted} />
+                  <AppIcon name="bookmark-outline" size={14} color={palette.inkMuted} />
                   <Text style={{ fontSize: 11.5, fontWeight: '700', color: palette.ink }}>
                     Đã lưu ({mySlice?.bookmarkedPostIds.length ?? 0})
                   </Text>
@@ -1159,7 +1159,7 @@ export default function CommunityScreen() {
               {/* Feed Stream */}
               {paginatedFeedItems.length === 0 ? (
                 <Card style={{ alignItems: 'center', gap: 10, paddingVertical: spacing.xl }}>
-                  <Ionicons name="chatbubbles-outline" size={28} color={palette.indigo} />
+                  <AppIcon name="chatbubbles-outline" size={28} color={palette.indigo} />
                   <Text style={[typography.title, { color: palette.ink, textAlign: 'center' }]}>
                     Chưa có bài viết nào trong mục này
                   </Text>
@@ -1264,7 +1264,7 @@ export default function CommunityScreen() {
                                 { backgroundColor: palette.indigoTint },
                               ]}
                             >
-                              <Ionicons name="people" size={22} color={palette.indigo} />
+                              <AppIcon name="people" size={22} color={palette.indigo} />
                             </View>
                             <View style={{ flex: 1, minWidth: 0 }}>
                               <View
@@ -1359,7 +1359,7 @@ export default function CommunityScreen() {
                         onPress={() => setSelectedCommunityId(null)}
                         style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
                       >
-                        <Ionicons name="arrow-back" size={18} color={palette.indigo} />
+                        <AppIcon name="arrow-back" size={18} color={palette.indigo} />
                         <Text style={{ fontSize: 12.5, fontWeight: '800', color: palette.indigo }}>
                           Danh sách nhóm
                         </Text>
@@ -1384,7 +1384,7 @@ export default function CommunityScreen() {
                       <View
                         style={[styles.commIconBox, { backgroundColor: palette.indigoTint }]}
                       >
-                        <Ionicons name="people" size={22} color={palette.indigo} />
+                        <AppIcon name="people" size={22} color={palette.indigo} />
                       </View>
                       <View style={{ flex: 1, minWidth: 0 }}>
                         <Text style={[typography.title, { color: palette.ink }]}>
@@ -1700,7 +1700,7 @@ export default function CommunityScreen() {
                     },
                   ]}
                 >
-                  <Ionicons
+                  <AppIcon
                     name="globe-outline"
                     size={15}
                     color={
@@ -1736,7 +1736,7 @@ export default function CommunityScreen() {
                     },
                   ]}
                 >
-                  <Ionicons
+                  <AppIcon
                     name="person-add-outline"
                     size={15}
                     color={discoverSubTab === 'users' ? palette.onPrimary : palette.indigo}
@@ -1808,7 +1808,7 @@ export default function CommunityScreen() {
                           },
                         ]}
                       >
-                        <Ionicons name="refresh-outline" size={14} color={palette.indigo} />
+                        <AppIcon name="refresh-outline" size={14} color={palette.indigo} />
                         <Text style={{ fontSize: 12, fontWeight: '700', color: palette.indigo }}>
                           Đặt lại
                         </Text>
@@ -1972,7 +1972,7 @@ export default function CommunityScreen() {
                               {qs.subject} · {qs.questions.length} câu hỏi
                             </Text>
                           </View>
-                          <Ionicons name="play-circle" size={22} color={palette.indigo} />
+                          <AppIcon name="play-circle" size={22} color={palette.indigo} />
                         </Pressable>
                       ))}
                     </Card>
@@ -2006,7 +2006,7 @@ export default function CommunityScreen() {
                       hasCompletedSearch &&
                       liveWikiResults.length === 0 ? (
                       <Card style={{ alignItems: 'center', gap: 8, paddingVertical: spacing.lg }}>
-                        <Ionicons name="search-outline" size={26} color={palette.indigo} />
+                        <AppIcon name="search-outline" size={26} color={palette.indigo} />
                         <Text style={[typography.title, { color: palette.ink, textAlign: 'center' }]}>
                           Chưa tìm thấy bài báo khớp từ khóa &ldquo;{docSearchQuery.trim()}&rdquo;
                         </Text>
@@ -2305,8 +2305,8 @@ export default function CommunityScreen() {
                 <Text style={[typography.title, { color: palette.ink }]}>
                   Tùy chỉnh bảng tin
                 </Text>
-                <Pressable onPress={() => setAlgoModalOpen(false)}>
-                  <Ionicons name="close" size={22} color={palette.inkMuted} />
+                <Pressable accessibilityRole="button" accessibilityLabel="Đóng" onPress={() => setAlgoModalOpen(false)}>
+                  <AppIcon name="close" size={22} color={palette.inkMuted} />
                 </Pressable>
               </View>
 
@@ -2317,7 +2317,7 @@ export default function CommunityScreen() {
                   }
                   style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
                 >
-                  <Ionicons
+                  <AppIcon
                     name={myAlgo.knowledgeMode ? 'checkbox' : 'square-outline'}
                     size={20}
                     color={palette.indigo}
@@ -2448,8 +2448,8 @@ export default function CommunityScreen() {
                       >
                         {cf.name} ({cf.topics.join(', ')})
                       </Text>
-                      <Pressable onPress={() => deleteCustomFeed(viewerId, cf.id)}>
-                        <Ionicons name="trash-outline" size={16} color={palette.danger} />
+                      <Pressable accessibilityRole="button" accessibilityLabel="Xóa nguồn cấp tùy chỉnh" onPress={() => deleteCustomFeed(viewerId, cf.id)}>
+                        <AppIcon name="trash-outline" size={16} color={palette.danger} />
                       </Pressable>
                     </View>
                   ))}
@@ -2487,8 +2487,8 @@ export default function CommunityScreen() {
                 <Text style={[typography.title, { color: palette.ink }]}>
                   Kho lưu trữ cá nhân
                 </Text>
-                <Pressable onPress={() => setBookmarksDrawerOpen(false)}>
-                  <Ionicons name="close" size={22} color={palette.inkMuted} />
+                <Pressable accessibilityRole="button" accessibilityLabel="Đóng" onPress={() => setBookmarksDrawerOpen(false)}>
+                  <AppIcon name="close" size={22} color={palette.inkMuted} />
                 </Pressable>
               </View>
 
@@ -2587,7 +2587,7 @@ export default function CommunityScreen() {
                             {p.threadParts[0]}
                           </Text>
                         </View>
-                        <Ionicons name="open-outline" size={18} color={palette.indigo} />
+                        <AppIcon name="open-outline" size={18} color={palette.indigo} />
                       </Pressable>
                     ))}
 
@@ -2617,7 +2617,7 @@ export default function CommunityScreen() {
                             {p.threadParts[0]}
                           </Text>
                         </View>
-                        <Ionicons name="open-outline" size={18} color={palette.indigo} />
+                        <AppIcon name="open-outline" size={18} color={palette.indigo} />
                       </Pressable>
                     ))}
 
@@ -2759,7 +2759,7 @@ export default function CommunityScreen() {
                 onPress={() => setCommPostApproval((v) => !v)}
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
               >
-                <Ionicons
+                <AppIcon
                   name={commPostApproval ? 'checkbox' : 'square-outline'}
                   size={18}
                   color={palette.indigo}

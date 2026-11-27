@@ -1,5 +1,5 @@
 import { errorMessage } from '@/core/domain/failure';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -517,7 +517,7 @@ export default function AuthScreen() {
                         active && { backgroundColor: morphMeta.accent },
                       ]}
                     >
-                      <Ionicons
+                      <AppIcon
                         name={tab.icon}
                         size={14}
                         color={active ? '#050818' : '#CBD5E1'}
@@ -566,14 +566,14 @@ export default function AuthScreen() {
 
             {errorMsg ? (
               <View style={[styles.banner, { backgroundColor: 'rgba(239,68,68,0.14)', borderColor: 'rgba(239,68,68,0.6)' }]}>
-                <Ionicons name="alert-circle" size={18} color="#FCA5A5" />
+                <AppIcon name="alert-circle" size={18} color="#FCA5A5" />
                 <Text style={[typography.caption, { color: '#FECACA', flex: 1 }]}>{errorMsg}</Text>
               </View>
             ) : null}
 
             {infoMsg ? (
               <View style={[styles.banner, { backgroundColor: 'rgba(16,185,129,0.14)', borderColor: 'rgba(16,185,129,0.6)' }]}>
-                <Ionicons name="checkmark-circle" size={18} color="#6EE7B7" />
+                <AppIcon name="checkmark-circle" size={18} color="#6EE7B7" />
                 <Text style={[typography.caption, { color: '#A7F3D0', flex: 1 }]}>{infoMsg}</Text>
               </View>
             ) : null}
@@ -619,7 +619,7 @@ export default function AuthScreen() {
             ) : mode === 'resetPassword' ? (
               <>
                 <View style={styles.darkFieldRow}>
-                  <Ionicons name="lock-closed-outline" size={18} color="#94A3B8" />
+                  <AppIcon name="lock-closed-outline" size={18} color="#94A3B8" />
                   <TextInput
                     value={newPassword}
                     onChangeText={(val) => {
@@ -631,13 +631,13 @@ export default function AuthScreen() {
                     placeholderTextColor="#64748B"
                     style={styles.darkTextInput}
                   />
-                  <Pressable onPress={() => setVisible((prev) => !prev)}>
-                    <Ionicons name={visible ? 'eye-off-outline' : 'eye-outline'} size={20} color="#94A3B8" />
+                  <Pressable accessibilityRole="button" accessibilityLabel={visible ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'} onPress={() => setVisible((prev) => !prev)}>
+                    <AppIcon name={visible ? 'eye-off-outline' : 'eye-outline'} size={20} color="#94A3B8" />
                   </Pressable>
                 </View>
 
                 <View style={styles.darkFieldRow}>
-                  <Ionicons name="shield-checkmark-outline" size={18} color="#94A3B8" />
+                  <AppIcon name="shield-checkmark-outline" size={18} color="#94A3B8" />
                   <TextInput
                     value={confirmPassword}
                     onChangeText={(val) => {
@@ -658,7 +658,7 @@ export default function AuthScreen() {
             ) : (
               <>
                 <View style={styles.darkFieldRow}>
-                  <Ionicons name="mail-outline" size={18} color="#94A3B8" />
+                  <AppIcon name="mail-outline" size={18} color="#94A3B8" />
                   <TextInput
                     value={email}
                     onChangeText={(val) => {
@@ -677,7 +677,7 @@ export default function AuthScreen() {
                 {mode !== 'forgot' && (
                   <View style={{ gap: 6 }}>
                     <View style={styles.darkFieldRow}>
-                      <Ionicons name="lock-closed-outline" size={18} color="#94A3B8" />
+                      <AppIcon name="lock-closed-outline" size={18} color="#94A3B8" />
                       <TextInput
                         value={password}
                         onChangeText={(val) => {
@@ -691,8 +691,8 @@ export default function AuthScreen() {
                         placeholderTextColor="#64748B"
                         style={styles.darkTextInput}
                       />
-                      <Pressable onPress={() => setVisible((prev) => !prev)} hitSlop={8}>
-                        <Ionicons name={visible ? 'eye-off-outline' : 'eye-outline'} size={20} color="#94A3B8" />
+                      <Pressable accessibilityRole="button" accessibilityLabel={visible ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'} onPress={() => setVisible((prev) => !prev)} hitSlop={8}>
+                        <AppIcon name={visible ? 'eye-off-outline' : 'eye-outline'} size={20} color="#94A3B8" />
                       </Pressable>
                     </View>
 
@@ -753,7 +753,7 @@ export default function AuthScreen() {
                           { opacity: pressed ? 0.84 : 1 },
                         ]}
                       >
-                        <Ionicons name="finger-print-outline" size={18} color="#A5B4FC" />
+                        <AppIcon name="finger-print-outline" size={18} color="#A5B4FC" />
                         <Text style={{ color: '#E0E7FF', fontSize: 13, fontWeight: '800' }}>
                           Đăng nhập bằng Passkey (Face ID / Touch ID)
                         </Text>
@@ -799,7 +799,7 @@ export default function AuthScreen() {
                       onPress={() => void handleMagicLink()}
                       style={styles.magicLinkBtn}
                     >
-                      <Ionicons name="sparkles-outline" size={15} color="#FBBF24" />
+                      <AppIcon name="sparkles-outline" size={15} color="#FBBF24" />
                       <Text style={{ color: '#FDE68A', fontSize: 12, fontWeight: '800' }}>
                         Đăng nhập 1 chạm bằng Email Magic Link
                       </Text>
@@ -831,7 +831,7 @@ export default function AuthScreen() {
                 onPress={() => router.push('/admin')}
                 style={styles.adminFooterBtn}
               >
-                <Ionicons name="shield-checkmark-outline" size={14} color="#FBBF24" />
+                <AppIcon name="shield-checkmark-outline" size={14} color="#FBBF24" />
                 <Text style={{ color: '#FDE68A', fontSize: 12, fontWeight: '800' }}>
                   {language === 'vi' ? 'Quản trị viên' : 'Admin'}
                 </Text>

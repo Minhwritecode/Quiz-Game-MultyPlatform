@@ -1,7 +1,7 @@
 import React, { ReactNode, memo, useEffect, useRef, useState } from 'react';
 import { Animated, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { Model3DView, type Model3DActionEffect } from './Model3DView';
 import { Model3DErrorBoundary } from './Model3DErrorBoundary';
@@ -479,7 +479,7 @@ export function GameEnvironment({
                   accessibilityRole="button"
                   style={styles.stageCollapseBtn}
                 >
-                  <Ionicons name="chevron-up" size={14} color="#C7D2FE" />
+                  <AppIcon name="chevron-up" size={14} color="#C7D2FE" />
                   <Text style={styles.stageCollapseText}>Thu gọn 3D</Text>
                 </Pressable>
               </View>
@@ -493,7 +493,7 @@ export function GameEnvironment({
                 { opacity: pressed ? 0.8 : 1 },
               ]}
             >
-              <Ionicons name="cube-outline" size={14} color="#C7D2FE" />
+              <AppIcon name="cube-outline" size={14} color="#C7D2FE" />
               <Text style={styles.stageCollapseText}>Mở sân khấu 3D</Text>
             </Pressable>
           )}

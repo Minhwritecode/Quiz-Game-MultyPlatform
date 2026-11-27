@@ -12,7 +12,7 @@ import {
   View,
   type ViewStyle,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { useRouter } from 'expo-router';
 import { STORY_GRADIENTS, type ScholarStory } from '../domain/models';
 import { useCommunityStore } from '../state/useCommunityStore';
@@ -440,7 +440,7 @@ function StoryViewerModalInner({
                   onPress={() => setMuted((m) => !m)}
                   style={styles.ctrlBtn}
                 >
-                  <Ionicons name={muted ? 'volume-mute' : 'volume-high'} size={18} color="#FFFFFF" />
+                  <AppIcon name={muted ? 'volume-mute' : 'volume-high'} size={18} color="#FFFFFF" />
                 </Pressable>
               ) : null}
 
@@ -450,7 +450,7 @@ function StoryViewerModalInner({
                 onPress={() => setPaused((p) => !p)}
                 style={styles.ctrlBtn}
               >
-                <Ionicons name={paused ? 'play' : 'pause'} size={18} color="#FFFFFF" />
+                <AppIcon name={paused ? 'play' : 'pause'} size={18} color="#FFFFFF" />
               </Pressable>
 
               <Pressable
@@ -459,7 +459,7 @@ function StoryViewerModalInner({
                 onPress={onClose}
                 style={styles.ctrlBtn}
               >
-                <Ionicons name="close" size={21} color="#FFFFFF" />
+                <AppIcon name="close" size={21} color="#FFFFFF" />
               </Pressable>
             </View>
           </View>
@@ -544,7 +544,7 @@ function StoryViewerModalInner({
                   style={styles.ownerInsightsPill}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
-                    <Ionicons name="eye-outline" size={16} color="#FFFFFF" />
+                    <AppIcon name="eye-outline" size={16} color="#FFFFFF" />
                     <Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '800' }}>
                       {otherViewerIds.length} người xem · {totalReactionsCount} tương tác
                     </Text>
@@ -553,7 +553,7 @@ function StoryViewerModalInner({
                     <Text style={{ color: '#93C5FD', fontSize: 11.5, fontWeight: '800' }}>
                       Chi tiết
                     </Text>
-                    <Ionicons name="chevron-up" size={15} color="#93C5FD" />
+                    <AppIcon name="chevron-up" size={15} color="#93C5FD" />
                   </View>
                 </Pressable>
               ) : onDirectMessage ? (
@@ -569,6 +569,8 @@ function StoryViewerModalInner({
                   />
                   {replyText.trim().length > 0 ? (
                     <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Gửi"
                       onPress={() => {
                         const msg = replyText.trim();
                         onClose();
@@ -580,7 +582,7 @@ function StoryViewerModalInner({
                       }}
                       style={styles.sendStoryReplyBtn}
                     >
-                      <Ionicons name="send" size={16} color="#FFFFFF" />
+                      <AppIcon name="send" size={16} color="#FFFFFF" />
                     </Pressable>
                   ) : null}
                 </View>
@@ -636,7 +638,7 @@ function StoryViewerModalInner({
                     hitSlop={8}
                     style={[styles.inspectorCloseBtn, { backgroundColor: palette.paperRaised }]}
                   >
-                    <Ionicons name="close" size={18} color={palette.ink} />
+                    <AppIcon name="close" size={18} color={palette.ink} />
                   </Pressable>
                 </View>
 
@@ -670,7 +672,7 @@ function StoryViewerModalInner({
                 >
                   {engagementRoster.length === 0 ? (
                     <View style={{ alignItems: 'center', paddingVertical: 28, gap: 6 }}>
-                      <Ionicons name="eye-off-outline" size={28} color={palette.inkMuted} />
+                      <AppIcon name="eye-off-outline" size={28} color={palette.inkMuted} />
                       <Text
                         style={{
                           fontSize: 13,
@@ -764,7 +766,7 @@ function StoryViewerModalInner({
                               ))}
                             </View>
                           ) : (
-                            <Ionicons name="eye" size={16} color={palette.indigo} />
+                            <AppIcon name="eye" size={16} color={palette.indigo} />
                           )}
                         </Pressable>
                       );
@@ -895,8 +897,8 @@ function StoryComposerModalInner({
         <Card style={[styles.composerCard, { backgroundColor: palette.paper }]}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <Text style={[typography.title, { color: palette.ink }]}>Tạo tin mới (24h)</Text>
-            <Pressable onPress={onClose} hitSlop={8}>
-              <Ionicons name="close" size={22} color={palette.inkMuted} />
+            <Pressable accessibilityRole="button" accessibilityLabel="Đóng" onPress={onClose} hitSlop={8}>
+              <AppIcon name="close" size={22} color={palette.inkMuted} />
             </Pressable>
           </View>
 
@@ -913,7 +915,7 @@ function StoryComposerModalInner({
                 },
               ]}
             >
-              <Ionicons
+              <AppIcon
                 name="image-outline"
                 size={16}
                 color={mediaType === 'image' ? '#FFFFFF' : palette.indigo}
@@ -940,7 +942,7 @@ function StoryComposerModalInner({
                 },
               ]}
             >
-              <Ionicons
+              <AppIcon
                 name="videocam-outline"
                 size={16}
                 color={mediaType === 'video' ? '#FFFFFF' : '#E11D48'}
@@ -963,7 +965,7 @@ function StoryComposerModalInner({
                 { backgroundColor: palette.paperRaised, borderColor: palette.indigo },
               ]}
             >
-              <Ionicons name="happy-outline" size={16} color={palette.indigo} />
+              <AppIcon name="happy-outline" size={16} color={palette.indigo} />
               <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.indigo }}>
                 GIF & Nhãn dán
               </Text>
@@ -977,7 +979,7 @@ function StoryComposerModalInner({
                   { backgroundColor: palette.goldTint, borderColor: palette.gold },
                 ]}
               >
-                <Ionicons name="film-outline" size={15} color={palette.gold} />
+                <AppIcon name="film-outline" size={15} color={palette.gold} />
                 <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.gold }}>
                   Chọn ảnh bìa
                 </Text>
@@ -998,7 +1000,7 @@ function StoryComposerModalInner({
                   { backgroundColor: palette.paperRaised, borderColor: palette.paperMuted },
                 ]}
               >
-                <Ionicons name="trash-outline" size={15} color={palette.inkMuted} />
+                <AppIcon name="trash-outline" size={15} color={palette.inkMuted} />
                 <Text style={{ fontSize: 11.5, fontWeight: '700', color: palette.inkMuted }}>
                   Chỉ văn bản
                 </Text>
@@ -1032,7 +1034,7 @@ function StoryComposerModalInner({
             />
             {mediaType === 'video' ? (
               <View style={styles.previewVidTag}>
-                <Ionicons name="play-circle" size={15} color="#FFFFFF" />
+                <AppIcon name="play-circle" size={15} color="#FFFFFF" />
                 <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '800' }}>
                   Ảnh bìa video{durationSec ? ` · Thời lượng gốc ${durationSec}s` : ''}
                 </Text>
@@ -1104,7 +1106,7 @@ function StoryComposerModalInner({
             onPress={() => setPinnedOnProfile((v) => !v)}
             style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
           >
-            <Ionicons
+            <AppIcon
               name={pinnedOnProfile ? 'checkbox' : 'square-outline'}
               size={20}
               color={palette.indigo}

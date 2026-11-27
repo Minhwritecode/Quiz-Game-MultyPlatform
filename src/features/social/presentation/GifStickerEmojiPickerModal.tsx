@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { Card, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import {
@@ -62,8 +62,8 @@ export function GifStickerEmojiPickerModal({
         <Card style={[styles.sheet, { backgroundColor: palette.paper }]}>
           <View style={styles.header}>
             <Text style={[typography.title, { color: palette.ink }]}>Nhãn dán, GIF & Biểu cảm</Text>
-            <Pressable onPress={onClose} hitSlop={8}>
-              <Ionicons name="close" size={22} color={palette.inkMuted} />
+            <Pressable accessibilityRole="button" accessibilityLabel="Đóng" onPress={onClose} hitSlop={8}>
+              <AppIcon name="close" size={22} color={palette.inkMuted} />
             </Pressable>
           </View>
 

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useI18n } from '@/core/i18n';
 import { ONBOARDING_ACT_SLIDES } from '../domain/onboardingState';
@@ -52,7 +52,7 @@ export function OnboardingIllusionFallback({
       <View style={styles.highlights}>
         {highlights.map((item) => (
           <View key={item} style={styles.highlightRow}>
-            <Ionicons name="sparkles" size={14} color={slide.accent} />
+            <AppIcon name="sparkles" size={14} color={slide.accent} />
             <Text style={styles.highlightText}>{item}</Text>
           </View>
         ))}
@@ -100,7 +100,7 @@ export function OnboardingIllusionFallback({
                 ? 'Tiếp theo'
                 : 'Next'}
           </Text>
-          <Ionicons name="arrow-forward" size={16} color="#060A24" />
+          <AppIcon name="arrow-forward" size={16} color="#060A24" />
         </Pressable>
       </View>
     </View>

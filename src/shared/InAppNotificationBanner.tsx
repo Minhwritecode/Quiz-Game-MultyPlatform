@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Platform, Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouteRefreshStore } from '@/core/state/useRouteRefreshStore';
@@ -112,7 +112,7 @@ export const InAppNotificationBanner = memo(function InAppNotificationBanner() {
               ]}
             >
               <View style={[styles.iconCircle, { backgroundColor: palette.indigo }]}>
-                <Ionicons
+                <AppIcon
                   name={
                     banner.kind === 'message'
                       ? 'chatbubble-ellipses'
@@ -145,7 +145,7 @@ export const InAppNotificationBanner = memo(function InAppNotificationBanner() {
                 Platform.OS === 'web' ? ({ cursor: 'pointer' } as unknown as ViewStyle) : undefined,
               ]}
             >
-              <Ionicons name="close" size={18} color={palette.inkMuted} />
+              <AppIcon name="close" size={18} color={palette.inkMuted} />
             </Pressable>
           </View>
         </Animated.View>

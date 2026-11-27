@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -283,7 +283,7 @@ export default function RuneArcherGameScreen() {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <SoundToggle />
               <Pressable onPress={() => setShowPicker(true)} style={styles.setChip}>
-                <Ionicons name="book-outline" size={14} color="#FDE68A" />
+                <AppIcon name="book-outline" size={14} color="#FDE68A" />
                 <Text style={styles.setChipText} numberOfLines={1}>
                   Đổi bộ đề
                 </Text>
@@ -431,8 +431,8 @@ export default function RuneArcherGameScreen() {
             <Card color="#0F172A" style={styles.modalSheet}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                 <Text style={[typography.title, { color: '#F8FAFC' }]}>Chọn bộ tri thức nạp đạn ({allSets.length})</Text>
-                <Pressable onPress={() => setShowPicker(false)}>
-                  <Ionicons name="close-circle" size={26} color="#94A3B8" />
+                <Pressable accessibilityRole="button" accessibilityLabel="Đóng bộ chọn" onPress={() => setShowPicker(false)}>
+                  <AppIcon name="close-circle" size={26} color="#94A3B8" />
                 </Pressable>
               </View>
               <ScrollView style={{ maxHeight: 360 }}>

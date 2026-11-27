@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { useRouter } from 'expo-router';
 import { memo, useEffect, useMemo, useState } from 'react';
 import {
@@ -246,7 +246,7 @@ export default function HomeScreen() {
           }}
           style={[styles.questRow, { backgroundColor: palette.paper, borderColor: palette.paperMuted }]}
         >
-          <Ionicons
+          <AppIcon
             name={todayCompleted ? 'checkmark-circle' : 'ellipse-outline'}
             size={18}
             color={todayCompleted ? palette.mint : palette.gold}
@@ -265,7 +265,7 @@ export default function HomeScreen() {
           }}
           style={[styles.questRow, { backgroundColor: palette.paper, borderColor: palette.paperMuted }]}
         >
-          <Ionicons
+          <AppIcon
             name={dailyRewarded ? 'checkmark-circle' : 'ellipse-outline'}
             size={18}
             color={dailyRewarded ? palette.mint : palette.indigo}
@@ -280,7 +280,7 @@ export default function HomeScreen() {
           onPress={() => router.push('/games/archer')}
           style={[styles.questRow, { backgroundColor: palette.paper, borderColor: palette.paperMuted }]}
         >
-          <Ionicons
+          <AppIcon
             name={gamesPlayed > 0 ? 'checkmark-circle' : 'play-circle-outline'}
             size={18}
             color={gamesPlayed > 0 ? palette.mint : palette.fire}
@@ -301,7 +301,7 @@ export default function HomeScreen() {
           <Badge tone={pomoMode === 'focus' ? 'primary' : 'success'}>
             {pomoMode === 'focus' ? 'POMODORO 25P' : 'NGHỈ NGẮN 5P'}
           </Badge>
-          <Ionicons name="timer-outline" size={18} color={palette.inkMuted} />
+          <AppIcon name="timer-outline" size={18} color={palette.inkMuted} />
         </View>
         <Text
           style={{
@@ -343,7 +343,7 @@ export default function HomeScreen() {
             { backgroundColor: palette.paper, borderColor: palette.paperMuted },
           ]}
         >
-          <Ionicons name="refresh" size={18} color={palette.inkMuted} />
+          <AppIcon name="refresh" size={18} color={palette.inkMuted} />
         </Pressable>
       </View>
     </View>
@@ -404,10 +404,10 @@ export default function HomeScreen() {
                 {opt}
               </Text>
               {answered && isCorrect && (
-                <Ionicons name="checkmark-circle" size={16} color={palette.mint} />
+                <AppIcon name="checkmark-circle" size={16} color={palette.mint} />
               )}
               {answered && isChosen && !isCorrect && (
-                <Ionicons name="close-circle" size={16} color={palette.danger} />
+                <AppIcon name="close-circle" size={16} color={palette.danger} />
               )}
             </Pressable>
           );
@@ -463,7 +463,7 @@ export default function HomeScreen() {
                   { backgroundColor: palette.indigoTint, borderColor: palette.indigoBorder },
                 ]}
               >
-                <Ionicons name="chatbubbles-outline" size={17} color={palette.indigo} />
+                <AppIcon name="chatbubbles-outline" size={17} color={palette.indigo} />
               </Pressable>
               <NotificationBell />
               <Pressable
@@ -491,7 +491,7 @@ export default function HomeScreen() {
                     style={[styles.headerAvatarImg, { borderColor: palette.indigoBorder }]}
                   />
                 ) : (
-                  <Ionicons name="person-circle-outline" size={32} color={palette.indigo} />
+                  <AppIcon name="person-circle-outline" size={32} color={palette.indigo} />
                 )}
               </Pressable>
             </View>
@@ -536,7 +536,7 @@ export default function HomeScreen() {
                     <ProgressBar progress={unfinishedStudy.answered / Math.max(1, unfinishedStudy.total)} tone="success" />
                   </View>
                 </View>
-                <Ionicons name="chevron-forward-circle" size={26} color={palette.mint} />
+                <AppIcon name="chevron-forward-circle" size={26} color={palette.mint} />
               </View>
             </Card>
           </SmoothReveal>
@@ -564,7 +564,7 @@ export default function HomeScreen() {
                     { backgroundColor: palette.indigoTint, borderColor: palette.indigoBorder },
                   ]}
                 >
-                  <Ionicons name="document-text-outline" size={13} color={palette.indigo} />
+                  <AppIcon name="document-text-outline" size={13} color={palette.indigo} />
                   <Text style={[styles.heroEyebrowText, { color: palette.indigoDeep }]}>
                     PAPYRUS STUDY STUDIO
                   </Text>
@@ -582,7 +582,7 @@ export default function HomeScreen() {
                       },
                     ]}
                   >
-                    <Ionicons
+                    <AppIcon
                       name={showMobile3D ? 'chevron-up' : 'cube-outline'}
                       size={13}
                       color={palette.inkMuted}
@@ -653,7 +653,7 @@ export default function HomeScreen() {
                 { backgroundColor: palette.paperRaised, borderColor: palette.paperMuted },
               ]}
             >
-              <Ionicons name="book-outline" size={16} color={palette.indigo} />
+              <AppIcon name="book-outline" size={16} color={palette.indigo} />
               <Text style={[styles.compactStatVal, { color: palette.ink }]}>{sets.length}</Text>
               <Text style={[styles.compactStatLbl, { color: palette.inkMuted }]} numberOfLines={1}>
                 Bộ câu hỏi
@@ -666,7 +666,7 @@ export default function HomeScreen() {
                 { backgroundColor: palette.paperRaised, borderColor: palette.paperMuted },
               ]}
             >
-              <Ionicons name="help-circle-outline" size={16} color={palette.mint} />
+              <AppIcon name="help-circle-outline" size={16} color={palette.mint} />
               <Text style={[styles.compactStatVal, { color: palette.ink }]}>{totalQuestions}</Text>
               <Text style={[styles.compactStatLbl, { color: palette.inkMuted }]} numberOfLines={1}>
                 Câu hỏi
@@ -679,7 +679,7 @@ export default function HomeScreen() {
                 { backgroundColor: palette.paperRaised, borderColor: palette.paperMuted },
               ]}
             >
-              <Ionicons name="trophy-outline" size={16} color={palette.gold} />
+              <AppIcon name="trophy-outline" size={16} color={palette.gold} />
               <Text style={[styles.compactStatVal, { color: palette.ink }]}>{eloRating}</Text>
               <Text style={[styles.compactStatLbl, { color: palette.inkMuted }]} numberOfLines={1}>
                 ELO
@@ -739,7 +739,7 @@ export default function HomeScreen() {
                   {set.subject || 'Đại học'} · {set.questions.length} {t.library.questionsCount}
                 </Text>
               </View>
-              <Ionicons name="play-circle" size={26} color={palette.indigo} />
+              <AppIcon name="play-circle" size={26} color={palette.indigo} />
             </Card>
           ))}
         </SmoothReveal>
