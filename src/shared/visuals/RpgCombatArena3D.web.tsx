@@ -21,6 +21,7 @@ export interface RpgCombatArena3DProps {
   playerMaxHp?: number;
   bossHp?: number;
   bossMaxHp?: number;
+  damageAmount?: number;
   playerLabel?: string;
   bossLabel?: string;
   arenaTheme?: 'colosseum' | 'sanctuary' | 'library';
@@ -508,6 +509,7 @@ export const RpgCombatArena3D = memo(function RpgCombatArena3D({
   playerMaxHp = 3,
   bossHp = 100,
   bossMaxHp = 100,
+  damageAmount = 20,
   playerLabel = 'Đại Pháp Sư (Bạn)',
   bossLabel = 'Golem Hắc Thạch',
   arenaTheme = 'colosseum',
@@ -521,6 +523,8 @@ export const RpgCombatArena3D = memo(function RpgCombatArena3D({
 
   const playerPct = Math.max(0, Math.min(100, Math.round((playerHp / Math.max(1, playerMaxHp)) * 100)));
   const bossPct = Math.max(0, Math.min(100, Math.round((bossHp / Math.max(1, bossMaxHp)) * 100)));
+  const playerHpColor =
+    playerPct <= 25 ? '#EF4444' : playerPct <= 55 ? '#F59E0B' : '#10B981';
 
   return (
     <View style={[styles.container, { height }]}>
@@ -571,7 +575,7 @@ export const RpgCombatArena3D = memo(function RpgCombatArena3D({
             🧙‍♂️ {playerLabel}
           </Text>
           <View style={styles.hpTrack}>
-            <View style={[styles.hpFill, { width: `${playerPct}%`, backgroundColor: '#10B981' }]} />
+            <View style={[styles.hpFill, { width: `${playerPct}%`, backgroundColor: playerHpColor }]} />
           </View>
         </View>
 
@@ -592,11 +596,11 @@ export const RpgCombatArena3D = memo(function RpgCombatArena3D({
       {/* Dynamic Combat Callout Banner */}
       {combatState === 'player_attack' ? (
         <View style={[styles.calloutPill, { backgroundColor: 'rgba(16, 185, 129, 0.88)' }]} pointerEvents="none">
-          <Text style={styles.calloutText}>🏹 BẮN TRÚNG ĐÍCH! CHÍ MẠNG 🔥</Text>
+          <Text style={styles.calloutText}>🏹 BẮN TRÚNG ĐÍCH! (-{damageAmount} HP Golem) 🔥</Text>
         </View>
       ) : combatState === 'enemy_attack' ? (
         <View style={[styles.calloutPill, { backgroundColor: 'rgba(220, 38, 38, 0.90)' }]} pointerEvents="none">
-          <Text style={styles.calloutText}>🪨 GOLEM HẤT ĐÁ CHÔN VÙI! ĐỠ ĐÒN!</Text>
+          <Text style={styles.calloutText}>🪨 GOLEM HẤT ĐÁ CHÔN VÙI! (-{damageAmount} HP)</Text>
         </View>
       ) : null}
 

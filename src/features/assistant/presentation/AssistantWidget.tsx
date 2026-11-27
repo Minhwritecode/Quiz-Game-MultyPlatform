@@ -541,7 +541,8 @@ export function AssistantWidget() {
     })();
   };
 
-  const showFloatingFab = path.startsWith('/study/') && segments[1] !== '[setId]';
+  const showFloatingFab =
+    path.startsWith('/study/') && (segments as readonly string[])[1] !== '[setId]';
 
   return (
     <>
