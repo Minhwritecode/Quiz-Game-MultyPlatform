@@ -10,7 +10,7 @@ const mockParams: { mode?: string; setId?: string; sourceId?: string; fromSignIn
 const mockRouter = { replace: jest.fn(), push: jest.fn() };
 jest.mock('expo-router', () => ({ useLocalSearchParams: () => mockParams, useRouter: () => mockRouter }));
 jest.mock('expo-crypto', () => ({ randomUUID: jest.requireActual('node:crypto').randomUUID }));
-jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
+jest.mock('@/shared/AppIcon', () => ({ AppIcon: () => null }));
 jest.mock('@/composition/dependencies', () => ({
   dependencies: {
     generation: {
@@ -29,7 +29,7 @@ jest.mock('@/composition/dependencies', () => ({
 jest.mock('@/shared/ui', () => {
   const { Text, Pressable, View } = jest.requireActual('react-native');
   return {
-    Screen: View, Card: View, TopBar: () => null, PageHeader: () => null, usePalette: () => ({}),
+    Screen: View, Card: View, TopBar: () => null, PageHeader: () => null, ProgressBar: () => null, usePalette: () => ({}),
     Button: ({ children, onPress, disabled, testID }: any) => (
       <Pressable testID={testID} accessibilityRole="button" disabled={disabled} onPress={onPress}>
         <Text>{children}</Text>
@@ -84,6 +84,7 @@ async function generateThree() {
   await stream([question(1), question(2), question(3)]);
   await fireEvent.press(screen.getByText('Generate AI Quiz Now'));
   await screen.findByText('Save 3 reviewed questions');
+  expect(screen.getByText('3/5 questions received')).toBeTruthy();
 }
 
 test('a guest can start manually without any canned questions', async () => {
@@ -144,6 +145,7 @@ test('fill missing keeps edited questions and rejects duplicate streamed content
   await stream([{ ...question(6), content: 'edited first question' }, question(4), question(5)]);
   await fireEvent.press(screen.getByText('Fill 2 missing questions'));
   await screen.findByText('Save question set');
+  expect(screen.getByText('5/5 questions received')).toBeTruthy();
   expect(generate.mock.calls[1]?.[0]).toMatchObject({ questionCount: 2 });
   expect(generate.mock.calls[1]?.[0].excludeQuestions).toContain('Edited first question');
   await fireEvent.press(screen.getByText('Save question set'));
@@ -198,6 +200,7 @@ test('switching accounts during generation ignores late callbacks and preserves 
   await screen.findByText('Source: ' + source.title);
   await fireEvent.press(screen.getByText('Generate AI Quiz Now'));
   await released;
+  await screen.findByText('Receiving questions · 1/10');
   listSources.mockResolvedValue([]);
   await act(() => useAuthStore.setState({ user: { id: otherOwner, displayName: 'Other' } }));
   await act(async () => { await deliverLate(); });
@@ -205,6 +208,18 @@ test('switching accounts during generation ignores late callbacks and preserves 
   await waitFor(async () => expect((await dependencies.generation.jobs.list(owner))[0]?.status).toBe('queued'));
   expect((await dependencies.generation.jobs.list(owner))[0]?.questions.map(q => q.id)).toEqual([question(1).id]);
   expect(await dependencies.generation.jobs.list(otherOwner)).toEqual([]);
+});
+
+test('an offline request shows its queued status and retry action next to the source', async () => {
+  signInSource();
+  jest.mocked(dependencies.generation.online).mockResolvedValueOnce(false);
+  await render(<GenerateScreen />);
+  await screen.findByText('Source: ' + source.title);
+  await fireEvent.press(screen.getByText('Generate AI Quiz Now'));
+  await screen.findByText('Waiting to generate');
+  expect(screen.getByText('Draft saved. You can resume when back online.')).toBeTruthy();
+  expect(screen.getByText('Retry generation')).toBeTruthy();
+  expect(generate).not.toHaveBeenCalled();
 });
 
 test('an interrupted draft can be opened explicitly and resumes from its reviewed questions', async () => {
@@ -219,6 +234,8 @@ test('an interrupted draft can be opened explicitly and resumes from its reviewe
   await fireEvent.press(screen.getByText('5'));
   await fireEvent.press(screen.getByText('Generate AI Quiz Now'));
   await screen.findByText('Save 2 reviewed questions');
+  expect(screen.getByText('Generation interrupted · 2/5')).toBeTruthy();
+  expect(screen.getByText('Retry generation')).toBeTruthy();
   await fireEvent.changeText(screen.getByTestId('question-0-content'), 'Reviewed before closing');
   await editor.unmount();
 

@@ -1,11 +1,11 @@
 import { useAuthStore } from '@/core/state/useAuthStore';
 import { randomUUID } from 'expo-crypto';
 import { errorMessage } from '@/core/domain/failure';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Button, Card, PageHeader, Screen, TopBar, usePalette } from '@/shared/ui';
+import { Button, Card, PageHeader, ProgressBar, Screen, TopBar, usePalette } from '@/shared/ui';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { dependencies } from '@/composition/dependencies';
 import { saveQuestionSet } from '@/features/question-sets/domain/saveQuestionSet';
@@ -72,6 +72,7 @@ function GenerationEditor() {
   const [busy, setBusy] = useState(false);
   const [jobs, setJobs] = useState<GenerationJob[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [reviewScrollKey, setReviewScrollKey] = useState<string>();
   const selectedJob = useRef<string | null>(null);
   const [initialDraftId] = useState(() => existingSet?.id ?? createLocalId());
   const draftSetId = useRef(initialDraftId);
@@ -107,6 +108,7 @@ function GenerationEditor() {
   const showJob = (job: GenerationJob) => {
     const details = job.review?.metadata ?? job.metadata;
     selectJob(job);
+    setReviewScrollKey(job.id);
     draftSetId.current = job.draftSetId ?? job.id;
     setTitle(details.title);
     setSubject(details.subject);
@@ -272,6 +274,7 @@ function GenerationEditor() {
     const job = await dependencies.generation.jobs.enqueue(account, request, metadata, initialQuestions, replaceQuestionId, draftSetId.current);
     if (!alive()) return;
     selectJob(job);
+    if (!replaceQuestionId) setReviewScrollKey(job.id);
     setQuestions([...initialQuestions]);
     await refreshJobs(account);
     await runJob(job, account);
@@ -363,20 +366,35 @@ function GenerationEditor() {
   const validCount = questions.filter(isValidQuestion).length;
   const partial = !manualMode && validCount > 0 && validCount < count && validCount === questions.length;
   const canGenerate = !busy && Boolean(account && dependencies.generation.configured && sourceText.trim());
-  return <Screen>
-    <TopBar title={existingSet ? t.home.editSet : manualMode ? t.home.manualTitle : (language === 'vi' ? 'Tạo & chỉnh sửa bộ đề' : 'Shape your quiz')} />
-    <PageHeader
-      eyebrow={manualMode ? t.home.manualEyebrow : (language === 'vi' ? 'BƯỚC 2 / 3 · TẠO BỘ ĐỀ AI' : 'STEP 2 OF 3 · SHAPE')}
-      title={existingSet ? t.home.editSet : manualMode ? t.home.manualTitle : (language === 'vi' ? 'Thiết lập & tạo câu hỏi' : 'Make the generation yours')}
-      subtitle={manualMode ? t.home.manualSubtitle : (language === 'vi' ? 'Chọn số câu và độ khó, kiểm tra đáp án rồi lưu bộ đề vào thư viện.' : 'Choose the output, review every answer and save only what you trust.')}
-    />
+  const vi = language === 'vi';
+  const activeJob = queueJobs.find(job => job.id === selectedJobId);
+  const running = busy && Boolean(generation.current || activeJob?.status === 'running');
+  const failed = activeJob?.status === 'failed';
+  const receivedCount = running || !activeJob ? validCount : displayQuestions({ ...activeJob, review: undefined }).length;
+  const received = `${receivedCount}/${count}`;
+  const status = running
+    ? (vi ? `Đang nhận câu hỏi · ${received}` : `Receiving questions · ${received}`)
+    : failed
+      ? (vi ? `Tạo đề bị gián đoạn · ${received}` : `Generation interrupted · ${received}`)
+      : activeJob?.status === 'queued'
+        ? (vi ? 'Đang chờ tạo câu hỏi' : 'Waiting to generate')
+        : activeJob
+          ? (vi ? `${received} câu đã nhận` : `${received} questions received`)
+          : questions.length
+            ? (vi ? `${validCount} câu sẵn sàng` : `${validCount} questions ready`)
+            : (vi ? 'Chưa tạo câu hỏi' : 'No questions generated');
+  const saveLabel = busy ? (vi ? 'Đang xử lý…' : 'Working…')
+    : existingSet ? t.home.saveChanges
+    : manualMode ? t.home.saveSet
+    : partial ? (vi ? `Lưu ${validCount} câu đã duyệt` : `Save ${validCount} reviewed questions`)
+    : (vi ? 'Lưu bộ câu hỏi' : 'Save question set');
+  const settings = (
     <Card style={styles.controls}>
-      {!manualMode && <Text style={[typography.caption, { color: palette.inkMuted }]}>{language === 'vi' ? 'AI sẽ sinh câu hỏi bám sát nội dung bạn đã duyệt. Bạn có thể sửa lại bất kỳ câu hỏi nào trước khi lưu.' : 'AI generates questions grounded in your reviewed text. You can edit any question before saving.'}</Text>}
+      {!manualMode && <Text style={[typography.title, { color: palette.ink }]}>{vi ? 'Thiết lập bộ câu hỏi' : 'Quiz settings'}</Text>}
       <TextInput testID="set-title" editable={!busy} accessibilityLabel="Question set title" placeholder={language === 'vi' ? 'Tên bộ câu hỏi (ví dụ: Lịch sử Chương 3)' : 'Question set title'} placeholderTextColor={palette.inkMuted} value={title} onChangeText={setTitle} maxLength={160} style={[styles.questionInput, { color: palette.ink, borderColor: palette.paperMuted }]} />
       <TextInput testID="set-subject" editable={!busy} accessibilityLabel={t.home.subjectLabel} placeholder={t.home.subjectPlaceholder} placeholderTextColor={palette.inkMuted} value={subject} onChangeText={setSubject} maxLength={100} style={[styles.questionInput, { color: palette.ink, borderColor: palette.paperMuted }]} />
       <TextInput testID="set-tags" editable={!busy} accessibilityLabel={language === 'vi' ? 'Thẻ của bộ đề, cách nhau bằng dấu phẩy' : 'Question set tags, comma separated'} placeholder={language === 'vi' ? 'Thẻ: đại số, chương 2, ôn thi' : 'Tags: algebra, chapter 2, exam'} placeholderTextColor={palette.inkMuted} value={tagText} onChangeText={setTagText} maxLength={400} style={[styles.questionInput, { color: palette.ink, borderColor: palette.paperMuted }]} />
-      {!manualMode && <Text style={[typography.caption, { color: palette.inkMuted }]}>{language === 'vi' ? 'Nguồn: ' : 'Source: '}{sourceTitle || (questions.length ? (language === 'vi' ? 'Khôi phục từ phiên trước' : 'Restored from saved job') : (language === 'vi' ? 'Chưa có tài liệu nguồn' : 'No source attached'))}</Text>}
-      {message ? <Text accessibilityRole="alert" style={{ color: palette.danger, fontWeight: '600' }}>{message}</Text> : null}
+      {manualMode && message ? <Text accessibilityRole="alert" style={{ color: palette.danger, fontWeight: '600' }}>{message}</Text> : null}
       {!manualMode && <>
         {!account && <Button variant="secondary" disabled={busy || !dependencies.generation.configured} onPress={() => void signInForSource()}>
           {language === 'vi' ? 'Đăng nhập để tạo bằng AI' : 'Sign in to generate with AI'}
@@ -391,7 +409,6 @@ function GenerationEditor() {
         <View style={styles.choiceRow}>{[5, 10, 15].map((value) => <Button key={value} variant={count === value ? 'primary' : 'secondary'} onPress={() => setCount(value)} disabled={busy}>{String(value)}</Button>)}</View>
         <Text style={[typography.title, { color: palette.ink, marginTop: spacing.md }]}>{language === 'vi' ? 'Độ khó' : 'Difficulty'}</Text>
         <View style={styles.choiceRow}>{(['Easy', 'Balanced', 'Challenge'] as const).map((value) => <Button key={value} variant={difficulty === value ? 'primary' : 'secondary'} onPress={() => setDifficulty(value)} disabled={busy}>{language === 'vi' ? (value === 'Easy' ? 'Dễ' : value === 'Balanced' ? 'Trung bình' : 'Thử thách') : value}</Button>)}</View>
-        <Text style={[typography.caption, { color: palette.inkMuted, marginTop: spacing.xs }]}>{validCount} / {count} {language === 'vi' ? 'câu sẵn sàng' : 'ready'} · {language === 'vi' ? 'Tiếng Việt' : 'English'}</Text>
         <View style={{ marginTop: spacing.sm }}>
           <Button icon="sparkles" variant="primary" disabled={!canGenerate} onPress={() => void generate()} fullWidth>
             {busy ? (language === 'vi' ? 'AI đang tạo câu hỏi…' : 'Generating…') : (language === 'vi' ? 'Tạo Quiz bằng AI ngay' : 'Generate AI Quiz Now')}
@@ -399,8 +416,8 @@ function GenerationEditor() {
         </View>
       </>}
     </Card>
-
-    {!manualMode && !params.setId && queueJobs.length > 0 && <Card style={styles.queueCard}>
+  );
+  const generationQueue = !manualMode && !params.setId && queueJobs.length > 0 && <Card style={styles.queueCard}>
       <Text style={[typography.title, { color: palette.ink }]}>{language === 'vi' ? 'Hàng đợi tạo đề' : 'Generation queue'}</Text>
       {queueJobs.map(job => <View key={job.id} style={styles.jobRow}>
         <View style={{ flex: 1 }}>
@@ -415,13 +432,63 @@ function GenerationEditor() {
         {(job.status === 'queued' || job.status === 'failed') && <Button variant="secondary" disabled={busy} onPress={() => void openJob(job.id, true)}>
           {language === 'vi' ? 'Tạo tiếp' : 'Resume generation'}
         </Button>}
-        <Pressable accessibilityRole="button" accessibilityLabel={language === 'vi' ? 'Hủy công việc' : 'Cancel job'} onPress={() => void cancelJob(job)} style={styles.removeButton}><Ionicons name="close-circle-outline" size={22} color={palette.danger} /></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel={language === 'vi' ? 'Hủy công việc' : 'Cancel job'} onPress={() => void cancelJob(job)} style={styles.removeButton}><AppIcon name="close-circle-outline" size={22} color={palette.danger} /></Pressable>
       </View>)}
-    </Card>}
+    </Card>;
 
-    <Text style={[typography.title, { color: palette.ink, marginTop: spacing.xl, marginBottom: spacing.md }]}>{manualMode ? t.home.correctAnswerHint : 'Review before saving'}</Text>
-    {questions.length === 0 && <Card><Text style={[typography.body, { color: palette.inkMuted }]}>No questions yet. Generate from your saved source or write them manually.</Text></Card>}
-    {partial && <Button variant="secondary" disabled={!canGenerate} onPress={fillMissing}>{language === 'vi' ? 'Tạo bù ' + (count - validCount) + ' câu' : 'Fill ' + (count - validCount) + ' missing questions'}</Button>}
+  return <Screen maxWidth={760} scrollResetKey={reviewScrollKey}>
+    <TopBar title={existingSet ? t.home.editSet : manualMode ? t.home.manualTitle : (language === 'vi' ? 'Tạo & chỉnh sửa bộ đề' : 'Shape your quiz')} />
+    {manualMode ? (
+      <PageHeader eyebrow={t.home.manualEyebrow} title={existingSet ? t.home.editSet : t.home.manualTitle} subtitle={t.home.manualSubtitle} />
+    ) : (
+      <Card style={[styles.reviewHeader, { borderColor: palette.goldBorder }]}>
+        <Text accessibilityRole="header" style={[typography.heading, { color: palette.ink }]}>
+          {activeJob || questions.length ? (vi ? 'Duyệt câu hỏi' : 'Review questions') : (vi ? 'Tạo quiz từ tài liệu' : 'Create a quiz from a document')}
+        </Text>
+        <View style={styles.sourceLine}>
+          <AppIcon name="document-text-outline" size={17} color={palette.gold} />
+          <Text style={[typography.caption, styles.shrink, { color: palette.inkMuted }]}>
+            {vi ? 'Nguồn: ' : 'Source: '}{sourceTitle || (questions.length ? (vi ? 'Khôi phục từ phiên trước' : 'Restored from saved job') : (vi ? 'Chưa có tài liệu nguồn' : 'No source attached'))}
+          </Text>
+        </View>
+        <View style={[styles.receipt, { backgroundColor: palette.paper, borderColor: palette.paperMuted }]}>
+          <Text accessibilityLiveRegion="polite" style={[typography.title, { color: failed ? palette.danger : palette.indigoDeep }]}>{status}</Text>
+          <ProgressBar progress={receivedCount / Math.max(count, 1)} tone="reward" />
+          {(message || activeJob?.error) ? (
+            <Text accessibilityLiveRegion="polite" accessibilityRole={failed ? 'alert' : undefined} style={[typography.caption, { color: failed ? palette.danger : palette.inkMuted }]}>{message || activeJob?.error}</Text>
+          ) : null}
+        </View>
+        {running && activeJob && (
+          <Button variant="ghost" onPress={() => void cancelJob(activeJob)} multiline>
+            {vi ? 'Hủy tạo câu hỏi' : 'Cancel generation'}
+          </Button>
+        )}
+        {activeJob && !busy && (failed || activeJob.status === 'queued') && (
+          <Button variant="secondary" onPress={() => void openJob(activeJob.id, true)} multiline>
+            {vi ? 'Thử tạo tiếp' : 'Retry generation'}
+          </Button>
+        )}
+        {questions.length > 0 && (
+          <View style={styles.reviewActions}>
+            <View style={styles.reviewAction}>
+              <Button testID="save-question-set" icon="checkmark" onPress={() => void save()} disabled={busy} multiline fullWidth>{saveLabel}</Button>
+            </View>
+            {partial && (
+              <View style={styles.reviewAction}>
+                <Button variant="secondary" icon="add" disabled={!canGenerate} onPress={fillMissing} multiline fullWidth>
+                  {vi ? `Tạo bù ${count - validCount} câu` : `Fill ${count - validCount} missing questions`}
+                </Button>
+              </View>
+            )}
+          </View>
+        )}
+      </Card>
+    )}
+    {(!questions.length || manualMode) && settings}
+    {!questions.length && generationQueue}
+
+    <Text style={[typography.title, { color: palette.ink, marginTop: spacing.xl, marginBottom: spacing.md }]}>{manualMode ? t.home.correctAnswerHint : (vi ? 'Các câu hỏi' : 'Questions')}</Text>
+    {questions.length === 0 && <Card><Text style={[typography.body, { color: palette.inkMuted }]}>{vi ? 'Chưa có câu hỏi. Hãy tạo từ tài liệu hoặc thêm câu thủ công.' : 'No questions yet. Generate from your source or add a question manually.'}</Text></Card>}
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: spacing.sm }}>
       <Button
         variant="secondary"
@@ -536,7 +603,7 @@ function GenerationEditor() {
               onPress={() => regenerate(question)}
               style={styles.removeButton}
             >
-              <Ionicons name="refresh" size={20} color={palette.indigo} />
+              <AppIcon name="refresh" size={20} color={palette.indigo} />
             </Pressable>
           )}
           <Pressable
@@ -546,10 +613,12 @@ function GenerationEditor() {
             onPress={() => removeQuestion(question.id)}
             style={styles.removeButton}
           >
-            <Ionicons name="trash-outline" size={20} color={palette.danger} />
+            <AppIcon name="trash-outline" size={20} color={palette.danger} />
           </Pressable>
         </View>
       </View>
+      <Text style={[typography.title, { color: palette.ink }]}>{vi ? 'Nội dung câu hỏi' : 'Question text'}</Text>
+      <TextInput testID={`question-${index}-content`} editable={!busy} accessibilityLabel={`${t.home.questionLabel} ${index + 1}`} placeholder={t.home.questionLabel} value={question.content} onChangeText={(content) => updateQuestion(question.id, (current) => ({ ...current, content }))} multiline textAlignVertical="top" style={[styles.questionInput, { color: palette.ink, borderColor: palette.paperMuted }]} />
       <View style={styles.typeWrap}>
         {(
           [
@@ -615,7 +684,7 @@ function GenerationEditor() {
           }
           style={[styles.codeToggle, { borderColor: question.multiSelect ? palette.indigo : palette.paperMuted, backgroundColor: question.multiSelect ? palette.indigoTint : palette.paper }]}
         >
-          <Ionicons name={question.multiSelect ? 'checkbox' : 'square-outline'} size={16} color={palette.indigo} />
+          <AppIcon name={question.multiSelect ? 'checkbox' : 'square-outline'} size={16} color={palette.indigo} />
           <Text style={[typography.caption, { color: palette.indigo, fontWeight: '700' }]}>
             {language === 'vi' ? 'Cho phép nhiều đáp án đúng (Multi-select)' : 'Allow multiple correct answers'}
           </Text>
@@ -650,14 +719,13 @@ function GenerationEditor() {
             : '✍️ Người chơi sẽ nhập câu trả lời tự luận ngắn (hỗ trợ chế độ ẩn danh, không chấm điểm).'}
         </Text>
       )}
-      <TextInput testID={`question-${index}-content`} editable={!busy} accessibilityLabel={`${t.home.questionLabel} ${index + 1}`} placeholder={t.home.questionLabel} value={question.content} onChangeText={(content) => updateQuestion(question.id, (current) => ({ ...current, content }))} multiline textAlignVertical="top" style={[styles.questionInput, { color: palette.ink, borderColor: palette.paperMuted }]} />
       <Pressable
         disabled={busy}
         accessibilityRole="button"
         onPress={() => setOpenCodeIds((prev) => ({ ...prev, [question.id]: !(prev[question.id] ?? Boolean(question.codeSnippet)) }))}
         style={[styles.codeToggle, { borderColor: palette.paperMuted, backgroundColor: palette.paper }]}
       >
-        <Ionicons name="code-slash-outline" size={16} color={palette.indigo} />
+        <AppIcon name="code-slash-outline" size={16} color={palette.indigo} />
         <Text style={[typography.caption, { color: palette.indigo, fontWeight: '700' }]}>
           {(openCodeIds[question.id] ?? Boolean(question.codeSnippet))
             ? (language === 'vi' ? 'Ẩn đoạn code minh hoạ' : 'Hide code snippet')
@@ -680,6 +748,11 @@ function GenerationEditor() {
           style={styles.codeInput}
         />
       )}
+      {question.options.length > 0 && (
+        <Text style={[typography.title, { color: palette.ink, marginTop: spacing.sm }]}>
+          {question.questionType === 'poll' ? (vi ? 'Lựa chọn' : 'Options') : (vi ? 'Lựa chọn và đáp án đúng' : 'Options and correct answers')}
+        </Text>
+      )}
       {question.options.map((option, optionIndex) => {
         const isMarked = question.multiSelect
           ? (question.correctIndices ?? [question.correctIndex]).includes(optionIndex)
@@ -691,7 +764,7 @@ function GenerationEditor() {
                 disabled={busy}
                 accessibilityRole={question.multiSelect ? 'checkbox' : 'radio'}
                 accessibilityState={{ selected: isMarked, checked: isMarked }}
-                accessibilityLabel={`Mark option ${optionIndex + 1} as correct`}
+                accessibilityLabel={vi ? `Chọn phương án ${optionIndex + 1} làm đáp án đúng` : `Mark option ${optionIndex + 1} as correct`}
                 onPress={() =>
                   updateQuestion(question.id, (current) => {
                     if (!current.multiSelect) return { ...current, correctIndex: optionIndex };
@@ -706,7 +779,7 @@ function GenerationEditor() {
                 }
                 style={[styles.answerMark, { backgroundColor: isMarked ? palette.mintTint : palette.paperMuted }]}
               >
-                <Ionicons
+                <AppIcon
                   name={question.multiSelect ? (isMarked ? 'checkbox' : 'square-outline') : isMarked ? 'checkmark-circle' : 'ellipse-outline'}
                   size={20}
                   color={isMarked ? palette.mint : palette.inkMuted}
@@ -725,31 +798,38 @@ function GenerationEditor() {
                   options: current.options.map((value, currentIndex) => (currentIndex === optionIndex ? nextOption : value)),
                 }))
               }
-              style={[styles.optionInput, { color: palette.ink, borderColor: palette.paperMuted }]}
+              style={[styles.optionInput, { color: palette.ink, backgroundColor: palette.paperRaised, borderColor: isMarked && question.questionType !== 'poll' ? palette.mintBorder : palette.paperMuted }]}
             />
           </View>
         );
       })}
-      <TextInput testID={`question-${index}-explanation`} editable={!busy} accessibilityLabel="Explanation" value={question.explanation} onChangeText={(explanation) => updateQuestion(question.id, (current) => ({ ...current, explanation }))} placeholder="Add an explanation" placeholderTextColor={palette.inkMuted} multiline style={[styles.explanationInput, { color: palette.ink, borderColor: palette.paperMuted }]} />
+      <Text style={[typography.title, { color: palette.ink, marginTop: spacing.sm }]}>{vi ? 'Giải thích' : 'Explanation'}</Text>
+      <TextInput testID={`question-${index}-explanation`} editable={!busy} accessibilityLabel={vi ? 'Giải thích' : 'Explanation'} value={question.explanation} onChangeText={(explanation) => updateQuestion(question.id, (current) => ({ ...current, explanation }))} placeholder={vi ? 'Thêm giải thích' : 'Add an explanation'} placeholderTextColor={palette.inkMuted} multiline style={[styles.explanationInput, { color: palette.ink, borderColor: palette.paperMuted }]} />
     </Card>)}
 
-    {busy && queueJobs.some(job => job.id === selectedJobId && job.status === 'running') && <Button variant="secondary" onPress={() => {
-      const job = jobs.find(item => item.id === generation.current?.id);
-      if (job) void cancelJob(job);
-    }}>{language === 'vi' ? 'Hủy tạo câu hỏi' : 'Cancel generation'}</Button>}
+    {questions.length > 0 && !manualMode && settings}
+    {questions.length > 0 && generationQueue}
     <View style={styles.actions}>
       {!manualMode && <Button testID="generate-from-source" variant="secondary" onPress={() => void generate()} disabled={!canGenerate}>{busy ? (language === 'vi' ? 'Đang tạo…' : 'Generating…') : (language === 'vi' ? 'Tạo từ tài liệu đã xem' : 'Generate from reviewed source')}</Button>}
-      <Button testID="save-question-set" icon="checkmark" onPress={() => void save()} disabled={busy || questions.length === 0}>{busy ? (language === 'vi' ? 'Đang xử lý…' : 'Working…') : existingSet ? t.home.saveChanges : manualMode ? t.home.saveSet : partial
-        ? (language === 'vi' ? `Lưu ${validCount} câu đã duyệt` : `Save ${validCount} reviewed questions`)
-        : (language === 'vi' ? 'Lưu bộ câu hỏi' : 'Save question set')}</Button>
+      {manualMode || questions.length === 0 ? (
+        <Button testID="save-question-set" icon="checkmark" onPress={() => void save()} disabled={busy || questions.length === 0} multiline>{saveLabel}</Button>
+      ) : (
+        <Button icon="checkmark" onPress={() => void save()} disabled={busy} multiline>{vi ? 'Lưu vào thư viện' : 'Save to library'}</Button>
+      )}
     </View>
   </Screen>;
 }
 
 const styles = StyleSheet.create({
-  controls: { padding: spacing.xl, gap: spacing.md },
+  reviewHeader: { padding: spacing.lg, gap: spacing.md, borderRadius: 12, marginBottom: spacing.lg },
+  sourceLine: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
+  shrink: { flexShrink: 1 },
+  receipt: { borderWidth: 1, borderRadius: 8, padding: spacing.md, gap: spacing.sm },
+  reviewActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  reviewAction: { flexGrow: 1, flexBasis: 175, minWidth: 0 },
+  controls: { padding: spacing.lg, gap: spacing.sm },
   choiceRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },
-  question: { marginBottom: spacing.md, gap: spacing.sm },
+  question: { marginBottom: spacing.md, gap: spacing.sm, borderRadius: 12 },
   queueCard: { marginTop: spacing.xl, gap: spacing.md },
   jobRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
   questionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: spacing.xs },
