@@ -1,3 +1,4 @@
+import { AppIcon, type IconName } from '@/shared/AppIcon';
 import { memo, useEffect, useRef, useState } from 'react';
 import { Animated, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Model3DView } from '@/shared/Model3DView';
@@ -23,10 +24,10 @@ export interface RpgCombatArena3DProps {
   reduceMotion?: boolean;
 }
 
-const SPELLS: Array<{ id: RpgSpellElement; label: string; emoji: string }> = [
-  { id: 'fire_arrow', label: 'Tên Lửa', emoji: '🏹🔥' },
-  { id: 'lightning_spear', label: 'Thương Sét', emoji: '⚡🔱' },
-  { id: 'frost_meteor', label: 'Băng Tinh', emoji: '❄️☄️' },
+const SPELLS: Array<{ id: RpgSpellElement; label: string; icon: IconName }> = [
+  { id: 'fire_arrow', label: 'Tên Lửa', icon: 'bow' },
+  { id: 'lightning_spear', label: 'Thương Sét', icon: 'flash' },
+  { id: 'frost_meteor', label: 'Băng Tinh', icon: 'snow' },
 ];
 
 export const RpgCombatArena3D = memo(function RpgCombatArena3D({
@@ -41,6 +42,7 @@ export const RpgCombatArena3D = memo(function RpgCombatArena3D({
   playerLabel = 'Đại Pháp Sư (Bạn)',
   bossLabel = 'Golem Hắc Thạch',
   height = 228,
+  reduceMotion = false,
 }: RpgCombatArena3DProps) {
   const [spell, setSpell] = useState<RpgSpellElement>('fire_arrow');
   const [projAnim] = useState(() => new Animated.Value(0));
@@ -49,6 +51,13 @@ export const RpgCombatArena3D = memo(function RpgCombatArena3D({
   const useNative = Platform.OS !== 'web';
 
   useEffect(() => {
+    if (reduceMotion) {
+      projAnim.stopAnimation();
+      rockAnim.stopAnimation();
+      shakeAnim.stopAnimation();
+      shakeAnim.setValue(0);
+      return;
+    }
     if (combatState === 'player_attack') {
       projAnim.setValue(0);
       Animated.timing(projAnim, { toValue: 1, duration: 480, useNativeDriver: useNative }).start();
@@ -65,7 +74,7 @@ export const RpgCombatArena3D = memo(function RpgCombatArena3D({
         ]),
       ]).start();
     }
-  }, [combatState, triggerKey, projAnim, rockAnim, shakeAnim, useNative]);
+  }, [combatState, triggerKey, projAnim, rockAnim, shakeAnim, useNative, reduceMotion]);
 
   const playerPct = Math.max(0, Math.min(100, Math.round((playerHp / Math.max(1, playerMaxHp)) * 100)));
   const bossPct = Math.max(0, Math.min(100, Math.round((bossHp / Math.max(1, bossMaxHp)) * 100)));
@@ -81,8 +90,9 @@ export const RpgCombatArena3D = memo(function RpgCombatArena3D({
               model="character"
               height={height - 32}
               autoRotate={false}
+              autoplay={!reduceMotion}
               animationName={
-                combatState === 'player_attack'
+                reduceMotion ? 'Idle' : combatState === 'player_attack'
                   ? 'Cast_Spell'
                   : combatState === 'enemy_attack'
                   ? 'Hit_Reaction'
@@ -100,8 +110,9 @@ export const RpgCombatArena3D = memo(function RpgCombatArena3D({
               model="bossGolem"
               height={height - 32}
               autoRotate={false}
+              autoplay={!reduceMotion}
               animationName={
-                combatState === 'enemy_attack'
+                reduceMotion ? 'Idle' : combatState === 'enemy_attack'
                   ? 'Cast_Spell'
                   : combatState === 'player_attack'
                   ? 'Hit_Reaction'
@@ -113,7 +124,7 @@ export const RpgCombatArena3D = memo(function RpgCombatArena3D({
         </View>
       </View>
 
-      {combatState === 'player_attack' ? (
+      {!reduceMotion && combatState === 'player_attack' ? (
         <Animated.Text
           style={{
             position: 'absolute',
@@ -137,7 +148,7 @@ export const RpgCombatArena3D = memo(function RpgCombatArena3D({
               🪨 GOLEM HẤT ĐÁ CHÔN VÙI! (-{damageAmount} HP)
             </Text>
           </View>
-          <Animated.Text
+          {!reduceMotion && <Animated.Text
             pointerEvents="none"
             style={{
               position: 'absolute',
@@ -150,7 +161,7 @@ export const RpgCombatArena3D = memo(function RpgCombatArena3D({
             }}
           >
             🪨💥 -{damageAmount} HP
-          </Animated.Text>
+          </Animated.Text>}
         </>
       ) : combatState === 'player_attack' ? (
         <View style={styles.combatBannerSuccess} pointerEvents="none">
@@ -188,7 +199,8 @@ export const RpgCombatArena3D = memo(function RpgCombatArena3D({
               spell === s.id && { backgroundColor: 'rgba(251, 191, 36, 0.25)', borderColor: '#FBBF24' },
             ]}
           >
-            <Text style={styles.weaponText}>{s.emoji} {s.label}</Text>
+            <AppIcon name={s.icon} size={13} color="#F8FAFC" />
+            <Text style={styles.weaponText}>{s.label}</Text>
           </Pressable>
         ))}
       </View>
@@ -250,6 +262,9 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   weaponChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     paddingHorizontal: 9,
     paddingVertical: 4,
     borderRadius: radii.pill,
