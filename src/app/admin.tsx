@@ -11,7 +11,7 @@ import {
   type ViewStyle,
   useWindowDimensions,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon, type IconName } from '@/shared/AppIcon';
 import { useRouter } from 'expo-router';
 import { Badge, BrandMark, Button, Card, OnlineStatusDot, Screen, SmoothReveal } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
@@ -53,7 +53,7 @@ const NAV_ITEMS: Array<{
   id: AdminSection;
   label: string;
   shortLabel: string;
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: IconName;
 }> = [
   { id: 'overview', label: '1. Tổng quan Hệ thống', shortLabel: 'Tổng quan', icon: 'grid-outline' },
   { id: 'users', label: '2. Quản lý Người dùng', shortLabel: 'Người dùng', icon: 'people-outline' },
@@ -94,7 +94,7 @@ function TablerKpiCard({
             { backgroundColor: positive ? 'rgba(16,185,129,0.16)' : 'rgba(239,68,68,0.16)' },
           ]}
         >
-          <Ionicons
+          <AppIcon
             name={positive ? 'trending-up' : 'trending-down'}
             size={12}
             color={positive ? '#34D399' : '#F87171'}
@@ -564,7 +564,7 @@ export default function AdminPortalScreen() {
                 <View style={{ alignItems: 'center', marginBottom: spacing.md }}>
                   <BrandMark size={60} />
                   <View style={styles.adminPill}>
-                    <Ionicons name="shield-checkmark" size={13} color="#38BDF8" />
+                    <AppIcon name="shield-checkmark" size={13} color="#38BDF8" />
                     <Text style={styles.adminPillText}>PAPYRUS ENTERPRISE ADMIN v3.0</Text>
                   </View>
                   <Text
@@ -587,7 +587,7 @@ export default function AdminPortalScreen() {
 
                 {loginError ? (
                   <View style={styles.errorBanner}>
-                    <Ionicons name="alert-circle" size={18} color="#FCA5A5" />
+                    <AppIcon name="alert-circle" size={18} color="#FCA5A5" />
                     <Text style={{ color: '#FCA5A5', fontSize: 12.5, fontWeight: '700', flex: 1 }}>
                       {loginError}
                     </Text>
@@ -617,10 +617,12 @@ export default function AdminPortalScreen() {
                     style={[styles.darkInput, { flex: 1, borderWidth: 0, marginBottom: 0 }]}
                   />
                   <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={showPass ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
                     onPress={() => setShowPass((v) => !v)}
                     style={{ paddingHorizontal: 12 }}
                   >
-                    <Ionicons
+                    <AppIcon
                       name={showPass ? 'eye-off-outline' : 'eye-outline'}
                       size={20}
                       color="#94A3B8"
@@ -648,7 +650,7 @@ export default function AdminPortalScreen() {
                 </View>
 
                 <View style={styles.credHint}>
-                  <Ionicons name="key-outline" size={14} color="#38BDF8" />
+                  <AppIcon name="key-outline" size={14} color="#38BDF8" />
                   <Text style={{ color: '#94A3B8', fontSize: 11.5, flex: 1 }}>
                     Mặc định: <Text style={{ color: '#F8FAFC', fontWeight: '800' }}>admin</Text> /{' '}
                     <Text style={{ color: '#FDE68A', fontWeight: '800' }}>Papyrus@2026</Text>
@@ -685,8 +687,8 @@ export default function AdminPortalScreen() {
             </Text>
           </View>
           {!isDesktop && (
-            <Pressable onPress={() => setSelectedUser(null)} hitSlop={8}>
-              <Ionicons name="close-circle" size={24} color="#94A3B8" />
+            <Pressable accessibilityRole="button" accessibilityLabel="Bỏ chọn người dùng" onPress={() => setSelectedUser(null)} hitSlop={8}>
+              <AppIcon name="close-circle" size={24} color="#94A3B8" />
             </Pressable>
           )}
         </View>
@@ -919,7 +921,7 @@ export default function AdminPortalScreen() {
                     onPress={() => setSection(item.id)}
                     style={[styles.sidebarItem, active && styles.sidebarItemActive]}
                   >
-                    <Ionicons name={item.icon} size={17} color={active ? '#38BDF8' : '#94A3B8'} />
+                    <AppIcon name={item.icon} size={17} color={active ? '#38BDF8' : '#94A3B8'} />
                     <Text
                       style={[
                         styles.sidebarItemText,
@@ -943,7 +945,7 @@ export default function AdminPortalScreen() {
 
             <View style={styles.sidebarFooter}>
               <Pressable onPress={() => router.replace('/')} style={styles.sidebarFooterBtn}>
-                <Ionicons name="phone-portrait-outline" size={16} color="#C7D2FE" />
+                <AppIcon name="phone-portrait-outline" size={16} color="#C7D2FE" />
                 <Text style={{ color: '#C7D2FE', fontSize: 12.5, fontWeight: '700' }}>
                   Mở Ứng dụng
                 </Text>
@@ -952,7 +954,7 @@ export default function AdminPortalScreen() {
                 onPress={() => setAuthenticated(false)}
                 style={[styles.sidebarFooterBtn, { borderColor: 'rgba(239,68,68,0.4)' }]}
               >
-                <Ionicons name="lock-closed-outline" size={16} color="#FCA5A5" />
+                <AppIcon name="lock-closed-outline" size={16} color="#FCA5A5" />
                 <Text style={{ color: '#FCA5A5', fontSize: 12.5, fontWeight: '700' }}>
                   Khóa Admin
                 </Text>
@@ -971,7 +973,7 @@ export default function AdminPortalScreen() {
                 onPress={() => setMobileDrawerOpen(true)}
                 style={styles.hamburgerBtn}
               >
-                <Ionicons name="menu" size={22} color="#F8FAFC" />
+                <AppIcon name="menu" size={22} color="#F8FAFC" />
               </Pressable>
             )}
 
@@ -1004,8 +1006,8 @@ export default function AdminPortalScreen() {
             )}
 
             {!isDesktop && (
-              <Pressable onPress={() => router.replace('/')} style={styles.mobileExitBtn}>
-                <Ionicons name="home-outline" size={18} color="#E0E7FF" />
+              <Pressable accessibilityRole="button" accessibilityLabel="Về trang chủ" onPress={() => router.replace('/')} style={styles.mobileExitBtn}>
+                <AppIcon name="home-outline" size={18} color="#E0E7FF" />
               </Pressable>
             )}
           </View>
@@ -1025,7 +1027,7 @@ export default function AdminPortalScreen() {
                       onPress={() => setSection(item.id)}
                       style={[styles.mobileTabChip, active && styles.mobileTabChipActive]}
                     >
-                      <Ionicons name={item.icon} size={14} color={active ? '#FFFFFF' : '#94A3B8'} />
+                      <AppIcon name={item.icon} size={14} color={active ? '#FFFFFF' : '#94A3B8'} />
                       <Text style={[styles.mobileTabText, active && { color: '#FFFFFF' }]}>
                         {item.shortLabel}
                       </Text>
@@ -1038,7 +1040,7 @@ export default function AdminPortalScreen() {
 
           {/* Global Search Filter */}
           <View style={styles.searchStrip}>
-            <Ionicons name="search" size={16} color="#64748B" />
+            <AppIcon name="search" size={16} color="#64748B" />
             <TextInput
               value={globalQuery}
               onChangeText={setGlobalQuery}
@@ -1047,8 +1049,8 @@ export default function AdminPortalScreen() {
               style={styles.searchStripInput}
             />
             {!!globalQuery && (
-              <Pressable onPress={() => setGlobalQuery('')}>
-                <Ionicons name="close-circle" size={18} color="#64748B" />
+              <Pressable accessibilityRole="button" accessibilityLabel="Xóa tìm kiếm" onPress={() => setGlobalQuery('')}>
+                <AppIcon name="close-circle" size={18} color="#64748B" />
               </Pressable>
             )}
           </View>
@@ -1182,8 +1184,8 @@ export default function AdminPortalScreen() {
                           </Text>
                         </Pressable>
                       ))}
-                      <Pressable onPress={() => void refreshUsers()} style={styles.sortChip}>
-                        <Ionicons name="refresh" size={13} color="#38BDF8" />
+                      <Pressable accessibilityRole="button" accessibilityLabel="Làm mới danh sách người dùng" onPress={() => void refreshUsers()} style={styles.sortChip}>
+                        <AppIcon name="refresh" size={13} color="#38BDF8" />
                       </Pressable>
                     </View>
                   </View>
@@ -1697,7 +1699,7 @@ export default function AdminPortalScreen() {
                         onPress={() => setDocAllowDownload((v) => !v)}
                         style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
                       >
-                        <Ionicons
+                        <AppIcon
                           name={docAllowDownload ? 'checkbox' : 'square-outline'}
                           size={18}
                           color="#38BDF8"
@@ -1778,13 +1780,15 @@ export default function AdminPortalScreen() {
                           </Text>
                         </Pressable>
                         <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="Xóa tài liệu"
                           onPress={() => {
                             deleteAdminDocument('Admin', doc.id);
                             showToast('Đã xóa tài liệu khỏi kho.');
                           }}
                           style={styles.sortChip}
                         >
-                          <Ionicons name="trash-outline" size={14} color="#FCA5A5" />
+                          <AppIcon name="trash-outline" size={14} color="#FCA5A5" />
                         </Pressable>
                       </View>
                     ))}
@@ -2161,8 +2165,8 @@ export default function AdminPortalScreen() {
                 <Text style={styles.sidebarTitle}>Papyrus Admin</Text>
                 <Text style={styles.sidebarSub}>Mobile Ops v3.0</Text>
               </View>
-              <Pressable onPress={() => setMobileDrawerOpen(false)}>
-                <Ionicons name="close" size={24} color="#94A3B8" />
+              <Pressable accessibilityRole="button" accessibilityLabel="Đóng" onPress={() => setMobileDrawerOpen(false)}>
+                <AppIcon name="close" size={24} color="#94A3B8" />
               </Pressable>
             </View>
             <ScrollView style={{ marginTop: spacing.md, flex: 1 }} contentContainerStyle={{ gap: 4 }}>
@@ -2177,7 +2181,7 @@ export default function AdminPortalScreen() {
                     }}
                     style={[styles.sidebarItem, active && styles.sidebarItemActive]}
                   >
-                    <Ionicons name={item.icon} size={18} color={active ? '#38BDF8' : '#94A3B8'} />
+                    <AppIcon name={item.icon} size={18} color={active ? '#38BDF8' : '#94A3B8'} />
                     <Text
                       style={[
                         styles.sidebarItemText,

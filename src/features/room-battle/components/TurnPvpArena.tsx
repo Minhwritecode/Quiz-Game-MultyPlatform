@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { Badge, Button, Card, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { calculateTieredSpeedScore } from '@/core/domain/models';
@@ -407,7 +407,7 @@ export function TurnPvpArena({
             </>
           ) : (
             <View style={styles.waitingBox}>
-              <Ionicons name="hourglass-outline" size={32} color={palette.indigo} />
+              <AppIcon name="hourglass-outline" size={32} color={palette.indigo} />
               <Text style={[typography.title, { color: palette.ink, marginTop: spacing.sm, textAlign: 'center' }]}>
                 Lượt của {activePlayer.name}
               </Text>

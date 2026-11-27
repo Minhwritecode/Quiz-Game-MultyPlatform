@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { Button, Card, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { useModerationStore } from '@/features/moderation/state/useModerationStore';
@@ -55,7 +55,7 @@ export function ReportQuestionButton({ questionKey, questionContent }: ReportQue
           },
         ]}
       >
-        <Ionicons
+        <AppIcon
           name={reported ? 'checkmark-circle-outline' : 'flag-outline'}
           size={15}
           color={reported ? palette.inkMuted : palette.danger}
@@ -94,7 +94,7 @@ export function ReportQuestionButton({ questionKey, questionContent }: ReportQue
                         },
                       ]}
                     >
-                      <Ionicons
+                      <AppIcon
                         name={active ? 'radio-button-on' : 'radio-button-off'}
                         size={18}
                         color={active ? palette.indigo : palette.inkMuted}

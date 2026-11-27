@@ -1,7 +1,7 @@
 import { errorMessage } from '@/core/domain/failure';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
@@ -104,6 +104,17 @@ export default function AuthScreen() {
   const [infoMsg, setInfoMsg] = useState<string | null>(null);
 
   const user = useAuthStore((state) => state.user);
+  const routedUser = useRef<string | null>(null);
+  const finishSignIn = useCallback(async () => {
+    const owner = useAuthStore.getState().user?.id;
+    if (!owner || routedUser.current === owner) return;
+    routedUser.current = owner;
+    const isCurrent = () => useAuthStore.getState().user?.id === owner;
+    const sourceId = await dependencies.generation.sourceHandoff.claim(owner, isCurrent).catch(() => null);
+    if (!isCurrent()) return;
+    if (sourceId) router.replace({ pathname: '/create/generate', params: { sourceId, fromSignIn: '1' } });
+    else router.replace('/');
+  }, [router]);
   const enterGuestMode = useAuthStore((state) => state.enterGuestMode);
   const reduceMotion = usePapyrusStore((state) => state.reduceMotion);
 
@@ -173,10 +184,22 @@ export default function AuthScreen() {
   }, []);
 
   useEffect(() => {
-    if (user && mode !== 'resetPassword' && mode !== 'twoFactor') {
-      router.replace('/');
-    }
-  }, [user, mode, router]);
+    if (!user || busy || mode === 'resetPassword' || mode === 'twoFactor') return;
+    if (Platform.OS === 'web' && /(?:[?#&])type=recovery(?:&|$)/.test(window.location.href)) return;
+    let active = true;
+    void checkSignInRequires2FA().then((mfa) => {
+      if (!active || useAuthStore.getState().user?.id !== user.id) return;
+      if (mfa.required) {
+        setMfaFactorId(mfa.factorId);
+        setMode('twoFactor');
+      } else {
+        void finishSignIn();
+      }
+    }).catch(() => {
+      if (active) setErrorMsg(language === 'vi' ? 'Không thể kiểm tra phiên đăng nhập. Hãy thử lại.' : 'Could not verify this session. Try again.');
+    });
+    return () => { active = false; };
+  }, [user, mode, busy, finishSignIn, language]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -187,25 +210,16 @@ export default function AuthScreen() {
       }
     }
 
-    const unsubscribe = dependencies.auth.onAuthStateChange((nextUser, event) => {
+    const unsubscribe = dependencies.auth.onAuthStateChange((_nextUser, event) => {
       if (event === 'PASSWORD_RECOVERY') {
         setMode('resetPassword');
-      } else if (nextUser && event === 'SIGNED_IN') {
-        void checkSignInRequires2FA().then((mfa) => {
-          if (mfa.required) {
-            setMfaFactorId(mfa.factorId);
-            morphToMode('twoFactor');
-          } else {
-            router.replace('/');
-          }
-        });
       }
     });
 
     return () => {
       unsubscribe();
     };
-  }, [router]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   const pwStrength = useMemo(
     () => computePasswordStrength(mode === 'resetPassword' ? newPassword : password),
@@ -221,7 +235,7 @@ export default function AuthScreen() {
         setErrorMsg(res.message || 'Mã xác thực 2FA chưa chính xác.');
         return;
       }
-      router.replace('/');
+      await finishSignIn();
     } finally {
       setBusy(false);
     }
@@ -246,7 +260,7 @@ export default function AuthScreen() {
         avatarUrl: null,
         role: 'user',
       });
-      router.replace('/');
+      await finishSignIn();
     } finally {
       setBusy(false);
     }
@@ -323,7 +337,7 @@ export default function AuthScreen() {
         usePapyrusStore.getState().addBonusXp(50);
         useStreakStore.getState().recordActivity('daily_checkin');
         setInfoMsg(t.auth.signUpSuccess);
-        setTimeout(() => router.replace('/'), 900);
+        void finishSignIn();
       }
     } else {
       const error = await dependencies.auth.signInWithPassword(cleanEmail, password);
@@ -335,7 +349,7 @@ export default function AuthScreen() {
           setMfaFactorId(mfa.factorId);
           morphToMode('twoFactor');
         } else {
-          router.replace('/');
+          await finishSignIn();
         }
       }
     }
@@ -503,7 +517,7 @@ export default function AuthScreen() {
                         active && { backgroundColor: morphMeta.accent },
                       ]}
                     >
-                      <Ionicons
+                      <AppIcon
                         name={tab.icon}
                         size={14}
                         color={active ? '#050818' : '#CBD5E1'}
@@ -552,14 +566,14 @@ export default function AuthScreen() {
 
             {errorMsg ? (
               <View style={[styles.banner, { backgroundColor: 'rgba(239,68,68,0.14)', borderColor: 'rgba(239,68,68,0.6)' }]}>
-                <Ionicons name="alert-circle" size={18} color="#FCA5A5" />
+                <AppIcon name="alert-circle" size={18} color="#FCA5A5" />
                 <Text style={[typography.caption, { color: '#FECACA', flex: 1 }]}>{errorMsg}</Text>
               </View>
             ) : null}
 
             {infoMsg ? (
               <View style={[styles.banner, { backgroundColor: 'rgba(16,185,129,0.14)', borderColor: 'rgba(16,185,129,0.6)' }]}>
-                <Ionicons name="checkmark-circle" size={18} color="#6EE7B7" />
+                <AppIcon name="checkmark-circle" size={18} color="#6EE7B7" />
                 <Text style={[typography.caption, { color: '#A7F3D0', flex: 1 }]}>{infoMsg}</Text>
               </View>
             ) : null}
@@ -605,7 +619,7 @@ export default function AuthScreen() {
             ) : mode === 'resetPassword' ? (
               <>
                 <View style={styles.darkFieldRow}>
-                  <Ionicons name="lock-closed-outline" size={18} color="#94A3B8" />
+                  <AppIcon name="lock-closed-outline" size={18} color="#94A3B8" />
                   <TextInput
                     value={newPassword}
                     onChangeText={(val) => {
@@ -617,13 +631,13 @@ export default function AuthScreen() {
                     placeholderTextColor="#64748B"
                     style={styles.darkTextInput}
                   />
-                  <Pressable onPress={() => setVisible((prev) => !prev)}>
-                    <Ionicons name={visible ? 'eye-off-outline' : 'eye-outline'} size={20} color="#94A3B8" />
+                  <Pressable accessibilityRole="button" accessibilityLabel={visible ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'} onPress={() => setVisible((prev) => !prev)}>
+                    <AppIcon name={visible ? 'eye-off-outline' : 'eye-outline'} size={20} color="#94A3B8" />
                   </Pressable>
                 </View>
 
                 <View style={styles.darkFieldRow}>
-                  <Ionicons name="shield-checkmark-outline" size={18} color="#94A3B8" />
+                  <AppIcon name="shield-checkmark-outline" size={18} color="#94A3B8" />
                   <TextInput
                     value={confirmPassword}
                     onChangeText={(val) => {
@@ -644,7 +658,7 @@ export default function AuthScreen() {
             ) : (
               <>
                 <View style={styles.darkFieldRow}>
-                  <Ionicons name="mail-outline" size={18} color="#94A3B8" />
+                  <AppIcon name="mail-outline" size={18} color="#94A3B8" />
                   <TextInput
                     value={email}
                     onChangeText={(val) => {
@@ -663,7 +677,7 @@ export default function AuthScreen() {
                 {mode !== 'forgot' && (
                   <View style={{ gap: 6 }}>
                     <View style={styles.darkFieldRow}>
-                      <Ionicons name="lock-closed-outline" size={18} color="#94A3B8" />
+                      <AppIcon name="lock-closed-outline" size={18} color="#94A3B8" />
                       <TextInput
                         value={password}
                         onChangeText={(val) => {
@@ -677,8 +691,8 @@ export default function AuthScreen() {
                         placeholderTextColor="#64748B"
                         style={styles.darkTextInput}
                       />
-                      <Pressable onPress={() => setVisible((prev) => !prev)} hitSlop={8}>
-                        <Ionicons name={visible ? 'eye-off-outline' : 'eye-outline'} size={20} color="#94A3B8" />
+                      <Pressable accessibilityRole="button" accessibilityLabel={visible ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'} onPress={() => setVisible((prev) => !prev)} hitSlop={8}>
+                        <AppIcon name={visible ? 'eye-off-outline' : 'eye-outline'} size={20} color="#94A3B8" />
                       </Pressable>
                     </View>
 
@@ -739,7 +753,7 @@ export default function AuthScreen() {
                           { opacity: pressed ? 0.84 : 1 },
                         ]}
                       >
-                        <Ionicons name="finger-print-outline" size={18} color="#A5B4FC" />
+                        <AppIcon name="finger-print-outline" size={18} color="#A5B4FC" />
                         <Text style={{ color: '#E0E7FF', fontSize: 13, fontWeight: '800' }}>
                           Đăng nhập bằng Passkey (Face ID / Touch ID)
                         </Text>
@@ -785,7 +799,7 @@ export default function AuthScreen() {
                       onPress={() => void handleMagicLink()}
                       style={styles.magicLinkBtn}
                     >
-                      <Ionicons name="sparkles-outline" size={15} color="#FBBF24" />
+                      <AppIcon name="sparkles-outline" size={15} color="#FBBF24" />
                       <Text style={{ color: '#FDE68A', fontSize: 12, fontWeight: '800' }}>
                         Đăng nhập 1 chạm bằng Email Magic Link
                       </Text>
@@ -801,6 +815,7 @@ export default function AuthScreen() {
                 accessibilityRole="button"
                 onPress={() => {
                   enterGuestMode();
+                  void dependencies.generation.sourceHandoff.clear().catch(() => undefined);
                   router.replace('/');
                 }}
                 style={styles.guestFooterBtn}
@@ -816,7 +831,7 @@ export default function AuthScreen() {
                 onPress={() => router.push('/admin')}
                 style={styles.adminFooterBtn}
               >
-                <Ionicons name="shield-checkmark-outline" size={14} color="#FBBF24" />
+                <AppIcon name="shield-checkmark-outline" size={14} color="#FBBF24" />
                 <Text style={{ color: '#FDE68A', fontSize: 12, fontWeight: '800' }}>
                   {language === 'vi' ? 'Quản trị viên' : 'Admin'}
                 </Text>

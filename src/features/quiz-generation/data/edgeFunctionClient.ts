@@ -9,6 +9,7 @@ import { synthesizeQuestionsFromSource } from './localQuizSynthesizer';
 export type GenerationProgress = { count: number; complete: boolean };
 export type GenerateOptions = {
   requestId: string;
+  ownerId?: string;
   signal: AbortSignal;
   onQuestion: (question: Question) => void | Promise<void>;
 };
@@ -22,6 +23,9 @@ export async function requestGeneratedQuestions(
   if (!supabase) throw new AppError('unavailable', 'Supabase is not configured.');
   const { data, error } = await supabase.auth.getSession();
   if (error || !data.session) throw new AppError('authentication', 'Sign in to generate questions. Manual authoring works offline.');
+  if (options.ownerId && data.session.user?.id !== options.ownerId) {
+    throw new AppError('authentication', 'Account changed. Open this draft from its original account.');
+  }
   const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
   const key = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key) throw new AppError('unavailable', 'Generation service is not configured.');

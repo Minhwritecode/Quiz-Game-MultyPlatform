@@ -1,6 +1,6 @@
 import { memo, useState } from 'react';
 import { Image, Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import type { ReactionKey, ThreadPost } from '../domain/models';
 import { Badge, Card, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
@@ -207,7 +207,7 @@ export const ThreadPostCard = memo(function ThreadPostCard({
           onPress={() => onOpenQuiz(post.attachedQuiz!.setId)}
           style={[styles.quizEmbed, { backgroundColor: palette.indigoTint, borderColor: palette.indigoBorder }]}
         >
-          <Ionicons name="school" size={22} color={palette.indigo} />
+          <AppIcon name="school" size={22} color={palette.indigo} />
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={[typography.caption, { color: palette.indigoDeep, fontWeight: '900' }]} numberOfLines={1}>
               📜 {post.attachedQuiz.title}
@@ -216,7 +216,7 @@ export const ThreadPostCard = memo(function ThreadPostCard({
               {post.attachedQuiz.subject} · {post.attachedQuiz.questionCount} câu hỏi · Chạm để vào ôn tập 3D!
             </Text>
           </View>
-          <Ionicons name="play-circle" size={26} color={palette.indigo} />
+          <AppIcon name="play-circle" size={26} color={palette.indigo} />
         </Pressable>
       ) : null}
 
@@ -226,7 +226,7 @@ export const ThreadPostCard = memo(function ThreadPostCard({
           onPress={() => void Linking.openURL(post.sourceCitation!.url)}
           style={[styles.citationBox, { backgroundColor: palette.paper, borderColor: palette.paperMuted }]}
         >
-          <Ionicons name="globe-outline" size={16} color={palette.indigo} />
+          <AppIcon name="globe-outline" size={16} color={palette.indigo} />
           <Text style={[typography.caption, { color: palette.indigo, flex: 1, fontWeight: '700' }]} numberOfLines={1}>
             Nguồn tham khảo ({post.sourceCitation.sourceName}): {post.sourceCitation.title} ↗
           </Text>
@@ -276,12 +276,12 @@ export const ThreadPostCard = memo(function ThreadPostCard({
 
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Pressable onPress={() => setCommentsOpen((o) => !o)} style={styles.iconAct}>
-            <Ionicons name="chatbubble-outline" size={17} color={palette.inkMuted} />
+            <AppIcon name="chatbubble-outline" size={17} color={palette.inkMuted} />
             <Text style={{ fontSize: 12, fontWeight: '700', color: palette.inkMuted }}>{post.comments.length}</Text>
           </Pressable>
 
           <Pressable onPress={() => onToggleRepost(post.id)} style={styles.iconAct}>
-            <Ionicons name="repeat" size={18} color={reposted ? palette.mint : palette.inkMuted} />
+            <AppIcon name="repeat" size={18} color={reposted ? palette.mint : palette.inkMuted} />
             {post.repostedByIds.length > 0 && (
               <Text style={{ fontSize: 12, fontWeight: '700', color: reposted ? palette.mint : palette.inkMuted }}>
                 {post.repostedByIds.length}
@@ -290,13 +290,13 @@ export const ThreadPostCard = memo(function ThreadPostCard({
           </Pressable>
 
           {onShareToChat && (
-            <Pressable onPress={() => onShareToChat(post)} style={styles.iconAct}>
-              <Ionicons name="paper-plane-outline" size={17} color={palette.indigo} />
+            <Pressable accessibilityRole="button" accessibilityLabel="Chia sẻ" onPress={() => onShareToChat(post)} style={styles.iconAct}>
+              <AppIcon name="paper-plane-outline" size={17} color={palette.indigo} />
             </Pressable>
           )}
 
-          <Pressable onPress={() => onToggleBookmark(post.id)} style={styles.iconAct}>
-            <Ionicons
+          <Pressable accessibilityRole="button" accessibilityLabel={bookmarked ? 'Bỏ dấu trang' : 'Đánh dấu trang'} onPress={() => onToggleBookmark(post.id)} style={styles.iconAct}>
+            <AppIcon
               name={bookmarked ? 'bookmark' : 'bookmark-outline'}
               size={18}
               color={bookmarked ? palette.gold : palette.inkMuted}
@@ -326,6 +326,8 @@ export const ThreadPostCard = memo(function ThreadPostCard({
               ]}
             />
             <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Gửi"
               disabled={!commentDraft.trim()}
               onPress={() => {
                 onComment(post.id, commentDraft);
@@ -333,7 +335,7 @@ export const ThreadPostCard = memo(function ThreadPostCard({
               }}
               style={[styles.sendCmtBtn, { backgroundColor: palette.indigo, opacity: commentDraft.trim() ? 1 : 0.45 }]}
             >
-              <Ionicons name="send" size={14} color="#FFFFFF" />
+              <AppIcon name="send" size={14} color="#FFFFFF" />
             </Pressable>
           </View>
         </View>

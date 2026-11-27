@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Alert, Animated, AppState, Easing, Platform, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { preferenceStorage } from '@/composition/preferences';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { Badge, Button, Card, IconTile, Screen, TopBar, usePalette } from '@/shared/ui';
 import { dependencies } from '@/composition/dependencies';
 import { roomApi } from '@/composition/platform';
@@ -399,7 +399,7 @@ export default function BattleScreen() {
               },
             ]}
           >
-            <Ionicons
+            <AppIcon
               name={connectionBanner === 'forfeited' ? 'close-circle' : 'wifi-outline'}
               size={18}
               color={connectionBanner === 'forfeited' ? palette.danger : '#D97706'}
@@ -420,7 +420,7 @@ export default function BattleScreen() {
         {/* Error Banner */}
         {!!error && (
           <View style={[styles.errorBox, { backgroundColor: palette.dangerTint, borderColor: palette.danger }]}>
-            <Ionicons name="alert-circle" size={18} color={palette.danger} />
+            <AppIcon name="alert-circle" size={18} color={palette.danger} />
             <Text style={[typography.caption, { color: palette.danger, flex: 1 }]}>{error}</Text>
           </View>
         )}
@@ -434,7 +434,7 @@ export default function BattleScreen() {
               onPress={() => setArenaTab('rooms')}
               style={[styles.arenaTabBtn, arenaTab === 'rooms' && { backgroundColor: palette.indigo }]}
             >
-              <Ionicons name="people-outline" size={14} color={arenaTab === 'rooms' ? palette.onPrimary : palette.inkMuted} />
+              <AppIcon name="people-outline" size={14} color={arenaTab === 'rooms' ? palette.onPrimary : palette.inkMuted} />
               <Text style={[typography.caption, { color: arenaTab === 'rooms' ? palette.onPrimary : palette.inkMuted, fontWeight: '800' }]} numberOfLines={1}>
                 {language === 'vi' ? 'Phòng nhóm' : 'Rooms'}
               </Text>
@@ -445,7 +445,7 @@ export default function BattleScreen() {
               onPress={() => setArenaTab('duel_1v1')}
               style={[styles.arenaTabBtn, arenaTab === 'duel_1v1' && { backgroundColor: palette.indigo }]}
             >
-              <Ionicons name="trophy-outline" size={14} color={arenaTab === 'duel_1v1' ? palette.onPrimary : palette.inkMuted} />
+              <AppIcon name="trophy-outline" size={14} color={arenaTab === 'duel_1v1' ? palette.onPrimary : palette.inkMuted} />
               <Text style={[typography.caption, { color: arenaTab === 'duel_1v1' ? palette.onPrimary : palette.inkMuted, fontWeight: '800' }]} numberOfLines={1}>
                 {language === 'vi' ? '1v1 ELO' : '1v1 ELO'}
               </Text>
@@ -456,7 +456,7 @@ export default function BattleScreen() {
               onPress={() => setArenaTab('arcade')}
               style={[styles.arenaTabBtn, arenaTab === 'arcade' && { backgroundColor: palette.indigo }]}
             >
-              <Ionicons name="cube-outline" size={14} color={arenaTab === 'arcade' ? palette.onPrimary : palette.inkMuted} />
+              <AppIcon name="cube-outline" size={14} color={arenaTab === 'arcade' ? palette.onPrimary : palette.inkMuted} />
               <Text style={[typography.caption, { color: arenaTab === 'arcade' ? palette.onPrimary : palette.inkMuted, fontWeight: '800' }]} numberOfLines={1}>
                 {language === 'vi' ? 'Arcade 3D' : '3D Modes'}
               </Text>
@@ -479,7 +479,7 @@ export default function BattleScreen() {
                     Ngắm bắn tên lửa Phượng Hoàng hoặc gõ cổ ngữ hạ thiên thạch bay theo khái niệm đúng.
                   </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={20} color={palette.indigo} />
+                <AppIcon name="chevron-forward" size={20} color={palette.indigo} />
               </View>
             </Card>
 
@@ -495,7 +495,7 @@ export default function BattleScreen() {
                     Ném tinh thể kiến thức vào đúng 3 lò giả kim 3D để tích chuỗi Combo.
                   </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={20} color={palette.indigo} />
+                <AppIcon name="chevron-forward" size={20} color={palette.indigo} />
               </View>
             </Card>
 
@@ -508,7 +508,7 @@ export default function BattleScreen() {
                     Đứng trực diện trên sàn đấu 3D: trả lời đúng bắn tên lửa hạ Golem, sai bị Golem hất đá chôn vùi!
                   </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={20} color={palette.indigo} />
+                <AppIcon name="chevron-forward" size={20} color={palette.indigo} />
               </View>
             </Card>
 
@@ -523,7 +523,7 @@ export default function BattleScreen() {
                       : 'Pair questions and answers inside the 3D Grand Archives.'}
                   </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={20} color={palette.indigo} />
+                <AppIcon name="chevron-forward" size={20} color={palette.indigo} />
               </View>
             </Card>
 
@@ -540,7 +540,7 @@ export default function BattleScreen() {
                       : 'Quick 4-player turn-based showdown ready anytime.'}
                   </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={20} color={palette.indigo} />
+                <AppIcon name="chevron-forward" size={20} color={palette.indigo} />
               </View>
             </Card>
           </View>
@@ -703,7 +703,7 @@ export default function BattleScreen() {
                     },
                   ]}
                 >
-                  <Ionicons name="heart" size={16} color={roomMode === 'survival' ? palette.danger : palette.inkMuted} />
+                  <AppIcon name="heart" size={16} color={roomMode === 'survival' ? palette.danger : palette.inkMuted} />
                   <Text
                     style={[
                       typography.caption,
@@ -728,7 +728,7 @@ export default function BattleScreen() {
                     },
                   ]}
                 >
-                  <Ionicons name="flash" size={16} color={roomMode === 'speed' ? palette.indigo : palette.inkMuted} />
+                  <AppIcon name="flash" size={16} color={roomMode === 'speed' ? palette.indigo : palette.inkMuted} />
                   <Text
                     style={[
                       typography.caption,
@@ -753,7 +753,7 @@ export default function BattleScreen() {
                     },
                   ]}
                 >
-                  <Ionicons name="swap-horizontal" size={16} color={roomMode === 'turn_pvp' ? palette.gold : palette.inkMuted} />
+                  <AppIcon name="swap-horizontal" size={16} color={roomMode === 'turn_pvp' ? palette.gold : palette.inkMuted} />
                   <Text
                     style={[
                       typography.caption,
@@ -809,7 +809,7 @@ export default function BattleScreen() {
                     disabled={maxPlayers <= 2}
                     style={[styles.stepBtn, { backgroundColor: palette.paperMuted, opacity: maxPlayers <= 2 ? 0.45 : 1 }]}
                   >
-                    <Ionicons name="remove" size={18} color={palette.ink} />
+                    <AppIcon name="remove" size={18} color={palette.ink} />
                   </Pressable>
                   <Text style={[typography.title, { color: palette.indigo, minWidth: 28, textAlign: 'center' }]}>
                     {maxPlayers}
@@ -821,7 +821,7 @@ export default function BattleScreen() {
                     disabled={maxPlayers >= 10}
                     style={[styles.stepBtn, { backgroundColor: palette.paperMuted, opacity: maxPlayers >= 10 ? 0.45 : 1 }]}
                   >
-                    <Ionicons name="add" size={18} color={palette.ink} />
+                    <AppIcon name="add" size={18} color={palette.ink} />
                   </Pressable>
                 </View>
               </View>
@@ -998,7 +998,7 @@ export default function BattleScreen() {
                                 opacity: pressed || kahootLoading ? 0.78 : 1,
                               })}
                             >
-                              <Ionicons name="flash" size={14} color={palette.gold} />
+                              <AppIcon name="flash" size={14} color={palette.gold} />
                               <Text style={{ color: palette.gold, fontWeight: '900', fontSize: 12 }}>
                                 {kahootLoading ? 'Đang mở Kahoot...' : 'Mở Kahoot Live'}
                               </Text>
@@ -1073,7 +1073,7 @@ export default function BattleScreen() {
                                 opacity: pressed || colosseumLoading ? 0.78 : 1,
                               })}
                             >
-                              <Ionicons name="shield-checkmark" size={14} color="#FFFFFF" />
+                              <AppIcon name="shield-checkmark" size={14} color="#FFFFFF" />
                               <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 12 }}>
                                 {colosseumLoading ? 'Đang tạo phòng...' : `Phòng Colosseum (${maxPlayers}P)`}
                               </Text>
@@ -1092,7 +1092,7 @@ export default function BattleScreen() {
                                 backgroundColor: palette.dangerTint,
                               }}
                             >
-                              <Ionicons name="alert-circle" size={15} color={palette.danger} />
+                              <AppIcon name="alert-circle" size={15} color={palette.danger} />
                               <Text style={{ fontSize: 12, color: palette.danger, flex: 1, fontWeight: '700' }}>
                                 {cardErr}
                               </Text>
@@ -1125,7 +1125,7 @@ export default function BattleScreen() {
         {/* Restoring Room */}
         {roomId && !battle && (
           <Card style={styles.restoringCard}>
-            <Ionicons name="refresh" size={28} color={palette.indigo} />
+            <AppIcon name="refresh" size={28} color={palette.indigo} />
             <Text style={[typography.body, { color: palette.ink, marginTop: spacing.sm }]}>
               {t.battle.reconnecting}
             </Text>
@@ -1350,9 +1350,9 @@ export default function BattleScreen() {
                       </Text>
                       {battle.mode === 'survival' && (
                         <View style={{ flexDirection: 'row', gap: 2, marginTop: 3 }}>
-                          <Ionicons name={(p.lives ?? 3) >= 1 ? 'heart' : 'heart-dislike'} size={14} color={(p.lives ?? 3) >= 1 ? '#EF4444' : '#94A3B8'} />
-                          <Ionicons name={(p.lives ?? 3) >= 2 ? 'heart' : 'heart-dislike'} size={14} color={(p.lives ?? 3) >= 2 ? '#EF4444' : '#94A3B8'} />
-                          <Ionicons name={(p.lives ?? 3) >= 3 ? 'heart' : 'heart-dislike'} size={14} color={(p.lives ?? 3) >= 3 ? '#EF4444' : '#94A3B8'} />
+                          <AppIcon name={(p.lives ?? 3) >= 1 ? 'heart' : 'heart-dislike'} size={14} color={(p.lives ?? 3) >= 1 ? '#EF4444' : '#94A3B8'} />
+                          <AppIcon name={(p.lives ?? 3) >= 2 ? 'heart' : 'heart-dislike'} size={14} color={(p.lives ?? 3) >= 2 ? '#EF4444' : '#94A3B8'} />
+                          <AppIcon name={(p.lives ?? 3) >= 3 ? 'heart' : 'heart-dislike'} size={14} color={(p.lives ?? 3) >= 3 ? '#EF4444' : '#94A3B8'} />
                         </View>
                       )}
                     </View>

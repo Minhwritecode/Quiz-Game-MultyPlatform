@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
-import { QuestArena3DFallback } from './QuestArena3D';
+import { QuestArena3DFallback } from './QuestArenaFallback';
 
 const QuestArenaCanvas = lazy(() => import('./QuestArenaCanvas.web'));
 

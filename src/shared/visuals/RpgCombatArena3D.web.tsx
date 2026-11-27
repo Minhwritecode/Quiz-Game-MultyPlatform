@@ -1,7 +1,7 @@
 import { Canvas, useFrame } from '@react-three/fiber';
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon, type IconName } from '@/shared/AppIcon';
 // @ts-expect-error -- three ships ESM without bundled @types/three
 import * as THREE from 'three';
 // @ts-expect-error -- three examples loader is untyped JS
@@ -28,10 +28,10 @@ export interface RpgCombatArena3DProps {
   reduceMotion?: boolean;
 }
 
-const SPELLS: Array<{ id: RpgSpellElement; label: string; color: string; glow: string; emoji: string }> = [
-  { id: 'fire_arrow', label: 'Tên Lửa', color: '#F97316', glow: '#FBBF24', emoji: '🏹🔥' },
-  { id: 'lightning_spear', label: 'Thương Sét', color: '#22D3EE', glow: '#818CF8', emoji: '⚡🔱' },
-  { id: 'frost_meteor', label: 'Băng Tinh', color: '#38BDF8', glow: '#A78BFA', emoji: '❄️☄️' },
+const SPELLS: Array<{ id: RpgSpellElement; label: string; color: string; glow: string; icon: IconName }> = [
+  { id: 'fire_arrow', label: 'Tên Lửa', color: '#F97316', glow: '#FBBF24', icon: 'bow' },
+  { id: 'lightning_spear', label: 'Thương Sét', color: '#22D3EE', glow: '#818CF8', icon: 'flash' },
+  { id: 'frost_meteor', label: 'Băng Tinh', color: '#38BDF8', glow: '#A78BFA', icon: 'snow' },
 ];
 
 function decodeDataUri(uri: string): ArrayBuffer {
@@ -614,9 +614,8 @@ export const RpgCombatArena3D = memo(function RpgCombatArena3D({
                 active && { backgroundColor: 'rgba(251, 191, 36, 0.25)', borderColor: '#FBBF24' },
               ]}
             >
-              <Text style={styles.weaponText}>
-                {s.emoji} {s.label}
-              </Text>
+              <AppIcon name={s.icon} size={13} color={active ? s.glow : '#F8FAFC'} />
+              <Text style={styles.weaponText}>{s.label}</Text>
             </Pressable>
           );
         })}
@@ -706,6 +705,9 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   weaponChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     paddingHorizontal: 9,
     paddingVertical: 4,
     borderRadius: radii.pill,

@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
@@ -159,7 +159,7 @@ export function OnboardingIllusionModal({
                 accessibilityRole="button"
                 style={styles.audioPill}
               >
-                <Ionicons
+                <AppIcon
                   name={muted ? 'volume-mute-outline' : 'volume-high-outline'}
                   size={15}
                   color="#E0E7FF"
@@ -172,14 +172,14 @@ export function OnboardingIllusionModal({
 
             <View style={styles.footerRow}>
               <Pressable onPress={replay} accessibilityRole="button" style={styles.replayBtn}>
-                <Ionicons name="refresh-outline" size={18} color="#C7D2FE" />
+                <AppIcon name="refresh-outline" size={18} color="#C7D2FE" />
                 <Text style={styles.replayText}>{isVi ? 'Xem lại' : 'Replay'}</Text>
               </Pressable>
               <Pressable onPress={onClose} accessibilityRole="button" style={styles.ctaBtn}>
                 <Text style={styles.ctaText}>
                   {isVi ? 'Bắt đầu học ngay' : 'Start Learning Now'}
                 </Text>
-                <Ionicons name="arrow-forward" size={16} color="#060A24" />
+                <AppIcon name="arrow-forward" size={16} color="#060A24" />
               </Pressable>
             </View>
           </View>

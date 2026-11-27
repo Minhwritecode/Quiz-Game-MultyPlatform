@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { useStreakStore } from '../state/useStreakStore';
 import { getLocalDateString, reconcileStreakWithHistory } from '../domain/models';
 import { radii, spacing, typography } from '@/core/theme/tokens';
@@ -164,7 +164,7 @@ export function StreakBadge() {
                       ]}
                     >
                       {day.done ? (
-                        <Ionicons name="flame" size={14} color="#FFFFFF" />
+                        <AppIcon name="flame" size={14} color="#FFFFFF" />
                       ) : (
                         <View style={styles.emptyDotInner} />
                       )}
@@ -204,7 +204,7 @@ export function StreakBadge() {
                 </View>
               ) : (
                 <View style={[styles.checkedBox, { backgroundColor: palette.mintTint, borderColor: palette.mint }]}>
-                  <Ionicons name="checkmark-circle" size={18} color={palette.mint} />
+                  <AppIcon name="checkmark-circle" size={18} color={palette.mint} />
                   <Text style={[typography.caption, { color: palette.mint, fontWeight: '800' }]}>
                     Đã hoàn thành điểm danh hôm nay!
                   </Text>

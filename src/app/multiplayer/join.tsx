@@ -9,7 +9,7 @@ import {
   View,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { Button, Card, Screen, TopBar, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { roomApi } from '@/composition/platform';
@@ -66,7 +66,7 @@ export default function JoinRoomScreen() {
       >
         <View style={styles.headerBox}>
           <View style={[styles.iconWrap, { backgroundColor: palette.indigo }]}>
-            <Ionicons name="game-controller-outline" size={32} color={palette.white} />
+            <AppIcon name="game-controller-outline" size={32} color={palette.white} />
           </View>
           <Text style={[typography.heading, { color: palette.ink, marginTop: spacing.sm }]}>
             Nhập mã phòng trực tiếp
@@ -124,7 +124,7 @@ export default function JoinRoomScreen() {
           </View>
 
           <View style={styles.infoBox}>
-            <Ionicons name="information-circle-outline" size={18} color={palette.indigo} />
+            <AppIcon name="information-circle-outline" size={18} color={palette.indigo} />
             <Text style={[typography.caption, { color: palette.inkMuted, flex: 1 }]}>
               Không cần đăng nhập! Người chơi chỉ cần mã phòng và biệt danh để tham gia ngay.
             </Text>

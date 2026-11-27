@@ -9,7 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { Button, Card, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import type { QuestionSet } from '@/core/domain/models';
@@ -450,7 +450,7 @@ function ComposerInner({
                     <Text style={{ fontSize: 11.5, fontWeight: '700', color: palette.indigo }}>
                       {communityId ? 'Trong nhóm' : AUDIENCE_LABELS[audience]}
                     </Text>
-                    <Ionicons name="chevron-down" size={12} color={palette.indigo} />
+                    <AppIcon name="chevron-down" size={12} color={palette.indigo} />
                   </Pressable>
 
                   <Pressable
@@ -469,7 +469,7 @@ function ComposerInner({
                     >
                       {activeCommunityName || 'Trang cá nhân'}
                     </Text>
-                    <Ionicons name="chevron-down" size={12} color={palette.inkMuted} />
+                    <AppIcon name="chevron-down" size={12} color={palette.inkMuted} />
                   </Pressable>
 
                   {postKind !== 'thread' ? (
@@ -617,18 +617,20 @@ function ComposerInner({
 
                 {threadParts.length > 1 ? (
                   <View style={{ gap: 4, paddingTop: 4 }}>
-                    <Pressable disabled={idx === 0} onPress={() => movePart(idx, -1)}>
-                      <Ionicons
+                    <Pressable accessibilityRole="button" accessibilityLabel="Di chuyển lên" disabled={idx === 0} onPress={() => movePart(idx, -1)}>
+                      <AppIcon
                         name="chevron-up"
                         size={17}
                         color={idx === 0 ? palette.paperMuted : palette.inkMuted}
                       />
                     </Pressable>
                     <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Di chuyển xuống"
                       disabled={idx === threadParts.length - 1}
                       onPress={() => movePart(idx, 1)}
                     >
-                      <Ionicons
+                      <AppIcon
                         name="chevron-down"
                         size={17}
                         color={
@@ -637,9 +639,11 @@ function ComposerInner({
                       />
                     </Pressable>
                     <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Xóa mục này"
                       onPress={() => setThreadParts((prev) => prev.filter((_, i) => i !== idx))}
                     >
-                      <Ionicons name="close-circle-outline" size={17} color={palette.danger} />
+                      <AppIcon name="close-circle-outline" size={17} color={palette.danger} />
                     </Pressable>
                   </View>
                 ) : null}
@@ -650,7 +654,7 @@ function ComposerInner({
               onPress={() => setThreadParts((prev) => [...prev, ''])}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start' }}
             >
-              <Ionicons name="add-circle-outline" size={17} color={palette.indigo} />
+              <AppIcon name="add-circle-outline" size={17} color={palette.indigo} />
               <Text style={{ fontSize: 12.5, fontWeight: '700', color: palette.indigo }}>
                 Thêm vào chuỗi
               </Text>
@@ -752,7 +756,7 @@ function ComposerInner({
                         onPress={() => setEditingVideoCoverItem(m)}
                         style={[styles.editCoverBadge, { backgroundColor: palette.indigo }]}
                       >
-                        <Ionicons name="film-outline" size={12} color={palette.onPrimary} />
+                        <AppIcon name="film-outline" size={12} color={palette.onPrimary} />
                         <Text
                           style={{ color: palette.onPrimary, fontSize: 10, fontWeight: '800' }}
                         >
@@ -761,10 +765,12 @@ function ComposerInner({
                       </Pressable>
                     ) : null}
                     <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Đóng"
                       onPress={() => setMediaItems((prev) => prev.filter((x) => x.id !== m.id))}
                       style={[styles.removeMediaBtn, { backgroundColor: palette.danger }]}
                     >
-                      <Ionicons name="close" size={13} color="#FFFFFF" />
+                      <AppIcon name="close" size={13} color="#FFFFFF" />
                     </Pressable>
                   </View>
                 ))}
@@ -778,15 +784,15 @@ function ComposerInner({
                   { backgroundColor: palette.indigoTint, borderColor: palette.indigoBorder },
                 ]}
               >
-                <Ionicons name="book-outline" size={16} color={palette.indigo} />
+                <AppIcon name="book-outline" size={16} color={palette.indigo} />
                 <Text
                   style={{ fontSize: 12.5, fontWeight: '700', color: palette.ink, flex: 1 }}
                   numberOfLines={1}
                 >
                   Bộ đề: {chosenSet.title} ({chosenSet.questions.length} câu)
                 </Text>
-                <Pressable onPress={() => setAttachedSetId('')}>
-                  <Ionicons name="close-circle" size={17} color={palette.inkMuted} />
+                <Pressable accessibilityRole="button" accessibilityLabel="Bỏ chọn" onPress={() => setAttachedSetId('')}>
+                  <AppIcon name="close-circle" size={17} color={palette.inkMuted} />
                 </Pressable>
               </View>
             ) : null}
@@ -805,8 +811,8 @@ function ComposerInner({
                   <Text style={{ fontSize: 13, fontWeight: '800', color: palette.ink }}>
                     Tạo khảo sát
                   </Text>
-                  <Pressable onPress={() => setShowPoll(false)}>
-                    <Ionicons name="close" size={17} color={palette.inkMuted} />
+                  <Pressable accessibilityRole="button" accessibilityLabel="Đóng" onPress={() => setShowPoll(false)}>
+                    <AppIcon name="close" size={17} color={palette.inkMuted} />
                   </Pressable>
                 </View>
                 <TextInput
@@ -926,7 +932,7 @@ function ComposerInner({
                 onPress={() => void handlePickPhotos()}
                 style={[styles.toolChip, { borderColor: palette.paperMuted }]}
               >
-                <Ionicons name="images-outline" size={16} color={palette.indigo} />
+                <AppIcon name="images-outline" size={16} color={palette.indigo} />
                 <Text style={{ fontSize: 12, fontWeight: '700', color: palette.ink }}>Ảnh</Text>
               </Pressable>
 
@@ -934,7 +940,7 @@ function ComposerInner({
                 onPress={() => void handlePickVideo()}
                 style={[styles.toolChip, { borderColor: palette.paperMuted }]}
               >
-                <Ionicons name="videocam-outline" size={16} color={palette.indigo} />
+                <AppIcon name="videocam-outline" size={16} color={palette.indigo} />
                 <Text style={{ fontSize: 12, fontWeight: '700', color: palette.ink }}>Video</Text>
               </Pressable>
 
@@ -942,7 +948,7 @@ function ComposerInner({
                 onPress={() => setStickerOpen(true)}
                 style={[styles.toolChip, { borderColor: palette.paperMuted }]}
               >
-                <Ionicons name="happy-outline" size={16} color={palette.gold} />
+                <AppIcon name="happy-outline" size={16} color={palette.gold} />
                 <Text style={{ fontSize: 12, fontWeight: '700', color: palette.ink }}>GIF</Text>
               </Pressable>
 
@@ -956,7 +962,7 @@ function ComposerInner({
                   },
                 ]}
               >
-                <Ionicons name="stats-chart-outline" size={15} color={palette.indigo} />
+                <AppIcon name="stats-chart-outline" size={15} color={palette.indigo} />
                 <Text style={{ fontSize: 12, fontWeight: '700', color: palette.ink }}>
                   Khảo sát
                 </Text>
@@ -972,7 +978,7 @@ function ComposerInner({
                   },
                 ]}
               >
-                <Ionicons name="book-outline" size={15} color={palette.indigo} />
+                <AppIcon name="book-outline" size={15} color={palette.indigo} />
                 <Text style={{ fontSize: 12, fontWeight: '700', color: palette.ink }}>Bộ đề</Text>
               </Pressable>
 
@@ -986,7 +992,7 @@ function ComposerInner({
                   },
                 ]}
               >
-                <Ionicons name="options-outline" size={15} color={palette.inkMuted} />
+                <AppIcon name="options-outline" size={15} color={palette.inkMuted} />
                 <Text style={{ fontSize: 12, fontWeight: '700', color: palette.ink }}>
                   Tùy chọn khác
                 </Text>

@@ -1,8 +1,8 @@
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Alert, Modal, Platform, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Badge, Button, Card, EmptyState, IconTile, OnlineStatusDot, Screen, usePalette } from '@/shared/ui';
+import { Alert, Modal, Platform, Pressable, Share, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { Badge, Button, Card, EmptyState, OnlineStatusDot, Screen, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { useI18n } from '@/core/i18n';
@@ -21,6 +21,8 @@ const SETS_PAGE_SIZE = 10;
 export default function LibraryScreen() {
   const router = useRouter();
   const palette = usePalette();
+  const { width } = useWindowDimensions();
+  const wideShelf = width >= 960;
   const { language, t } = useI18n();
   const [query, setQuery] = useState('');
   const syncMessage = usePapyrusStore((state) => state.syncMessage);
@@ -131,12 +133,10 @@ export default function LibraryScreen() {
   };
 
   return (
-    <Screen bottomNav>
-      {/* Stacked Clean Header — Zero Horizontal Crush on Any Viewport */}
-      <View style={styles.header}>
+    <Screen bottomNav maxWidth={1100}>
+      <View style={[styles.header, { borderBottomColor: palette.goldBorder }]}>
         <View style={styles.headerTitles}>
-          <Text style={[typography.label, { color: palette.indigo }]}>{t.library.tag}</Text>
-          <Text style={[typography.heading, { color: palette.ink, marginTop: spacing.xs }]}>
+          <Text accessibilityRole="header" style={[typography.display, { color: palette.ink }]}>
             {t.library.title}
           </Text>
           <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 4 }]}>
@@ -146,7 +146,7 @@ export default function LibraryScreen() {
 
         <View style={styles.primaryActions}>
           <View style={styles.actionFlex}>
-            <Button icon="sparkles" onPress={() => router.push('/create/scan')} variant="primary" fullWidth>
+            <Button icon="sparkles" onPress={() => router.push('/create/scan')} variant="primary" multiline fullWidth>
               {t.home.createAiBtn}
             </Button>
           </View>
@@ -155,6 +155,7 @@ export default function LibraryScreen() {
               icon="add"
               onPress={() => router.push('/create/generate?mode=manual')}
               variant="secondary"
+              multiline
               fullWidth
             >
               {t.home.createManualBtn}
@@ -171,7 +172,7 @@ export default function LibraryScreen() {
             }}
             style={[styles.utilityChip, { backgroundColor: palette.paperRaised, borderColor: palette.paperMuted }]}
           >
-            <Ionicons name="cloud-upload-outline" size={15} color={palette.indigo} />
+            <AppIcon name="cloud-upload-outline" size={15} color={palette.indigo} />
             <Text style={[typography.caption, { color: palette.ink, fontWeight: '700' }]}>
               {language === 'vi' ? 'Nhập CSV' : 'Import CSV'}
             </Text>
@@ -181,7 +182,7 @@ export default function LibraryScreen() {
             onPress={() => router.push('/sync')}
             style={[styles.utilityChip, { backgroundColor: palette.paperRaised, borderColor: palette.paperMuted }]}
           >
-            <Ionicons name="sync-outline" size={15} color={palette.indigo} />
+            <AppIcon name="sync-outline" size={15} color={palette.indigo} />
             <Text style={[typography.caption, { color: palette.ink, fontWeight: '700' }]}>
               {language === 'vi' ? 'Đồng bộ' : 'Sync'}
             </Text>
@@ -191,7 +192,7 @@ export default function LibraryScreen() {
             onPress={() => router.push('/study/history')}
             style={[styles.utilityChip, { backgroundColor: palette.paperRaised, borderColor: palette.paperMuted }]}
           >
-            <Ionicons name="time-outline" size={15} color={palette.indigo} />
+            <AppIcon name="time-outline" size={15} color={palette.indigo} />
             <Text style={[typography.caption, { color: palette.ink, fontWeight: '700' }]}>
               {t.study.historyTitle}
             </Text>
@@ -213,7 +214,7 @@ export default function LibraryScreen() {
 
       {/* Search Input */}
       <View style={[styles.search, { borderColor: palette.paperMuted, backgroundColor: palette.paperRaised }]}>
-        <Ionicons name="search" size={19} color={palette.inkMuted} />
+        <AppIcon name="search" size={19} color={palette.inkMuted} />
         <TextInput
           value={query}
           onChangeText={setQuery}
@@ -228,7 +229,7 @@ export default function LibraryScreen() {
             accessibilityLabel={language === 'vi' ? 'Xóa tìm kiếm' : 'Clear search'}
             onPress={() => setQuery('')}
           >
-            <Ionicons name="close-circle" size={18} color={palette.inkMuted} />
+            <AppIcon name="close-circle" size={18} color={palette.inkMuted} />
           </Pressable>
         )}
       </View>
@@ -236,7 +237,7 @@ export default function LibraryScreen() {
       {/* Meta Bar */}
       <View style={styles.meta}>
         <Text style={[typography.caption, { color: palette.inkMuted }]}>
-          {t.library.displayMeta} {filtered.length} / {sets.length} bộ câu hỏi
+          {t.library.displayMeta} {filtered.length} / {sets.length} {language === 'vi' ? 'bộ câu hỏi' : 'question sets'}
         </Text>
         <OnlineStatusDot />
       </View>
@@ -255,92 +256,97 @@ export default function LibraryScreen() {
           }
         />
       ) : (
-        visibleSets.map((set) => {
-          const openStudy = () =>
-            router.push({ pathname: '/study/[setId]', params: { setId: set.id } });
-          return (
-            <Card key={set.id} style={styles.setCard}>
-              <View style={styles.setRowTop}>
+        <View style={styles.shelf}>
+          {visibleSets.map((set) => {
+            const openStudy = () =>
+              router.push({ pathname: '/study/[setId]', params: { setId: set.id } });
+            return (
+              <Card key={set.id} style={[styles.setCard, { width: wideShelf ? '49%' : '100%', borderColor: palette.goldBorder }]}>
+                <View style={styles.setRowTop}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={set.title}
+                    onPress={openStudy}
+                    style={({ pressed }) => [
+                      styles.setMainTap,
+                      pressed ? { opacity: 0.84 } : undefined,
+                    ]}
+                  >
+                    <View style={[styles.cover, { backgroundColor: palette.indigoTint, borderColor: palette.indigoBorder, borderLeftColor: palette.indigo }]} accessible={false}>
+                      <AppIcon name={set.questions.length ? 'book-outline' : 'document-text-outline'} size={23} color={palette.indigoDeep} />
+                      <View style={[styles.coverSeal, { backgroundColor: palette.gold }]} />
+                    </View>
+                    <View style={styles.copy}>
+                      <Text style={[typography.title, { color: palette.ink }]} numberOfLines={2}>
+                        {set.title}
+                      </Text>
+                      <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]} numberOfLines={1}>
+                        {set.subject || t.library.uncategorized}
+                      </Text>
+                      <Text style={[typography.caption, { color: palette.inkMuted }]}>
+                        {set.questions.length} {t.library.questionsCount}
+                      </Text>
+                    </View>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={language === 'vi' ? `Tùy chọn cho ${set.title}` : `Options for ${set.title}`}
+                    disabled={actionBusyId === set.id}
+                    hitSlop={8}
+                    onPress={() => setMenuSet(set)}
+                    style={[styles.moreBtn, { backgroundColor: palette.paper }]}
+                  >
+                    <AppIcon name="ellipsis-horizontal" size={20} color={palette.inkMuted} />
+                  </Pressable>
+                </View>
+
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={set.title}
+                  accessibilityLabel={language === 'vi' ? `Học ngay ${set.title}` : `Study ${set.title}`}
                   onPress={openStudy}
                   style={({ pressed }) => [
-                    styles.setMainTap,
-                    pressed ? { opacity: 0.84 } : undefined,
+                    styles.setRowFooter,
+                    { borderTopColor: palette.paperMuted, opacity: pressed ? 0.84 : 1 },
                   ]}
                 >
-                  <IconTile
-                    icon={set.questions.length ? 'book-outline' : 'document-text-outline'}
-                    tint={set.questions.length ? 'primary' : 'reward'}
-                  />
-                  <View style={styles.copy}>
-                    <Text style={[typography.title, { color: palette.ink }]} numberOfLines={2}>
-                      {set.title}
-                    </Text>
-                    <Text style={[typography.caption, { color: palette.inkMuted, marginTop: 2 }]} numberOfLines={1}>
-                      {set.subject || t.library.uncategorized} · {set.questions.length} {t.library.questionsCount}
+                  <View style={styles.footerLeft}>
+                    <Badge
+                      tone={
+                        set.syncStatus === 'conflict'
+                          ? 'danger'
+                          : set.syncStatus === 'pending' || set.syncStatus === 'failed'
+                          ? 'reward'
+                          : 'success'
+                      }
+                    >
+                      {set.syncStatus === 'conflict'
+                        ? language === 'vi'
+                          ? 'Xung đột'
+                          : 'Conflict'
+                        : set.syncStatus === 'failed'
+                        ? language === 'vi'
+                          ? 'Chờ thử lại'
+                          : 'Retry pending'
+                        : set.syncStatus === 'pending'
+                        ? t.library.pendingSync
+                        : t.library.synced}
+                    </Badge>
+                    <Text style={[typography.caption, { color: palette.inkMuted, fontSize: 12 }]}>
+                      {new Date(set.updatedAt).toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US')}
                     </Text>
                   </View>
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={language === 'vi' ? `Tùy chọn cho ${set.title}` : `Options for ${set.title}`}
-                  disabled={actionBusyId === set.id}
-                  hitSlop={8}
-                  onPress={() => setMenuSet(set)}
-                  style={[styles.moreBtn, { backgroundColor: palette.paper }]}
-                >
-                  <Ionicons name="ellipsis-horizontal" size={20} color={palette.inkMuted} />
-                </Pressable>
-              </View>
 
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={language === 'vi' ? `Học ngay ${set.title}` : `Study ${set.title}`}
-                onPress={openStudy}
-                style={({ pressed }) => [
-                  styles.setRowFooter,
-                  { borderTopColor: palette.paperMuted, opacity: pressed ? 0.84 : 1 },
-                ]}
-              >
-                <View style={styles.footerLeft}>
-                  <Badge
-                    tone={
-                      set.syncStatus === 'conflict'
-                        ? 'danger'
-                        : set.syncStatus === 'pending' || set.syncStatus === 'failed'
-                        ? 'reward'
-                        : 'success'
-                    }
-                  >
-                    {set.syncStatus === 'conflict'
-                      ? language === 'vi'
-                        ? 'Xung đột'
-                        : 'Conflict'
-                      : set.syncStatus === 'failed'
-                      ? language === 'vi'
-                        ? 'Chờ thử lại'
-                        : 'Retry pending'
-                      : set.syncStatus === 'pending'
-                      ? t.library.pendingSync
-                      : t.library.synced}
-                  </Badge>
-                  <Text style={[typography.caption, { color: palette.inkMuted, fontSize: 12 }]}>
-                    {new Date(set.updatedAt).toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US')}
-                  </Text>
-                </View>
-
-                <View style={styles.studyPill}>
-                  <Text style={[typography.caption, { color: palette.indigo, fontWeight: '800' }]}>
-                    {language === 'vi' ? 'Học ngay' : 'Study'}
-                  </Text>
-                  <Ionicons name="arrow-forward" size={14} color={palette.indigo} />
-                </View>
-              </Pressable>
-            </Card>
-          );
-        })
+                  <View style={styles.studyPill}>
+                    <Text style={[typography.caption, { color: palette.indigo, fontWeight: '800' }]}>
+                      {language === 'vi' ? 'Học ngay' : 'Study'}
+                    </Text>
+                    <AppIcon name="arrow-forward" size={14} color={palette.indigo} />
+                  </View>
+                </Pressable>
+              </Card>
+            );
+          })}
+        </View>
       )}
 
       {filtered.length > visibleCount && (
@@ -373,8 +379,8 @@ export default function LibraryScreen() {
                       {menuSet.questions.length} {t.library.questionsCount}
                     </Text>
                   </View>
-                  <Pressable onPress={() => setMenuSet(null)} hitSlop={8} accessibilityRole="button">
-                    <Ionicons name="close" size={22} color={palette.inkMuted} />
+                  <Pressable accessibilityLabel="Đóng" onPress={() => setMenuSet(null)} hitSlop={8} accessibilityRole="button">
+                    <AppIcon name="close" size={22} color={palette.inkMuted} />
                   </Pressable>
                 </View>
 
@@ -390,7 +396,7 @@ export default function LibraryScreen() {
                         }}
                         style={styles.sheetItem}
                       >
-                        <Ionicons name="skull-outline" size={20} color={palette.danger} />
+                        <AppIcon name="skull-outline" size={20} color={palette.danger} />
                         <Text style={[typography.body, { color: palette.ink }]}>
                           {language === 'vi' ? 'Chơi Đấu trường Sinh tồn 3D' : 'Play 3D Survival Arena'}
                         </Text>
@@ -404,7 +410,7 @@ export default function LibraryScreen() {
                         }}
                         style={styles.sheetItem}
                       >
-                        <Ionicons name="extension-puzzle-outline" size={20} color={palette.gold} />
+                        <AppIcon name="extension-puzzle-outline" size={20} color={palette.gold} />
                         <Text style={[typography.body, { color: palette.ink }]}>
                           {language === 'vi' ? 'Chơi Ghép thẻ Thư viện 3D' : 'Play 3D Match Pairs'}
                         </Text>
@@ -420,7 +426,7 @@ export default function LibraryScreen() {
                     }}
                     style={styles.sheetItem}
                   >
-                    <Ionicons name="create-outline" size={20} color={palette.indigo} />
+                    <AppIcon name="create-outline" size={20} color={palette.indigo} />
                     <Text style={[typography.body, { color: palette.ink }]}>{t.home.editSet}</Text>
                   </Pressable>
                   <Pressable
@@ -432,7 +438,7 @@ export default function LibraryScreen() {
                     }}
                     style={styles.sheetItem}
                   >
-                    <Ionicons name="copy-outline" size={20} color={palette.indigo} />
+                    <AppIcon name="copy-outline" size={20} color={palette.indigo} />
                     <Text style={[typography.body, { color: palette.ink }]}>
                       {language === 'vi' ? 'Nhân bản bộ câu hỏi' : 'Duplicate set'}
                     </Text>
@@ -446,7 +452,7 @@ export default function LibraryScreen() {
                     }}
                     style={styles.sheetItem}
                   >
-                    <Ionicons name="download-outline" size={20} color={palette.mint} />
+                    <AppIcon name="download-outline" size={20} color={palette.mint} />
                     <Text style={[typography.body, { color: palette.ink }]}>
                       {language === 'vi' ? 'Xuất tệp CSV' : 'Export CSV'}
                     </Text>
@@ -460,7 +466,7 @@ export default function LibraryScreen() {
                     }}
                     style={styles.sheetItem}
                   >
-                    <Ionicons name="trash-outline" size={20} color={palette.danger} />
+                    <AppIcon name="trash-outline" size={20} color={palette.danger} />
                     <Text style={[typography.body, { color: palette.danger, fontWeight: '700' }]}>
                       {t.home.deleteSet}
                     </Text>
@@ -493,7 +499,7 @@ export default function LibraryScreen() {
                 }}
                 style={[styles.samplePill, { backgroundColor: palette.indigoTint, borderColor: palette.indigo }]}
               >
-                <Ionicons name="document-text-outline" size={15} color={palette.indigo} />
+                <AppIcon name="document-text-outline" size={15} color={palette.indigo} />
                 <Text style={[typography.caption, { color: palette.indigoDeep, fontWeight: '700' }]}>
                   {language === 'vi' ? 'Chèn nhanh dữ liệu CSV mẫu' : 'Insert sample CSV'}
                 </Text>
@@ -554,8 +560,10 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'column',
     gap: spacing.md,
-    marginTop: spacing.md,
+    marginTop: spacing.xs,
     marginBottom: spacing.lg,
+    borderBottomWidth: 1,
+    paddingBottom: spacing.lg,
   },
   headerTitles: { width: '100%' },
   primaryActions: {
@@ -563,7 +571,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.sm,
   },
-  actionFlex: { flex: 1, minWidth: 148 },
+  actionFlex: { flex: 1, minWidth: 174 },
   utilityRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -595,10 +603,22 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: spacing.md,
   },
+  shelf: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: spacing.md, paddingBottom: spacing.md },
+  cover: {
+    width: 48,
+    height: 62,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderLeftWidth: 4,
+    borderRadius: 5,
+  },
+  coverSeal: { width: 12, height: 3, borderRadius: 1, marginTop: spacing.xs },
   setCard: {
-    marginBottom: spacing.sm,
     padding: spacing.md,
-    gap: spacing.md,
+    gap: spacing.sm,
+    borderRadius: radii.sm,
+    boxShadow: '2px 3px 0 rgba(154, 88, 4, 0.14)',
   },
   setRowTop: {
     flexDirection: 'row',
@@ -624,10 +644,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: spacing.sm,
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    minHeight: 42,
+    paddingTop: spacing.xs,
     borderTopWidth: 1,
   },
-  footerLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  footerLeft: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm, flexShrink: 1 },
   studyPill: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   modalBackdrop: {
     flex: 1,

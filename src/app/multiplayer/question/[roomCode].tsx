@@ -8,7 +8,7 @@ import {
   View,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { Badge, Card, Screen, TopBar, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { gameApi } from '@/composition/platform';
@@ -205,7 +205,7 @@ export default function MultiplayerQuestionScreen() {
               },
             ]}
           >
-            <Ionicons name={isPaused ? 'pause' : 'time-outline'} size={18} color="#FFFFFF" />
+            <AppIcon name={isPaused ? 'pause' : 'time-outline'} size={18} color="#FFFFFF" />
             <Text style={styles.timerText}>{isPaused ? 'Tạm dừng' : `${remainingTime}s`}</Text>
           </View>
         </View>
@@ -223,7 +223,7 @@ export default function MultiplayerQuestionScreen() {
         {/* PAUSE BANNER */}
         {isPaused && (
           <View style={styles.pauseBanner}>
-            <Ionicons name="pause-circle" size={20} color="#F59E0B" />
+            <AppIcon name="pause-circle" size={20} color="#F59E0B" />
             <Text style={styles.pauseText}>Chủ phòng đã tạm dừng câu hỏi</Text>
           </View>
         )}
@@ -306,10 +306,10 @@ export default function MultiplayerQuestionScreen() {
                 </View>
 
                 {isCorrect && (
-                  <Ionicons name="checkmark-circle" size={26} color="#FFFFFF" />
+                  <AppIcon name="checkmark-circle" size={26} color="#FFFFFF" />
                 )}
                 {isWrong && (
-                  <Ionicons name="close-circle" size={26} color="#FFFFFF" />
+                  <AppIcon name="close-circle" size={26} color="#FFFFFF" />
                 )}
               </Pressable>
             );
@@ -318,7 +318,7 @@ export default function MultiplayerQuestionScreen() {
 
         {/* LIVE RESPONSE INDICATOR */}
         <View style={styles.feedbackRow}>
-          <Ionicons name="radio-outline" size={16} color={palette.indigo} />
+          <AppIcon name="radio-outline" size={16} color={palette.indigo} />
           <Text style={[typography.caption, { color: palette.inkMuted }]}>
             Đã có {answeredCount} câu trả lời được ghi nhận
           </Text>

@@ -9,7 +9,7 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { Button, Card, Screen, TopBar, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { useQuizStore } from '@/features/quiz-library/state/useQuizStore';
@@ -232,7 +232,7 @@ export default function CreateQuizScreen() {
                   onPress={() => handleRemoveQuestion(qIndex)}
                   style={styles.removeBtn}
                 >
-                  <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                  <AppIcon name="trash-outline" size={18} color="#EF4444" />
                   <Text style={{ color: '#EF4444', fontSize: 13, fontWeight: '700' }}>Xóa câu</Text>
                 </Pressable>
               )}
@@ -251,7 +251,7 @@ export default function CreateQuizScreen() {
               onPress={() => setOpenCodeMap((prev) => ({ ...prev, [qIndex]: !(prev[qIndex] ?? Boolean(q.codeSnippet)) }))}
               style={[styles.codeToggle, { borderColor: palette.paperMuted, backgroundColor: palette.paper }]}
             >
-              <Ionicons name="code-slash-outline" size={16} color={palette.indigo} />
+              <AppIcon name="code-slash-outline" size={16} color={palette.indigo} />
               <Text style={[typography.caption, { color: palette.indigo, fontWeight: '700' }]}>
                 {(openCodeMap[qIndex] ?? Boolean(q.codeSnippet))
                   ? 'Ẩn đoạn code minh hoạ'

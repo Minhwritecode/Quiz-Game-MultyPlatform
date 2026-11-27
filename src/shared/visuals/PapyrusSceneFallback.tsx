@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { StyleSheet, Text, View } from 'react-native';
 import { colors, spacing, typography } from '@/core/theme/tokens';
 
@@ -9,12 +9,12 @@ export default function PapyrusScene({ reduceMotion = false }: { reduceMotion?: 
       <View style={[styles.glow, reduceMotion && styles.glowStill]} />
       <View style={[styles.sheet, styles.sheetBack]}><View style={styles.rule} /><View style={styles.rule} /><View style={styles.rule} /></View>
       <View style={styles.sheet}>
-        <View style={styles.sheetHeader}><Ionicons name="sparkles" size={16} color={colors.indigo} /><Text style={styles.sheetLabel}>STUDY NOTES</Text></View>
+        <View style={styles.sheetHeader}><AppIcon name="sparkles" size={16} color={colors.indigo} /><Text style={styles.sheetLabel}>STUDY NOTES</Text></View>
         <Text style={styles.question}>What helps ideas stick?</Text>
-        <View style={styles.answer}><Ionicons name="checkmark-circle" size={17} color={colors.mint} /><Text style={styles.answerText}>Active recall</Text></View>
+        <View style={styles.answer}><AppIcon name="checkmark-circle" size={17} color={colors.mint} /><Text style={styles.answerText}>Active recall</Text></View>
         <View style={styles.answerMuted}><View style={styles.dot} /><Text style={styles.mutedText}>Review over time</Text></View>
       </View>
-      <View style={styles.stamp}><Ionicons name="flash" size={18} color={colors.white} /></View>
+      <View style={styles.stamp}><AppIcon name="flash" size={18} color={colors.white} /></View>
     </View>
   );
 }

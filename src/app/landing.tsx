@@ -9,7 +9,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { Badge, Button, Card, Screen, TopBar, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import QuestArena3D from '@/shared/visuals/QuestArena3D';
@@ -179,7 +179,7 @@ export default function LandingShowcaseScreen() {
               accessibilityRole="button"
               accessibilityLabel="Chuyển chế độ 3D"
             >
-              <Ionicons name="cube-outline" size={14} color="#E0E7FF" />
+              <AppIcon name="cube-outline" size={14} color="#E0E7FF" />
               <Text style={styles.toggle3dText}>
                 {interactive3D ? '3D GLB Bật' : 'Tương tác 3D'}
               </Text>
@@ -256,7 +256,7 @@ export default function LandingShowcaseScreen() {
             </View>
 
             <View style={[styles.previewFooter, { borderTopColor: palette.paperMuted }]}>
-              <Ionicons name="flash" size={16} color="#F59E0B" />
+              <AppIcon name="flash" size={16} color="#F59E0B" />
               <Text style={[typography.caption, { color: palette.inkMuted, flex: 1 }]}>
                 Điểm tốc độ 10 bậc — trả lời chuẩn càng nhanh, hệ số thưởng càng cao.
               </Text>
@@ -314,7 +314,7 @@ export default function LandingShowcaseScreen() {
             <Card key={pillar.tag} style={styles.pillarCard}>
               <View style={styles.pillarTop}>
                 <View style={[styles.featIconWrap, { backgroundColor: palette.indigoTint }]}>
-                  <Ionicons name={pillar.icon} size={22} color={palette.indigo} />
+                  <AppIcon name={pillar.icon} size={22} color={palette.indigo} />
                 </View>
                 <Text style={[typography.label, { color: palette.indigo, fontSize: 11 }]}>{pillar.tag}</Text>
               </View>
@@ -364,7 +364,7 @@ export default function LandingShowcaseScreen() {
           {USE_CASES.map((uc) => (
             <Card key={uc.title} style={styles.useCaseCard}>
               <View style={[styles.featIconWrap, { backgroundColor: palette.indigoTint }]}>
-                <Ionicons name={uc.icon} size={20} color={palette.indigo} />
+                <AppIcon name={uc.icon} size={20} color={palette.indigo} />
               </View>
               <Text style={[typography.title, { color: palette.ink, fontSize: 15, marginTop: spacing.xs }]}>
                 {uc.title}
@@ -454,7 +454,7 @@ export default function LandingShowcaseScreen() {
                   <Text style={[typography.title, { color: palette.ink, flex: 1, fontSize: 15 }]}>
                     {faq.q}
                   </Text>
-                  <Ionicons name={isOpen ? 'chevron-up' : 'chevron-down'} size={20} color={palette.indigo} />
+                  <AppIcon name={isOpen ? 'chevron-up' : 'chevron-down'} size={20} color={palette.indigo} />
                 </Pressable>
 
                 {isOpen && (

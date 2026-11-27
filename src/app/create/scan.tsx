@@ -4,7 +4,7 @@ import { AppError, errorMessage } from '@/core/domain/failure';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { Badge, Button, Card, ProgressBar, Screen, TopBar, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
@@ -43,6 +43,7 @@ const OCR_LANGUAGES: Array<{ code: string; label: string }> = [
 
 export default function ScanScreen() {
   const router = useRouter();
+  const signedIn = useAuthStore((state) => Boolean(state.user));
   const palette = usePalette();
   const saveSourceDocument = usePapyrusStore((state) => state.saveSourceDocument);
   const [text, setText] = useState('');
@@ -211,7 +212,7 @@ export default function ScanScreen() {
       await dependencies.sources.save(document);
       if (useAuthStore.getState().user?.id !== account) return;
       saveSourceDocument(document);
-      router.push('/create/generate');
+      router.push({ pathname: '/create/generate', params: { sourceId: document.id } });
     } catch (error) {
       setMessage(errorMessage(error, 'Không lưu được tài liệu. Hãy thử lại.'));
     } finally {
@@ -247,12 +248,12 @@ export default function ScanScreen() {
             { backgroundColor: palette.paperRaised, borderColor: pressed ? palette.indigo : palette.paperMuted },
           ]}
         >
-          <Ionicons name="document-outline" size={23} color={palette.indigo} />
+          <AppIcon name="document-outline" size={23} color={palette.indigo} />
           <View style={styles.sourceCopy}>
             <Text style={[typography.title, { color: palette.ink }]}>Chọn tệp</Text>
             <Text style={[typography.caption, { color: palette.inkMuted }]}>PDF, DOCX, Markdown, TXT · tối đa 20 MB</Text>
           </View>
-          <Ionicons name="add" size={20} color={palette.indigo} />
+          <AppIcon name="add" size={20} color={palette.indigo} />
         </Pressable>
         <View style={styles.captureRow}>
           <View style={styles.captureAction}>
@@ -272,11 +273,11 @@ export default function ScanScreen() {
           onPress={() => setShowOcrSettings((current) => !current)}
           style={styles.ocrToggle}
         >
-          <Ionicons name="options-outline" size={16} color={palette.inkMuted} />
+          <AppIcon name="options-outline" size={16} color={palette.inkMuted} />
           <Text style={[typography.caption, styles.sourceCopy, { color: palette.inkMuted }]}>
             Ngôn ngữ ảnh · {OCR_LANGUAGES.find((item) => item.code === ocrLanguage)?.label}
           </Text>
-          <Ionicons name={showOcrSettings ? 'chevron-up' : 'chevron-down'} size={14} color={palette.inkMuted} />
+          <AppIcon name={showOcrSettings ? 'chevron-up' : 'chevron-down'} size={14} color={palette.inkMuted} />
         </Pressable>
         {showOcrSettings && (
           <View style={styles.langWrap}>
@@ -356,7 +357,7 @@ export default function ScanScreen() {
                   onPress={() => setPages(togglePageSelected(pages, pg.id))}
                   style={styles.pageTitle}
                 >
-                  <Ionicons
+                  <AppIcon
                     name={pg.selected ? 'checkbox' : 'square-outline'}
                     size={20}
                     color={pg.selected ? palette.indigo : palette.inkMuted}
@@ -374,7 +375,7 @@ export default function ScanScreen() {
                     onPress={() => setPages(reorderScanPages(pages, idx, idx - 1))}
                     style={[styles.miniBtn, { opacity: idx === 0 ? 0.35 : 1 }]}
                   >
-                    <Ionicons name="arrow-up" size={15} color={palette.ink} />
+                    <AppIcon name="arrow-up" size={15} color={palette.ink} />
                   </Pressable>
                   <Pressable
                     accessibilityRole="button"
@@ -383,7 +384,7 @@ export default function ScanScreen() {
                     onPress={() => setPages(reorderScanPages(pages, idx, idx + 1))}
                     style={[styles.miniBtn, { opacity: idx === pages.length - 1 ? 0.35 : 1 }]}
                   >
-                    <Ionicons name="arrow-down" size={15} color={palette.ink} />
+                    <AppIcon name="arrow-down" size={15} color={palette.ink} />
                   </Pressable>
                   {pg.uri ? (
                     <Pressable
@@ -393,11 +394,11 @@ export default function ScanScreen() {
                       onPress={() => void rotatePage90(pg)}
                       style={styles.miniBtn}
                     >
-                      <Ionicons name="refresh-circle-outline" size={17} color={palette.indigo} />
+                      <AppIcon name="refresh-circle-outline" size={17} color={palette.indigo} />
                     </Pressable>
                   ) : null}
                   <Pressable accessibilityRole="button" accessibilityLabel="Chụp lại" disabled={busy} onPress={() => void chooseImage(true, pg.id)} style={styles.miniBtn}>
-                    <Ionicons name="camera-reverse-outline" size={15} color={palette.indigo} />
+                    <AppIcon name="camera-reverse-outline" size={15} color={palette.indigo} />
                   </Pressable>
                   <Pressable
                     accessibilityRole="button"
@@ -406,10 +407,10 @@ export default function ScanScreen() {
                     onPress={() => setPages(togglePageNeedsReview(pages, pg.id))}
                     style={[styles.miniBtn, pg.needsReview && { backgroundColor: '#FEF3C7' }]}
                   >
-                    <Ionicons name="flag-outline" size={15} color={pg.needsReview ? '#D97706' : palette.inkMuted} />
+                    <AppIcon name="flag-outline" size={15} color={pg.needsReview ? '#D97706' : palette.inkMuted} />
                   </Pressable>
                   <Pressable accessibilityRole="button" accessibilityLabel="Xóa mục" disabled={busy} onPress={() => setPages(removeScanPage(pages, pg.id))} style={styles.miniBtn}>
-                    <Ionicons name="trash-outline" size={15} color={palette.danger} />
+                    <AppIcon name="trash-outline" size={15} color={palette.danger} />
                   </Pressable>
                 </View>
               </View>
@@ -458,7 +459,9 @@ export default function ScanScreen() {
           {busy ? 'Đang xử lý…' : 'Tiếp tục'}
         </Button>
         <Text style={[typography.caption, { color: palette.inkMuted }]}>
-          Văn bản đã duyệt dùng để tạo câu hỏi và được đồng bộ khi bạn đăng nhập.
+          {signedIn
+            ? 'Văn bản đã duyệt dùng để tạo câu hỏi và được đồng bộ với tài khoản.'
+            : 'Bạn có thể duyệt nội dung trước. Khi muốn tạo bằng AI, hãy đăng nhập để tiếp tục với tài liệu này.'}
         </Text>
       </View>
     </Screen>

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { Badge, Button, Card, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import type { Question } from '@/core/domain/models';
@@ -99,7 +99,7 @@ export function InteractiveQuestionView({
                 },
               ]}
             >
-              <Ionicons
+              <AppIcon
                 name={isPicked ? 'checkbox' : 'square-outline'}
                 size={22}
                 color={isRight ? palette.mint : isWrong ? palette.danger : isPicked ? palette.indigo : palette.inkMuted}
@@ -308,7 +308,7 @@ export function InteractiveQuestionView({
             style={[styles.openTextInput, { color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paper }]}
           />
           <Pressable onPress={() => setAnonymous((v) => !v)} style={styles.anonRow}>
-            <Ionicons name={anonymous ? 'checkbox' : 'square-outline'} size={18} color={palette.indigo} />
+            <AppIcon name={anonymous ? 'checkbox' : 'square-outline'} size={18} color={palette.indigo} />
             <Text style={[typography.caption, { color: palette.inkMuted }]}>Gửi ẩn danh</Text>
           </Pressable>
           <Button variant="primary" disabled={!openText.trim()} onPress={() => onComplete(true, 0)} fullWidth>

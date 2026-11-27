@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { Badge, Button, Card, Screen, TopBar, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { useAuthStore } from '@/core/state/useAuthStore';
@@ -252,7 +252,7 @@ export default function UserProfileScreen() {
       <Screen bottomNav>
         <TopBar title="Trang cá nhân" />
         <Card style={{ alignItems: 'center', paddingVertical: spacing.xxl, gap: 10 }}>
-          <Ionicons name="person-remove-outline" size={40} color={palette.inkMuted} />
+          <AppIcon name="person-remove-outline" size={40} color={palette.inkMuted} />
           <Text style={[typography.title, { color: palette.ink }]}>
             Không thể truy cập trang cá nhân
           </Text>
@@ -296,8 +296,8 @@ export default function UserProfileScreen() {
         title={targetProfile.displayName}
         action={
           !isGuest ? (
-            <Pressable onPress={() => setSafetyModalOpen(true)} style={{ padding: 6 }}>
-              <Ionicons name="ellipsis-horizontal" size={20} color={palette.ink} />
+            <Pressable accessibilityRole="button" accessibilityLabel="Tùy chọn hồ sơ" onPress={() => setSafetyModalOpen(true)} style={{ padding: 6 }}>
+              <AppIcon name="ellipsis-horizontal" size={20} color={palette.ink} />
             </Pressable>
           ) : undefined
         }
@@ -510,7 +510,7 @@ export default function UserProfileScreen() {
                 { borderColor: palette.paperMuted, backgroundColor: palette.paperRaised },
               ]}
             >
-              <Ionicons name="share-social-outline" size={18} color={palette.ink} />
+              <AppIcon name="share-social-outline" size={18} color={palette.ink} />
             </Pressable>
           </View>
 
@@ -589,7 +589,7 @@ export default function UserProfileScreen() {
 
       {!canSeePrivateContent ? (
         <Card style={{ alignItems: 'center', paddingVertical: spacing.xl, gap: 8 }}>
-          <Ionicons name="lock-closed" size={32} color={palette.indigo} />
+          <AppIcon name="lock-closed" size={32} color={palette.indigo} />
           <Text style={[typography.title, { color: palette.ink }]}>
             Tài khoản này ở chế độ riêng tư
           </Text>
@@ -755,7 +755,7 @@ export default function UserProfileScreen() {
         <View style={{ gap: 8 }}>
           {joinedCommunities.map((c) => (
             <Card key={c.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <Ionicons name="people" size={22} color={palette.indigo} />
+              <AppIcon name="people" size={22} color={palette.indigo} />
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={{ fontSize: 14, fontWeight: '800', color: palette.ink }}>
                   {c.name}
@@ -896,7 +896,7 @@ export default function UserProfileScreen() {
                         paddingVertical: 8,
                       }}
                     >
-                      <Ionicons name="person-circle" size={26} color={palette.indigo} />
+                      <AppIcon name="person-circle" size={26} color={palette.indigo} />
                       <Text
                         style={{
                           fontSize: 13.5,
@@ -907,7 +907,7 @@ export default function UserProfileScreen() {
                       >
                         {label}
                       </Text>
-                      <Ionicons name="chevron-forward" size={16} color={palette.inkMuted} />
+                      <AppIcon name="chevron-forward" size={16} color={palette.inkMuted} />
                     </Pressable>
                   );
                 })}

@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { useRouter } from 'expo-router';
 import { Badge, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
@@ -39,7 +39,7 @@ export const SharedPostCard = memo(function SharedPostCard({
   if (!livePost || !accessible) {
     return (
       <View style={[styles.unavailableCard, { backgroundColor: palette.paper, borderColor: palette.paperMuted }]}>
-        <Ionicons name="lock-closed-outline" size={18} color={palette.inkMuted} />
+        <AppIcon name="lock-closed-outline" size={18} color={palette.inkMuted} />
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={[typography.caption, { color: palette.ink, fontWeight: '800' }]}>
             Nội dung không khả dụng
@@ -133,7 +133,7 @@ export const SharedPostCard = memo(function SharedPostCard({
           <Image source={{ uri: coverUri }} style={styles.mediaImg} resizeMode="cover" />
           {isVideo && (
             <View style={styles.videoBadge}>
-              <Ionicons name="play" size={13} color="#FFFFFF" />
+              <AppIcon name="play" size={13} color="#FFFFFF" />
               <Text style={{ color: '#FFFFFF', fontSize: 10.5, fontWeight: '800' }}>
                 Video{firstMedia?.durationSec ? ` · ${firstMedia.durationSec}s` : ''}
               </Text>
@@ -149,7 +149,7 @@ export const SharedPostCard = memo(function SharedPostCard({
         </Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
           <Text style={{ fontSize: 11, fontWeight: '800', color: palette.indigo }}>Xem bài gốc</Text>
-          <Ionicons name="arrow-forward" size={12} color={palette.indigo} />
+          <AppIcon name="arrow-forward" size={12} color={palette.indigo} />
         </View>
       </View>
     </Pressable>

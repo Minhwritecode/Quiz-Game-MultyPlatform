@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { Text, View } from 'react-native';
 import { Button, Card, Screen, TopBar, usePalette } from '@/shared/ui';
 import { spacing, typography } from '@/core/theme/tokens';
@@ -79,7 +79,7 @@ export default function PostDetailScreen() {
 
       {!rawPost || !accessible ? (
         <Card style={{ alignItems: 'center', paddingVertical: spacing.xxl, gap: 10 }}>
-          <Ionicons name="lock-closed-outline" size={40} color={palette.inkMuted} />
+          <AppIcon name="lock-closed-outline" size={40} color={palette.inkMuted} />
           <Text style={[typography.title, { color: palette.ink }]}>Nội dung không khả dụng</Text>
           <Text style={[typography.caption, { color: palette.inkMuted, textAlign: 'center' }]}>
             Bài viết này không tồn tại, đã hết hạn sau 24 giờ, bị gỡ bỏ hoặc bạn không có quyền xem.

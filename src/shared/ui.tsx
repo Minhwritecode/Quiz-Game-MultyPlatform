@@ -4,7 +4,7 @@ import { useRouteRefreshStore } from '@/core/state/useRouteRefreshStore';
 import { useNotificationStore } from '@/features/notifications/state/useNotificationStore';
 import { useStreakStore } from '@/features/streak/state/useStreakStore';
 import { useAssistantUiStore } from '@/core/state/useAssistantUiStore';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon, type IconName } from '@/shared/AppIcon';
 import { useRouter, usePathname } from 'expo-router';
 import { memo, useEffect, useMemo, useRef, useState, type ComponentRef, type PropsWithChildren, type ReactNode } from 'react';
 import {
@@ -27,13 +27,18 @@ import * as Haptics from 'expo-haptics';
 import { colors, palettes, radii, shadows, spacing, typography } from '@/core/theme/tokens';
 import { useI18n } from '@/core/i18n';
 import { NotificationBell } from '@/features/notifications/presentation/NotificationBell';
+import { PapyrusBackdrop } from '@/shared/PapyrusBackdrop';
 
-export type IconName = keyof typeof Ionicons.glyphMap;
+export type { IconName } from '@/shared/AppIcon';
 
-export function usePalette() {
+export function useIsDarkTheme() {
   const system = useColorScheme();
   const theme = usePapyrusStore((state) => state.theme);
-  return palettes[(theme === 'system' ? system : theme) === 'dark' ? 'dark' : 'light'];
+  return (theme === 'system' ? system : theme) === 'dark';
+}
+
+export function usePalette() {
+  return palettes[useIsDarkTheme() ? 'dark' : 'light'];
 }
 
 /**
@@ -204,6 +209,7 @@ export function Screen({
   onPullRefresh?: () => Promise<void> | void;
 }>) {
   const palette = usePalette();
+  const isDark = useIsDarkTheme();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const desktopWeb = Platform.OS === 'web' && width >= 900;
@@ -348,6 +354,7 @@ export function Screen({
       style={[styles.safe, { backgroundColor: transparent ? 'transparent' : palette.paper }]}
       edges={['top', 'left', 'right']}
     >
+      {!transparent && <PapyrusBackdrop isDark={isDark} />}
       {bottomNav && desktopWeb && <DesktopNav />}
 
       {/* Minimalist silent orbital pull indicator (driven by Animated.Value — zero scroll layout shift!) */}
@@ -389,7 +396,7 @@ export function Screen({
               ],
             }}
           >
-            <Ionicons name="sync" size={16} color={palette.indigo} />
+            <AppIcon name="sync" size={16} color={palette.indigo} />
           </Animated.View>
         </View>
       )}
@@ -534,7 +541,7 @@ export const TopBar = memo(function TopBar({
         ]}
       >
         {({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => (
-          <Ionicons
+          <AppIcon
             name="arrow-back"
             size={20}
             color={hovered || pressed ? palette.onPrimary : lightContent ? '#F3EFE0' : palette.indigoDeep}
@@ -583,7 +590,7 @@ export const BrandMark = memo(function BrandMark({ size = 46 }: { size?: number 
         },
       ]}
     >
-      <Ionicons name="bookmarks" size={iconSize} color="#FFFDF8" />
+      <AppIcon name="bookmarks" size={iconSize} color="#FFFDF8" />
       <View
         style={{
           position: 'absolute',
@@ -599,7 +606,7 @@ export const BrandMark = memo(function BrandMark({ size = 46 }: { size?: number 
           alignItems: 'center',
         }}
       >
-        <Ionicons name="sparkles" size={Math.round(badgeSize * 0.56)} color="#FFFDF8" />
+        <AppIcon name="sparkles" size={Math.round(badgeSize * 0.56)} color="#FFFDF8" />
       </View>
     </View>
   );
@@ -740,6 +747,7 @@ export function Button({
   icon,
   disabled = false,
   fullWidth = false,
+  multiline = false,
   testID,
 }: {
   children: ReactNode;
@@ -749,6 +757,7 @@ export function Button({
   icon?: IconName;
   disabled?: boolean;
   fullWidth?: boolean;
+  multiline?: boolean;
   testID?: string;
 }) {
   const palette = usePalette();
@@ -791,13 +800,14 @@ export function Button({
         Platform.OS === 'web' && !disabled ? ({ cursor: 'pointer' } as unknown as ViewStyle) : undefined,
       ]}
     >
-      {icon && <Ionicons name={icon} size={size === 'sm' ? 15 : 18} color={cfg.fg} />}
+      {icon && <AppIcon name={icon} size={size === 'sm' ? 15 : 18} color={cfg.fg} />}
       <Text
         style={[
           typography.body,
           { color: cfg.fg, fontWeight: '800', fontSize: size === 'sm' ? 12.5 : undefined },
+          multiline && { flexShrink: 1, textAlign: 'center' },
         ]}
-        numberOfLines={1}
+        numberOfLines={multiline ? undefined : 1}
       >
         {children}
       </Text>
@@ -911,7 +921,7 @@ export const StatCard = memo(function StatCard({
   }[tone];
   return (
     <Card style={styles.statCard}>
-      <Ionicons name={icon} size={22} color={toneColor} />
+      <AppIcon name={icon} size={22} color={toneColor} />
       <Text style={[typography.heading, { color: palette.ink, marginTop: spacing.sm, fontVariant: ['tabular-nums'] }]}>
         {value}
       </Text>
@@ -934,7 +944,7 @@ export const EmptyState = memo(function EmptyState({
   const palette = usePalette();
   return (
     <Card style={styles.emptyState}>
-      <Ionicons name={icon} size={34} color={palette.indigo} />
+      <AppIcon name={icon} size={34} color={palette.indigo} />
       <Text style={[typography.title, { color: palette.ink, marginTop: spacing.md, textAlign: 'center' }]}>
         {title}
       </Text>
@@ -949,6 +959,7 @@ export const BottomNav = memo(function BottomNav() {
   const router = useRouter();
   const pathname = usePathname();
   const palette = usePalette();
+  const isDark = useIsDarkTheme();
   const insets = useSafeAreaInsets();
   const { t } = useI18n();
   const items = useMemo<
@@ -1021,8 +1032,9 @@ export const BottomNav = memo(function BottomNav() {
             ]}
           >
             {active ? <View style={[styles.navActiveBar, { backgroundColor: palette.indigo }]} /> : null}
-            <Ionicons
-              name={active ? (item.icon.replace('-outline', '') as IconName) : item.icon}
+            <AppIcon
+              name={item.icon}
+              emphasized={active}
               size={21}
               color={active ? palette.indigo : palette.inkMuted}
             />
@@ -1133,7 +1145,7 @@ export const DesktopNav = memo(function DesktopNav() {
               },
             ]}
           >
-            <Ionicons name="chatbubbles-outline" size={19} color={palette.indigo} />
+            <AppIcon name="chatbubbles-outline" size={19} color={palette.indigo} />
           </Pressable>
           <Pressable
             accessibilityRole="button"
@@ -1151,7 +1163,7 @@ export const DesktopNav = memo(function DesktopNav() {
             onPress={() => router.push('/profile')}
             style={[styles.desktopSettings, { borderColor: palette.paperMuted }]}
           >
-            <Ionicons name="person-outline" size={19} color={palette.inkMuted} />
+            <AppIcon name="person-outline" size={19} color={palette.inkMuted} />
           </Pressable>
           <Pressable
             accessibilityRole="link"
@@ -1159,7 +1171,7 @@ export const DesktopNav = memo(function DesktopNav() {
             onPress={() => router.replace('/settings')}
             style={[styles.desktopSettings, { borderColor: palette.paperMuted }]}
           >
-            <Ionicons name="settings-outline" size={19} color={palette.inkMuted} />
+            <AppIcon name="settings-outline" size={19} color={palette.inkMuted} />
           </Pressable>
           <Pressable
             accessibilityRole="link"
@@ -1169,7 +1181,7 @@ export const DesktopNav = memo(function DesktopNav() {
               { backgroundColor: palette.indigo, opacity: hovered ? 0.92 : 1 },
             ]}
           >
-            <Ionicons name="sparkles-outline" size={17} color={palette.onPrimary} />
+            <AppIcon name="sparkles-outline" size={17} color={palette.onPrimary} />
             <Text style={[typography.caption, { color: palette.onPrimary, fontWeight: '800' }]}>
               {t.home.createAiBtn}
             </Text>
@@ -1242,7 +1254,7 @@ export const IconTile = memo(function IconTile({
   }[tint];
   return (
     <View style={[styles.iconTile, { backgroundColor: bg }]}>
-      <Ionicons name={icon} size={22} color={fg} />
+      <AppIcon name={icon} size={22} color={fg} />
     </View>
   );
 });
@@ -1293,7 +1305,7 @@ const styles = StyleSheet.create({
   topAction: { marginLeft: 'auto', minWidth: 36, alignItems: 'flex-end', justifyContent: 'center' },
   iconButton: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   brandMark: { alignItems: 'center', justifyContent: 'center' },
-  card: { borderRadius: radii.md, borderCurve: 'continuous', borderWidth: 1, padding: spacing.lg },
+  card: { borderRadius: radii.md, borderCurve: 'continuous', borderWidth: 1, borderBottomWidth: 2.5, padding: spacing.lg },
   button: {
     minHeight: 48,
     borderRadius: radii.sm,

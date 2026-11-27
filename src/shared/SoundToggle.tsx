@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { Pressable, StyleSheet, Text } from 'react-native';
 import { sfx } from '@/core/audio/sfx';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
@@ -37,7 +37,7 @@ export function SoundToggle() {
         },
       ]}
     >
-      <Ionicons
+      <AppIcon
         name={!isMuted ? 'volume-high-outline' : 'volume-mute-outline'}
         size={14}
         color={!isMuted ? palette.mint : palette.inkMuted}

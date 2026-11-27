@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -510,11 +510,11 @@ export default function MatchGameScreen() {
             accessibilityRole="button"
             accessibilityLabel="Switch question set"
           >
-            <Ionicons name="folder-outline" size={16} color={CYAN} />
+            <AppIcon name="folder-outline" size={16} color={CYAN} />
             <Text style={[styles.pickerPillText, { color: CYAN }]} numberOfLines={1}>
               {currentSet?.title || t.match.selectSet}
             </Text>
-            <Ionicons name="chevron-down" size={14} color={CYAN} />
+            <AppIcon name="chevron-down" size={14} color={CYAN} />
           </Pressable>
         }
       />
@@ -564,7 +564,7 @@ export default function MatchGameScreen() {
         <View style={styles.statItem}>
           <Text style={[typography.caption, { color: '#CBD5E1' }]}>{t.match.timer}</Text>
           <View style={styles.statValRow}>
-            <Ionicons name="timer-outline" size={18} color="#818CF8" />
+            <AppIcon name="timer-outline" size={18} color="#818CF8" />
             <Text style={[typography.title, { color: '#F8FAFC', fontVariant: ['tabular-nums'] }]}>{formatTimer(seconds)}</Text>
           </View>
         </View>
@@ -574,7 +574,7 @@ export default function MatchGameScreen() {
         <View style={styles.statItem}>
           <Text style={[typography.caption, { color: '#CBD5E1' }]}>{t.match.moves}</Text>
           <View style={styles.statValRow}>
-            <Ionicons name="swap-horizontal" size={18} color={GOLD} />
+            <AppIcon name="swap-horizontal" size={18} color={GOLD} />
             <Text style={[typography.title, { color: '#F8FAFC', fontVariant: ['tabular-nums'] }]}>{moves}</Text>
           </View>
         </View>
@@ -584,7 +584,7 @@ export default function MatchGameScreen() {
         <View style={styles.statItem}>
           <Text style={[typography.caption, { color: '#CBD5E1' }]}>{t.match.combo}</Text>
           <View style={styles.statValRow}>
-            <Ionicons name="flame" size={18} color={combo > 1 ? '#FB7185' : '#94A3B8'} />
+            <AppIcon name="flame" size={18} color={combo > 1 ? '#FB7185' : '#94A3B8'} />
             <Text
               style={[
                 typography.title,
@@ -601,7 +601,7 @@ export default function MatchGameScreen() {
         <View style={styles.statItem}>
           <Text style={[typography.caption, { color: '#CBD5E1' }]}>{t.match.pairsFound}</Text>
           <View style={styles.statValRow}>
-            <Ionicons name="checkmark-done" size={18} color="#34D399" />
+            <AppIcon name="checkmark-done" size={18} color="#34D399" />
             <Text style={[typography.title, { color: '#34D399', fontVariant: ['tabular-nums'] }]}>
               {matchedPairs}/{totalPairs}
             </Text>
@@ -612,7 +612,7 @@ export default function MatchGameScreen() {
       {/* Card Grid */}
       {(!currentSet || currentSet.questions.length < 3) ? (
         <Card color="rgba(15, 23, 42, 0.88)" style={[styles.emptySetCard, { borderColor: 'rgba(251,191,36,0.45)' }]}>
-          <Ionicons name="alert-circle-outline" size={48} color={GOLD} />
+          <AppIcon name="alert-circle-outline" size={48} color={GOLD} />
           <Text style={[typography.title, { color: '#FEF3C7', marginTop: spacing.md, textAlign: 'center' }]}>
             {t.match.needMoreQuestions}
           </Text>
@@ -642,8 +642,8 @@ export default function MatchGameScreen() {
           <View style={[styles.modalContent, { backgroundColor: palette.paper }]}>
             <View style={styles.modalHeader}>
               <Text style={[typography.title, { color: palette.ink }]}>{t.match.selectSet}</Text>
-              <Pressable onPress={() => setShowSetPicker(false)} style={styles.closeBtn}>
-                <Ionicons name="close" size={24} color={palette.ink} />
+              <Pressable accessibilityRole="button" accessibilityLabel="Đóng" onPress={() => setShowSetPicker(false)} style={styles.closeBtn}>
+                <AppIcon name="close" size={24} color={palette.ink} />
               </Pressable>
             </View>
 
@@ -663,7 +663,7 @@ export default function MatchGameScreen() {
                     },
                   ]}
                 >
-                  <Ionicons
+                  <AppIcon
                     name={s.questions.length >= 3 ? 'book' : 'alert-circle'}
                     size={22}
                     color={s.questions.length >= 3 ? palette.indigo : palette.gold}
@@ -677,7 +677,7 @@ export default function MatchGameScreen() {
                     </Text>
                   </View>
                   {s.id === currentSet?.id && (
-                    <Ionicons name="checkmark-circle" size={22} color={palette.indigo} />
+                    <AppIcon name="checkmark-circle" size={22} color={palette.indigo} />
                   )}
                 </Pressable>
               ))}
@@ -703,9 +703,9 @@ export default function MatchGameScreen() {
 
             {/* Stars row */}
             <View style={styles.starsRow}>
-              <Ionicons name={starsEarned >= 1 ? 'star' : 'star-outline'} size={38} color={palette.gold} />
-              <Ionicons name={starsEarned >= 2 ? 'star' : 'star-outline'} size={46} color={palette.gold} style={{ marginHorizontal: 8 }} />
-              <Ionicons name={starsEarned >= 3 ? 'star' : 'star-outline'} size={38} color={palette.gold} />
+              <AppIcon name={starsEarned >= 1 ? 'star' : 'star-outline'} size={38} color={palette.gold} />
+              <AppIcon name={starsEarned >= 2 ? 'star' : 'star-outline'} size={46} color={palette.gold} style={{ marginHorizontal: 8 }} />
+              <AppIcon name={starsEarned >= 3 ? 'star' : 'star-outline'} size={38} color={palette.gold} />
             </View>
 
             {/* Scorecard */}

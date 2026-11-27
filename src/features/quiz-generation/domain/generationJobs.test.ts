@@ -62,3 +62,15 @@ test('cancellation prevents late stream writes and the queue enforces its reques
   await queue.appendQuestion('owner-a', job.id, { ...q, id: 'q3', content: 'Late?' });
   expect((await queue.list('owner-a'))[0]?.questions).toHaveLength(1);
 });
+
+test('a callback from the previous attempt cannot append to or finish its retry', async () => {
+  const { queue } = fixture();
+  const draft = await queue.enqueue('owner-a', request, metadata);
+  const first = (await queue.markRunning('owner-a', draft.id))!;
+  await queue.interrupt('owner-a', draft.id, first.requestId);
+  const retry = (await queue.markRunning('owner-a', draft.id))!;
+  const question = { id: 'stale', content: 'Old attempt?', options: ['A', 'B', 'C', 'D'], correctIndex: 0, explanation: '', position: 0 };
+  await queue.appendQuestion('owner-a', draft.id, question, first.requestId);
+  await queue.complete('owner-a', draft.id, first.requestId);
+  expect((await queue.list('owner-a'))[0]).toMatchObject({ requestId: retry.requestId, status: 'running', questions: [] });
+});

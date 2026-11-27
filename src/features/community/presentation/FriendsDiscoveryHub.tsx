@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { Image, Platform, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { useRouter } from 'expo-router';
 import { Badge, Button, Card, usePalette } from '@/shared/ui';
 import { PapyrusPageSkeleton } from '@/shared/PapyrusLoader';
@@ -236,7 +236,7 @@ export const FriendsDiscoveryHub = memo(function FriendsDiscoveryHub({
               onPress={() => void shareInviteLink()}
               style={[styles.inviteBtn, { backgroundColor: palette.indigoTint, borderColor: palette.indigo }]}
             >
-              <Ionicons name="share-social-outline" size={15} color={palette.indigo} />
+              <AppIcon name="share-social-outline" size={15} color={palette.indigo} />
               <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.indigo }}>
                 Chia sẻ liên kết của {user.displayName}
               </Text>
@@ -246,7 +246,7 @@ export const FriendsDiscoveryHub = memo(function FriendsDiscoveryHub({
 
         <View style={styles.searchRow}>
           <View style={[styles.searchBox, { backgroundColor: palette.paper, borderColor: palette.paperMuted }]}>
-            <Ionicons name="search-outline" size={18} color={palette.inkMuted} />
+            <AppIcon name="search-outline" size={18} color={palette.inkMuted} />
             <TextInput
               value={query}
               onChangeText={setQuery}
@@ -257,8 +257,8 @@ export const FriendsDiscoveryHub = memo(function FriendsDiscoveryHub({
               style={[styles.searchInput, { color: palette.ink }]}
             />
             {query.length > 0 ? (
-              <Pressable onPress={() => setQuery('')}>
-                <Ionicons name="close-circle" size={18} color={palette.inkMuted} />
+              <Pressable accessibilityRole="button" accessibilityLabel="Bỏ chọn" onPress={() => setQuery('')}>
+                <AppIcon name="close-circle" size={18} color={palette.inkMuted} />
               </Pressable>
             ) : null}
           </View>
@@ -430,7 +430,7 @@ export const FriendsDiscoveryHub = memo(function FriendsDiscoveryHub({
                       onPress={() => dismissFriendRecommendation(viewerId, profile.id)}
                       hitSlop={8}
                     >
-                      <Ionicons name="close" size={18} color={palette.inkMuted} />
+                      <AppIcon name="close" size={18} color={palette.inkMuted} />
                     </Pressable>
                   )}
                 </View>
@@ -497,7 +497,7 @@ export const FriendsDiscoveryHub = memo(function FriendsDiscoveryHub({
                     onPress={() => openDirectMessage(profile.id, profile.displayName, profile.avatarUrl)}
                     style={[styles.peerBtn, { backgroundColor: palette.paper, borderColor: palette.paperMuted }]}
                   >
-                    <Ionicons name="chatbubble-ellipses-outline" size={14} color={palette.indigo} />
+                    <AppIcon name="chatbubble-ellipses-outline" size={14} color={palette.indigo} />
                     <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.indigo }}>Nhắn tin</Text>
                   </Pressable>
                 </View>

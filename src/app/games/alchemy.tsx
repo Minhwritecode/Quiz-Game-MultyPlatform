@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -147,7 +147,7 @@ export default function AlchemySorterGameScreen() {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <SoundToggle />
               <Pressable onPress={() => resetRound(true)} style={styles.swapBtn}>
-                <Ionicons name="shuffle" size={15} color="#6EE7B7" />
+                <AppIcon name="shuffle" size={15} color="#6EE7B7" />
                 <Text style={styles.swapText}>Đổi 3 Lò</Text>
               </Pressable>
             </View>

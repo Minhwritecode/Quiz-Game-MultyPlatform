@@ -10,7 +10,7 @@ import Reanimated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAssistantUiStore } from '@/core/state/useAssistantUiStore';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
@@ -145,7 +145,7 @@ export function DraggableHomePapybot() {
                 resizeMode="cover"
               />
               <View style={styles.sparkDot}>
-                <Ionicons name="sparkles" size={10} color="#0F172A" />
+                <AppIcon name="sparkles" size={10} color="#0F172A" />
               </View>
             </Pressable>
           </Reanimated.View>
@@ -161,7 +161,7 @@ export function DraggableHomePapybot() {
             }}
             style={({ pressed }) => [styles.closeX, { opacity: pressed ? 0.72 : 1 }]}
           >
-            <Ionicons name="close" size={13} color="#F8FAFC" />
+            <AppIcon name="close" size={13} color="#F8FAFC" />
           </Pressable>
         </Reanimated.View>
       </GestureDetector>

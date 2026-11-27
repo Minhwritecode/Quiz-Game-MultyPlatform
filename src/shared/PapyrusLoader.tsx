@@ -1,6 +1,6 @@
 import { createElement, memo, useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Platform, StyleSheet, Text, View, type ViewStyle } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { useRouteRefreshStore } from '@/core/state/useRouteRefreshStore';
 import { usePalette } from '@/shared/ui';
@@ -173,7 +173,7 @@ export const PapyrusMorphLoader = memo(function PapyrusMorphLoader({
               : undefined,
           ]}
         >
-          <Ionicons name={current.icon} size={compact ? 17 : 21} color={current.accent} />
+          <AppIcon name={current.icon} size={compact ? 17 : 21} color={current.accent} />
         </Animated.View>
       </View>
 
@@ -284,7 +284,7 @@ export const PapyrusPageSkeleton = memo(function PapyrusPageSkeleton({
           },
         ]}
       >
-        <Ionicons
+        <AppIcon
           name={isOnline ? 'cellular-outline' : 'cloud-offline-outline'}
           size={15}
           color={isOnline ? palette.indigo : palette.gold}

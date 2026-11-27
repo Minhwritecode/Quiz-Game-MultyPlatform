@@ -1,5 +1,5 @@
 import { Modal, Pressable, Share, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { Badge, Button, Card, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 
@@ -94,7 +94,7 @@ export function RoomQrCodeModal({
                 </Text>
               </View>
               <Pressable onPress={onClose} style={styles.closeBtn} accessibilityRole="button" accessibilityLabel="Đóng">
-                <Ionicons name="close" size={22} color={palette.ink} />
+                <AppIcon name="close" size={22} color={palette.ink} />
               </Pressable>
             </View>
 

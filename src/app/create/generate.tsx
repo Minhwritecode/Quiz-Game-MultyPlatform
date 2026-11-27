@@ -1,11 +1,11 @@
 import { useAuthStore } from '@/core/state/useAuthStore';
 import { randomUUID } from 'expo-crypto';
 import { errorMessage } from '@/core/domain/failure';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/shared/AppIcon';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Button, Card, PageHeader, Screen, TopBar, usePalette } from '@/shared/ui';
+import { Button, Card, PageHeader, ProgressBar, Screen, TopBar, usePalette } from '@/shared/ui';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { dependencies } from '@/composition/dependencies';
 import { saveQuestionSet } from '@/features/question-sets/domain/saveQuestionSet';
@@ -21,7 +21,10 @@ import {
 import type { GenerationJob } from '@/features/quiz-generation/domain/generationJobs';
 import { spacing, typography } from '@/core/theme/tokens';
 
+const liveJobs = new Set<string>();
+
 const displayQuestions = (job: GenerationJob) => {
+  if (job.review) return job.review.questions;
   if (!job.replaceQuestionId) return [...job.initialQuestions, ...job.questions].map((q, position) => ({ ...q, position }));
   const replacement = job.questions[0];
   return job.initialQuestions.map((question, position) => ({
@@ -33,13 +36,13 @@ const createLocalId = () => randomUUID() || `q-${Date.now()}-${Math.random().toS
 
 export default function GenerateScreen() {
   const account = useAuthStore(state => state.user?.id ?? 'guest');
-  const params = useLocalSearchParams<{ mode?: string; setId?: string }>();
-  return <GenerationEditor key={account + ':' + (params.setId ?? '') + ':' + (params.mode ?? '')} />;
+  const params = useLocalSearchParams<{ mode?: string; setId?: string; sourceId?: string; fromSignIn?: string }>();
+  return <GenerationEditor key={account + ':' + (params.setId ?? '') + ':' + (params.mode ?? '') + ':' + (params.sourceId ?? '')} />;
 }
 
 function GenerationEditor() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ mode?: string; setId?: string }>();
+  const params = useLocalSearchParams<{ mode?: string; setId?: string; sourceId?: string; fromSignIn?: string }>();
   const manualMode = params.mode === 'manual';
   const existingSet = usePapyrusStore((state) => state.questionSets.find((item) => item.id === params.setId));
   const { language, t } = useI18n();
@@ -49,10 +52,17 @@ function GenerationEditor() {
   const [message, setMessage] = useState('');
   const palette = usePalette();
   const saveToStore = usePapyrusStore((state) => state.saveQuestionSet);
-  const sourceDocument = usePapyrusStore((state) => state.sourceDocument);
-  const [sourceText, setSourceText] = useState(sourceDocument?.text ?? '');
-  const [sourceDocumentId, setSourceDocumentId] = useState<string | null>(existingSet?.sourceDocumentId ?? sourceDocument?.id ?? null);
-  const [sourceTitle, setSourceTitle] = useState(sourceDocument?.title ?? '');
+  const account = useAuthStore(state => state.user?.id ?? null);
+  const requestedSourceId = params.sourceId ?? existingSet?.sourceDocumentId;
+  const knownSource = usePapyrusStore((state) => {
+    if (state.sourceDocumentOwner !== account) return null;
+    const document = state.sourceDocument;
+    if (requestedSourceId) return document?.id === requestedSourceId ? document : null;
+    return manualMode || params.setId ? null : document;
+  });
+  const [sourceText, setSourceText] = useState(knownSource?.text ?? '');
+  const [sourceDocumentId, setSourceDocumentId] = useState<string | null>(requestedSourceId ?? knownSource?.id ?? null);
+  const [sourceTitle, setSourceTitle] = useState(knownSource?.title ?? '');
   const [questions, setQuestions] = useState<Question[]>(() => existingSet?.questions ?? (manualMode ? [{ id: createLocalId(), content: '', options: ['', '', '', ''], correctIndex: 0, explanation: '', position: 0 }] : []));
   const [openCodeIds, setOpenCodeIds] = useState<Record<string, boolean>>({});
   const [csvPanelOpen, setCsvPanelOpen] = useState(false);
@@ -61,218 +71,262 @@ function GenerationEditor() {
   const [difficulty, setDifficulty] = useState<'Easy' | 'Balanced' | 'Challenge'>('Balanced');
   const [busy, setBusy] = useState(false);
   const [jobs, setJobs] = useState<GenerationJob[]>([]);
-  const generation = useRef<AbortController | null>(null);
-  const activeJob = useRef<string | null>(null);
-  const running = useRef(false);
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [reviewScrollKey, setReviewScrollKey] = useState<string>();
+  const selectedJob = useRef<string | null>(null);
+  const [initialDraftId] = useState(() => existingSet?.id ?? createLocalId());
+  const draftSetId = useRef(initialDraftId);
+  const generation = useRef<{ id: string; controller: AbortController } | null>(null);
+  const locked = useRef(false);
   const mounted = useRef(true);
-  const account = useAuthStore(state => state.user?.id ?? null);
 
+  const alive = useCallback(() => mounted.current && (useAuthStore.getState().user?.id ?? null) === account, [account]);
   const refreshJobs = useCallback(async (owner: string) => {
     const next = await dependencies.generation.jobs.list(owner);
-    if (mounted.current && useAuthStore.getState().user?.id === owner) setJobs(next);
-    return next;
-  }, []);
+    if (alive()) setJobs(next);
+  }, [alive]);
 
-  const runJob = useCallback(async (jobId: string, owner: string) => {
-    if (running.current || useAuthStore.getState().user?.id !== owner) return;
-    running.current = true;
-    const controller = new AbortController();
-    generation.current = controller;
+  const withEditorLock = useCallback(async (work: () => Promise<void>) => {
+    if (locked.current || !alive()) return;
+    locked.current = true;
+    setBusy(true);
     try {
-      const before = (await dependencies.generation.jobs.list(owner)).find(item => item.id === jobId);
-      if (!before || ['completed', 'cancelled'].includes(before.status)) return;
-      if (!(await dependencies.generation.online()) || controller.signal.aborted || useAuthStore.getState().user?.id !== owner) return;
-      activeJob.current = jobId;
-      const runningJob = await dependencies.generation.jobs.markRunning(owner, jobId);
+      await work();
+    } catch (error) {
+      if (alive()) setMessage(errorMessage(error, language === 'vi' ? 'Thao tác chưa hoàn tất. Hãy thử lại.' : 'The action could not finish. Try again.'));
+    } finally {
+      locked.current = false;
+      if (alive()) setBusy(false);
+    }
+  }, [alive, language]);
+
+  const selectJob = (job: GenerationJob | null) => {
+    selectedJob.current = job?.id ?? null;
+    setSelectedJobId(selectedJob.current);
+  };
+
+  const showJob = (job: GenerationJob) => {
+    const details = job.review?.metadata ?? job.metadata;
+    selectJob(job);
+    setReviewScrollKey(job.id);
+    draftSetId.current = job.draftSetId ?? job.id;
+    setTitle(details.title);
+    setSubject(details.subject);
+    setTagText(details.tags.join(', '));
+    setCount(job.review?.count ?? (job.replaceQuestionId ? job.initialQuestions.length : job.initialQuestions.length + job.request.questionCount));
+    setSourceText(job.request.sourceText);
+    setSourceDocumentId(details.sourceDocumentId);
+    setSourceTitle(details.sourceDocumentTitle);
+    setDifficulty(job.request.difficulty === 'easy' ? 'Easy' : job.request.difficulty === 'hard' ? 'Challenge' : 'Balanced');
+    setQuestions(displayQuestions(job));
+    setMessage(job.error ?? '');
+  };
+
+  const runJob = useCallback(async (job: GenerationJob, owner: string) => {
+    const id = job.id;
+    if (!alive() || selectedJob.current !== id || liveJobs.has(id)) return;
+    if (!(await dependencies.generation.online())) {
+      if (alive()) setMessage(language === 'vi' ? 'Đã lưu bản nháp. Bạn có thể tạo tiếp khi có mạng.' : 'Draft saved. You can resume when back online.');
+      return;
+    }
+    if (!alive() || selectedJob.current !== id || liveJobs.has(id)) return;
+
+    liveJobs.add(id);
+    const controller = new AbortController();
+    generation.current = { id, controller };
+    const isCurrent = () => alive() && selectedJob.current === id
+      && generation.current?.controller === controller && !controller.signal.aborted;
+    let requestId: string | undefined;
+    try {
+      const runningJob = await dependencies.generation.jobs.markRunning(owner, id);
       if (!runningJob) return;
-      if (mounted.current) {
-        setBusy(true);
-        setTitle(runningJob.metadata.title); setSubject(runningJob.metadata.subject);
-        setTagText(runningJob.metadata.tags.join(', '));
-        setCount(runningJob.replaceQuestionId ? runningJob.initialQuestions.length : runningJob.initialQuestions.length + runningJob.request.questionCount);
-        setSourceText(runningJob.request.sourceText); setSourceDocumentId(runningJob.metadata.sourceDocumentId);
-        setSourceTitle(runningJob.metadata.sourceDocumentTitle);
-        setQuestions(displayQuestions(runningJob));
-        setMessage(language === 'vi' ? 'Đang nhận câu hỏi hợp lệ…' : 'Receiving valid questions…');
-      }
+      requestId = runningJob.requestId;
+      if (!isCurrent()) return;
+      setMessage(language === 'vi' ? 'Đang nhận câu hỏi…' : 'Receiving questions…');
       await refreshJobs(owner);
-      const missing = Math.max(0, runningJob.request.questionCount - runningJob.questions.length);
-      if (missing === 0) {
-        await dependencies.generation.jobs.complete(owner, jobId);
-      } else {
-        const excluded = [...(runningJob.request.excludeQuestions ?? []),
-        ...runningJob.initialQuestions.filter(item => item.id !== runningJob.replaceQuestionId).map(item => item.content),
-        ...runningJob.questions.map(item => item.content)];
-        const response = await dependencies.generation.generate({
+      const missing = runningJob.request.questionCount - runningJob.questions.length;
+      if (missing > 0) {
+        const excluded = [
+          ...(runningJob.request.excludeQuestions ?? []),
+          ...displayQuestions(runningJob).filter(item => item.id !== runningJob.replaceQuestionId).map(item => item.content),
+          ...runningJob.questions.map(item => item.content),
+        ];
+        await dependencies.generation.generate({
           ...runningJob.request, questionCount: missing,
           excludeQuestions: [...new Set(excluded)].slice(0, 30),
         }, {
-          requestId: runningJob.requestId,
+          requestId,
+          ownerId: owner,
           signal: controller.signal,
           onQuestion: async question => {
-            if (useAuthStore.getState().user?.id !== owner || controller.signal.aborted) return;
-            await dependencies.generation.jobs.appendQuestion(owner, jobId, question);
-            const current = (await dependencies.generation.jobs.list(owner)).find(item => item.id === jobId);
-            if (current && mounted.current) setQuestions(displayQuestions(current));
-            await refreshJobs(owner);
+            if (!isCurrent()) return;
+            const updated = await dependencies.generation.jobs.appendQuestion(owner, id, question, runningJob.requestId);
+            if (updated?.requestId === runningJob.requestId && updated.status === 'running' && isCurrent()) {
+              setQuestions(displayQuestions(updated));
+            }
           },
         });
-        if (controller.signal.aborted) return;
-        const current = (await dependencies.generation.jobs.list(owner)).find(item => item.id === jobId);
-        const actual = current?.questions.length ?? response.count;
-        const replacementMissing = Boolean(runningJob.replaceQuestionId) && actual === 0;
-        if (replacementMissing) {
-          await dependencies.generation.jobs.fail(owner, jobId, language === 'vi'
-            ? 'AI chưa tạo được câu thay thế hợp lệ. Hãy thử lại câu này.'
-            : 'No valid replacement was generated. Retry this question.');
-        } else await dependencies.generation.jobs.complete(owner, jobId);
-        if (mounted.current && useAuthStore.getState().user?.id === owner) {
-          const complete = actual >= runningJob.request.questionCount;
-          setMessage(replacementMissing
-            ? (language === 'vi' ? 'Chưa có câu thay thế hợp lệ; công việc đã lưu để bạn thử lại.' : 'No valid replacement yet; the job is saved for retry.')
-            : complete
-              ? (language === 'vi' ? 'Đã tạo xong câu hỏi. Hãy rà đáp án trước khi lưu.' : 'Questions generated. Review the answers before saving.')
-              : (language === 'vi' ? 'AI trả về ' + actual + ' câu mới. Bấm “Tạo bù” để hoàn thành bộ đề.' : 'AI returned ' + actual + ' new questions. Use “Fill missing” to complete the set.'));
-        }
       }
-      await refreshJobs(owner);
+      if (!isCurrent()) return;
+      const current = (await dependencies.generation.jobs.list(owner)).find(item => item.id === id);
+      if (!current || !isCurrent()) return;
+      const actual = current.questions.length;
+      if (!actual) {
+        const empty = language === 'vi' ? 'AI chưa trả về câu hỏi hợp lệ. Bạn có thể thử lại.' : 'No valid questions were received. You can retry.';
+        await dependencies.generation.jobs.fail(owner, id, empty, requestId);
+        if (isCurrent()) setMessage(empty);
+      } else {
+        await dependencies.generation.jobs.complete(owner, id, requestId);
+        if (isCurrent()) setMessage(actual >= runningJob.request.questionCount
+          ? (language === 'vi' ? 'Hãy rà đáp án trước khi lưu.' : 'Review the answers before saving.')
+          : (language === 'vi' ? 'Bạn có thể tạo bù hoặc lưu các câu đã duyệt.' : 'Fill the remaining questions or save what you reviewed.'));
+      }
     } catch (error) {
-      const current = (await dependencies.generation.jobs.list(owner)).find(item => item.id === jobId);
-      const interrupted = controller.signal.aborted && current && (!mounted.current || useAuthStore.getState().user?.id !== owner);
-      if (interrupted) {
-        await dependencies.generation.jobs.update(owner, jobId, job => job.status === 'cancelled'
-          ? job : { ...job, status: 'queued', retryAt: 0, error: 'Interrupted; ready to resume.' });
-      } else if (current) await dependencies.generation.jobs.fail(owner, jobId, errorMessage(error, 'Generation failed. Valid questions remain saved; retry when ready.'));
-      await refreshJobs(owner);
-      if (!interrupted && current && mounted.current && useAuthStore.getState().user?.id === owner) setMessage(errorMessage(error, 'Generation failed. Valid questions remain saved; retry when ready.'));
+      if (!isCurrent()) return;
+      const failure = errorMessage(error, language === 'vi' ? 'Tạo câu hỏi bị gián đoạn. Bạn có thể thử lại.' : 'Generation was interrupted. You can retry.');
+      if (requestId) await dependencies.generation.jobs.fail(owner, id, failure, requestId);
+      if (isCurrent()) setMessage(failure);
     } finally {
-      if (activeJob.current === jobId) activeJob.current = null;
-      generation.current = null;
-      running.current = false;
-      if (mounted.current) setBusy(false);
+      try {
+        if (requestId && (!alive() || controller.signal.aborted)) await dependencies.generation.jobs.interrupt(owner, id, requestId);
+      } finally {
+        liveJobs.delete(id);
+        generation.current = null;
+        await refreshJobs(owner);
+      }
     }
-  }, [language, refreshJobs]);
-
-  const resumeNext = useCallback(async (owner: string) => {
-    if (running.current || useAuthStore.getState().user?.id !== owner) return;
-    const stored = await dependencies.generation.jobs.list(owner);
-    const next = stored.find(job => ['queued', 'failed'].includes(job.status) && job.retryAt <= Date.now());
-    if (next) {
-      if (next.status === 'failed') await dependencies.generation.jobs.retry(owner, next.id);
-      await runJob(next.id, owner);
-    }
-  }, [runJob]);
+  }, [alive, language, refreshJobs]);
 
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
-      const owner = useAuthStore.getState().user?.id;
-      const jobId = activeJob.current;
-      generation.current?.abort();
-      if (owner && jobId) void dependencies.generation.jobs.update(owner, jobId, job => job.status === 'cancelled'
-        ? job : { ...job, status: 'queued', retryAt: 0, error: 'Interrupted; ready to resume.' });
+      generation.current?.controller.abort();
     };
   }, []);
 
+  const loadSource = useCallback(async () => {
+    if (!requestedSourceId) return;
+    let document = knownSource;
+    if (!document && account && params.fromSignIn === '1') {
+      document = await dependencies.generation.sourceHandoff.complete(account, requestedSourceId, (item) => {
+        if (!alive()) return Promise.reject(new Error('Account changed.'));
+        return dependencies.sources.save(item);
+      });
+    }
+    document ??= (await dependencies.sources.list()).find(item => item.id === requestedSourceId) ?? null;
+    if (!alive() || selectedJob.current) return;
+    if (!document) throw new Error(language === 'vi' ? 'Không tìm thấy tài liệu trong tài khoản này.' : 'This source is unavailable in this account.');
+    setSourceText(document.text);
+    setSourceDocumentId(document.id);
+    setSourceTitle(document.title);
+  }, [account, alive, language, params.fromSignIn, requestedSourceId, knownSource]);
+
   useEffect(() => {
-    if (!existingSet?.sourceDocumentId || !account) return;
-    let active = true;
-    void dependencies.sources.list().then(documents => {
-      const document = documents.find(item => item.id === existingSet.sourceDocumentId);
-      if (active && document && useAuthStore.getState().user?.id === account) {
-        setSourceText(document.text); setSourceDocumentId(document.id); setSourceTitle(document.title);
-      }
-    }).catch(() => undefined);
-    return () => { active = false; };
-  }, [sourceDocument?.id, existingSet?.sourceDocumentId, account]);
+    if (requestedSourceId && !knownSource) {
+      void loadSource().catch(error => {
+        if (alive() && !selectedJob.current) setMessage(errorMessage(error, 'Cannot load the selected source.'));
+      });
+    }
+  }, [alive, knownSource, loadSource, requestedSourceId]);
 
   useEffect(() => {
     if (!account || manualMode) return;
-    let active = true;
-    void dependencies.generation.jobs.recover(account).then(items => {
-      if (!active || useAuthStore.getState().user?.id !== account) return;
-      setJobs(items);
-      const latest = items[0];
-      if (latest && !existingSet) {
-        setTitle(latest.metadata.title); setSubject(latest.metadata.subject);
-        setTagText(latest.metadata.tags.join(', ')); setCount(latest.replaceQuestionId ? latest.initialQuestions.length : latest.initialQuestions.length + latest.request.questionCount);
-        setSourceText(latest.request.sourceText); setSourceDocumentId(latest.metadata.sourceDocumentId);
-        setSourceTitle(latest.metadata.sourceDocumentTitle);
-        setDifficulty(latest.request.difficulty === 'easy' ? 'Easy' : latest.request.difficulty === 'hard' ? 'Challenge' : 'Balanced');
-        setQuestions(displayQuestions(latest));
-        if (latest.status === 'failed') setMessage(latest.error ?? '');
-      }
-      void resumeNext(account);
-    }).catch(() => setMessage('Could not restore the saved generation queue.'));
-    const stop = dependencies.generation.observeWake(() => void resumeNext(account));
-    const timer = setInterval(() => void resumeNext(account), 30000);
-    return () => { active = false; stop(); clearInterval(timer); };
-  }, [account, manualMode, existingSet?.id, resumeNext]);
+    let cancelled = false;
+    void dependencies.generation.jobs.recover(account, liveJobs).then(items => {
+      if (!cancelled && alive()) setJobs(items);
+    }).catch(() => {
+      if (!cancelled && alive()) setMessage('Could not restore the saved generation queue.');
+    });
+    return () => { cancelled = true; };
+  }, [account, alive, manualMode]);
 
-  const startJob = async (request: GenerationRequest, initialQuestions: Question[] = [], replaceQuestionId?: string) => {
-    if (manualMode || busy) return;
-    if (!dependencies.generation.configured) {
-      setMessage(language === 'vi' ? 'AI chưa được cấu hình. Bạn vẫn có thể tạo câu hỏi thủ công.' : 'AI is not configured. You can still write questions manually.');
-      return;
+  const resumeQueued = useCallback(async () => {
+    if (!account || !selectedJobId || locked.current) return;
+    const job = (await dependencies.generation.jobs.list(account)).find(item => item.id === selectedJobId);
+    if (job?.status === 'queued' && selectedJob.current === job.id && await dependencies.generation.online()) {
+      await withEditorLock(() => runJob(job, account));
     }
-    if (!account) {
-      setMessage(language === 'vi' ? 'Đăng nhập để xếp hàng và tạo câu hỏi AI.' : 'Sign in to queue and generate AI questions.');
-      return;
-    }
-    if (!request.sourceText.trim()) {
-      setMessage(language === 'vi' ? 'Hãy thêm tài liệu trước khi tạo câu hỏi.' : 'Add study material before generating questions.');
-      return;
-    }
+  }, [account, runJob, selectedJobId, withEditorLock]);
+
+  useEffect(() => {
+    if (!account || !selectedJobId) return;
+    const wake = () => { void resumeQueued().catch(() => undefined); };
+    const stop = dependencies.generation.observeWake(wake);
+    const timer = setInterval(wake, 30_000);
+    return () => { stop(); clearInterval(timer); };
+  }, [account, resumeQueued, selectedJobId]);
+
+  useEffect(() => {
+    if (!account || !selectedJobId || busy || locked.current || selectedJob.current !== selectedJobId) return;
+    void dependencies.generation.jobs.saveReview(account, selectedJobId, {
+      metadata: { title, subject, tags: tagValues(tagText), sourceDocumentId, sourceDocumentTitle: sourceTitle },
+      questions, count,
+    }).catch(() => {
+      if (alive() && selectedJob.current === selectedJobId) setMessage(language === 'vi' ? 'Chưa lưu được chỉnh sửa vào bản nháp. Hãy lưu bộ đề hoặc thử lại.' : 'Could not store draft edits. Save the question set or retry.');
+    });
+  }, [account, alive, busy, count, language, questions, selectedJobId, sourceDocumentId, sourceTitle, subject, tagText, title]);
+
+  const startJob = (request: GenerationRequest, initialQuestions: Question[] = [], replaceQuestionId?: string) => withEditorLock(async () => {
+    if (manualMode || !account || !dependencies.generation.configured || !request.sourceText.trim()) return;
     setMessage('');
-    try {
-      const metadata = { title: title.trim(), subject: subject.trim(), tags: tagValues(tagText), sourceDocumentId, sourceDocumentTitle: sourceTitle };
-      const job = await dependencies.generation.jobs.enqueue(account, request, metadata, initialQuestions, replaceQuestionId);
-      await refreshJobs(account);
-      if (!(await dependencies.generation.online())) {
-        setMessage(language === 'vi' ? 'Đang ngoại tuyến. Công việc đã lưu, app sẽ tiếp tục khi có mạng hoặc khi bạn mở lại màn này.' : 'Offline. Job saved and will resume when online or when you reopen this screen.');
-        return;
-      }
-      void runJob(job.id, account);
-    } catch (error) { setMessage(errorMessage(error, 'Could not save the generation job. Try again.')); }
-  };
+    const metadata = { title: title.trim(), subject: subject.trim(), tags: tagValues(tagText), sourceDocumentId, sourceDocumentTitle: sourceTitle };
+    const job = await dependencies.generation.jobs.enqueue(account, request, metadata, initialQuestions, replaceQuestionId, draftSetId.current);
+    if (!alive()) return;
+    selectJob(job);
+    if (!replaceQuestionId) setReviewScrollKey(job.id);
+    setQuestions([...initialQuestions]);
+    await refreshJobs(account);
+    await runJob(job, account);
+  });
 
-  const generate = () => startJob({
-    sourceText, questionCount: count,
+  const makeRequest = (questionCount: number): GenerationRequest => ({
+    sourceText, questionCount,
     difficulty: difficulty === 'Easy' ? 'easy' : difficulty === 'Challenge' ? 'hard' : 'medium',
     languageCode: language,
   });
 
+  const generate = () => startJob(makeRequest(count));
   const fillMissing = () => {
-    const missing = count - questions.length;
-    if (missing <= 0) return;
-    void startJob({
-      sourceText, questionCount: missing,
-      difficulty: difficulty === 'Easy' ? 'easy' : difficulty === 'Challenge' ? 'hard' : 'medium',
-      languageCode: language, excludeQuestions: questions.map(item => item.content),
-    }, questions);
+    const accepted = questions.filter(isValidQuestion);
+    if (accepted.length !== questions.length || accepted.length >= count) return;
+    void startJob({ ...makeRequest(count - accepted.length), excludeQuestions: accepted.map(item => item.content) }, accepted);
   };
-
   const regenerate = (question: Question) => void startJob({
-    sourceText, questionCount: 1,
-    difficulty: difficulty === 'Easy' ? 'easy' : difficulty === 'Challenge' ? 'hard' : 'medium',
-    languageCode: language, excludeQuestions: questions.filter(item => item.id !== question.id).map(item => item.content),
+    ...makeRequest(1),
+    excludeQuestions: questions.filter(item => item.id !== question.id).map(item => item.content),
   }, questions, question.id);
 
-  const retryJob = async (job: GenerationJob) => {
+  const openJob = (id: string, retry = false) => withEditorLock(async () => {
     if (!account) return;
-    const next = await dependencies.generation.jobs.retry(account, job.id);
-    await refreshJobs(account);
-    if (next) void runJob(job.id, account);
-  };
+    let job = (await dependencies.generation.jobs.list(account)).find(item => item.id === id);
+    if (!job || !alive()) return;
+    if (retry) job = await dependencies.generation.jobs.retry(account, id) ?? undefined;
+    if (!job || !alive()) return;
+    showJob(job);
+    if (retry) await runJob(job, account);
+  });
 
   const cancelJob = async (job: GenerationJob) => {
-    if (!account) return;
-    await dependencies.generation.jobs.remove(account, job.id);
-    if (activeJob.current === job.id) generation.current?.abort();
-    await refreshJobs(account);
-    setMessage(language === 'vi' ? 'Đã hủy công việc tạo đề.' : 'Generation job cancelled.');
+    if (!account || !alive() || (locked.current && generation.current?.id !== job.id)) return;
+    if (generation.current?.id === job.id) generation.current.controller.abort();
+    if (selectedJob.current === job.id) selectJob(null);
+    try {
+      await dependencies.generation.jobs.remove(account, job.id);
+      await refreshJobs(account);
+      if (alive()) setMessage(language === 'vi' ? 'Đã hủy công việc tạo đề.' : 'Generation job cancelled.');
+    } catch (error) {
+      if (alive()) setMessage(errorMessage(error, 'Could not remove the generation job.'));
+    }
   };
+
+  const signInForSource = () => withEditorLock(async () => {
+    const document = knownSource ?? (await dependencies.sources.list()).find(item => item.id === sourceDocumentId);
+    if (!alive()) return;
+    if (!document && sourceDocumentId) throw new Error(language === 'vi' ? 'Hãy tải lại tài liệu trước khi đăng nhập.' : 'Reload the source before signing in.');
+    if (document) await dependencies.generation.sourceHandoff.stage(document);
+    if (alive()) router.push('/auth');
+  });
 
   const updateQuestion = (questionId: string, update: (question: Question) => Question) => {
     setQuestions((current) => current.map((question) => question.id === questionId ? update(question) : question));
@@ -282,82 +336,159 @@ function GenerationEditor() {
     setQuestions((current) => current.filter((question) => question.id !== questionId).map((question, position) => ({ ...question, position })));
   };
 
-  const save = async () => {
-    if (busy) return;
-    if (!title.trim() || !subject.trim() || questions.length === 0 || questions.some((question) => !isValidQuestion(question))) {
-      setMessage(manualMode ? t.home.saveError : 'Enter a title, subject, and complete all question options before saving.');
-      return;
-    }
-    if (!manualMode && questions.length < count) {
-      setMessage(language === 'vi' ? 'Hãy tạo bù đủ số câu đã chọn hoặc giảm số câu trước khi lưu.' : 'Fill the missing questions or lower the selected count before saving.');
+  const save = () => withEditorLock(async () => {
+    if (!title.trim() || !subject.trim() || !questions.length || questions.some(question => !isValidQuestion(question))) {
+      setMessage(t.home.saveError);
       return;
     }
     setMessage('');
-    setBusy(true);
-    const owner = useAuthStore.getState().user?.id;
+    const jobId = selectedJob.current;
     const questionSet: QuestionSet = {
-      id: existingSet?.id ?? createLocalId(), title: title.trim(), subject: subject.trim(),
-      tags: tagValues(tagText), sourceDocumentId,
-      updatedAt: new Date().toISOString(), syncStatus: 'pending', questions,
+      id: existingSet?.id ?? draftSetId.current,
+      title: title.trim(),
+      subject: subject.trim(),
+      tags: tagValues(tagText),
+      sourceDocumentId,
+      updatedAt: new Date().toISOString(),
+      syncStatus: 'pending',
+      questions,
     };
-    try {
-      await saveQuestionSet(dependencies.questionSets, questionSet);
-      if (useAuthStore.getState().user?.id !== owner) return;
-      if (existingSet) await dependencies.study.clearProgress(existingSet.id);
-      saveToStore(questionSet);
-      if (owner) await dependencies.generation.jobs.clearCompleted(owner);
-      router.replace('/sets');
-    } catch (error) {
-      setMessage(errorMessage(error, 'Could not save. Try again.'));
-    } finally {
-      setBusy(false);
-    }
-  };
+    await saveQuestionSet(dependencies.questionSets, questionSet);
+    if (!alive()) return;
+    selectJob(null);
+    saveToStore(questionSet);
+    if (existingSet) void dependencies.study.clearProgress(existingSet.id).catch(() => undefined);
+    if (account && jobId) void dependencies.generation.jobs.remove(account, jobId).catch(() => undefined);
+    router.replace('/sets');
+  });
 
-  const queuedJobs = jobs.filter(job => ['queued', 'running', 'failed'].includes(job.status));
-  return <Screen>
-    <TopBar title={existingSet ? t.home.editSet : manualMode ? t.home.manualTitle : (language === 'vi' ? 'Tạo & chỉnh sửa bộ đề' : 'Shape your quiz')} />
-    <PageHeader
-      eyebrow={manualMode ? t.home.manualEyebrow : (language === 'vi' ? 'BƯỚC 2 / 3 · TẠO BỘ ĐỀ AI' : 'STEP 2 OF 3 · SHAPE')}
-      title={existingSet ? t.home.editSet : manualMode ? t.home.manualTitle : (language === 'vi' ? 'Thiết lập & tạo câu hỏi' : 'Make the generation yours')}
-      subtitle={manualMode ? t.home.manualSubtitle : (language === 'vi' ? 'Chọn số câu và độ khó, kiểm tra đáp án rồi lưu bộ đề vào thư viện.' : 'Choose the output, review every answer and save only what you trust.')}
-    />
+  const queueJobs = jobs.filter(job => job.status !== 'cancelled');
+  const validCount = questions.filter(isValidQuestion).length;
+  const partial = !manualMode && validCount > 0 && validCount < count && validCount === questions.length;
+  const canGenerate = !busy && Boolean(account && dependencies.generation.configured && sourceText.trim());
+  const vi = language === 'vi';
+  const activeJob = queueJobs.find(job => job.id === selectedJobId);
+  const running = busy && Boolean(generation.current || activeJob?.status === 'running');
+  const failed = activeJob?.status === 'failed';
+  const receivedCount = running || !activeJob ? validCount : displayQuestions({ ...activeJob, review: undefined }).length;
+  const received = `${receivedCount}/${count}`;
+  const status = running
+    ? (vi ? `Đang nhận câu hỏi · ${received}` : `Receiving questions · ${received}`)
+    : failed
+      ? (vi ? `Tạo đề bị gián đoạn · ${received}` : `Generation interrupted · ${received}`)
+      : activeJob?.status === 'queued'
+        ? (vi ? 'Đang chờ tạo câu hỏi' : 'Waiting to generate')
+        : activeJob
+          ? (vi ? `${received} câu đã nhận` : `${received} questions received`)
+          : questions.length
+            ? (vi ? `${validCount} câu sẵn sàng` : `${validCount} questions ready`)
+            : (vi ? 'Chưa tạo câu hỏi' : 'No questions generated');
+  const saveLabel = busy ? (vi ? 'Đang xử lý…' : 'Working…')
+    : existingSet ? t.home.saveChanges
+    : manualMode ? t.home.saveSet
+    : partial ? (vi ? `Lưu ${validCount} câu đã duyệt` : `Save ${validCount} reviewed questions`)
+    : (vi ? 'Lưu bộ câu hỏi' : 'Save question set');
+  const settings = (
     <Card style={styles.controls}>
-      {!manualMode && <Text style={[typography.caption, { color: palette.inkMuted }]}>{language === 'vi' ? 'AI sẽ sinh câu hỏi bám sát nội dung bạn đã duyệt. Bạn có thể sửa lại bất kỳ câu hỏi nào trước khi lưu.' : 'AI generates questions grounded in your reviewed text. You can edit any question before saving.'}</Text>}
+      {!manualMode && <Text style={[typography.title, { color: palette.ink }]}>{vi ? 'Thiết lập bộ câu hỏi' : 'Quiz settings'}</Text>}
       <TextInput testID="set-title" editable={!busy} accessibilityLabel="Question set title" placeholder={language === 'vi' ? 'Tên bộ câu hỏi (ví dụ: Lịch sử Chương 3)' : 'Question set title'} placeholderTextColor={palette.inkMuted} value={title} onChangeText={setTitle} maxLength={160} style={[styles.questionInput, { color: palette.ink, borderColor: palette.paperMuted }]} />
       <TextInput testID="set-subject" editable={!busy} accessibilityLabel={t.home.subjectLabel} placeholder={t.home.subjectPlaceholder} placeholderTextColor={palette.inkMuted} value={subject} onChangeText={setSubject} maxLength={100} style={[styles.questionInput, { color: palette.ink, borderColor: palette.paperMuted }]} />
       <TextInput testID="set-tags" editable={!busy} accessibilityLabel={language === 'vi' ? 'Thẻ của bộ đề, cách nhau bằng dấu phẩy' : 'Question set tags, comma separated'} placeholder={language === 'vi' ? 'Thẻ: đại số, chương 2, ôn thi' : 'Tags: algebra, chapter 2, exam'} placeholderTextColor={palette.inkMuted} value={tagText} onChangeText={setTagText} maxLength={400} style={[styles.questionInput, { color: palette.ink, borderColor: palette.paperMuted }]} />
-      {!manualMode && <Text style={[typography.caption, { color: palette.inkMuted }]}>{language === 'vi' ? 'Nguồn: ' : 'Source: '}{sourceTitle || (questions.length ? (language === 'vi' ? 'Khôi phục từ phiên trước' : 'Restored from saved job') : (language === 'vi' ? 'Chưa có tài liệu nguồn' : 'No source attached'))}</Text>}
-      {message ? <Text accessibilityRole="alert" style={{ color: palette.danger, fontWeight: '600' }}>{message}</Text> : null}
+      {manualMode && message ? <Text accessibilityRole="alert" style={{ color: palette.danger, fontWeight: '600' }}>{message}</Text> : null}
       {!manualMode && <>
+        {!account && <Button variant="secondary" disabled={busy || !dependencies.generation.configured} onPress={() => void signInForSource()}>
+          {language === 'vi' ? 'Đăng nhập để tạo bằng AI' : 'Sign in to generate with AI'}
+        </Button>}
+        {!dependencies.generation.configured && <Text style={[typography.caption, { color: palette.inkMuted }]}>
+          {language === 'vi' ? 'AI chưa được cấu hình. Bạn có thể soạn câu hỏi thủ công.' : 'AI is unavailable here. You can still write questions manually.'}
+        </Text>}
+        {requestedSourceId && !sourceText && message && <Button variant="secondary" disabled={busy} onPress={() => void withEditorLock(loadSource)}>
+          {language === 'vi' ? 'Tải lại tài liệu' : 'Reload source'}
+        </Button>}
         <Text style={[typography.title, { color: palette.ink }]}>{language === 'vi' ? 'Số lượng câu hỏi' : 'Question count'}</Text>
         <View style={styles.choiceRow}>{[5, 10, 15].map((value) => <Button key={value} variant={count === value ? 'primary' : 'secondary'} onPress={() => setCount(value)} disabled={busy}>{String(value)}</Button>)}</View>
         <Text style={[typography.title, { color: palette.ink, marginTop: spacing.md }]}>{language === 'vi' ? 'Độ khó' : 'Difficulty'}</Text>
         <View style={styles.choiceRow}>{(['Easy', 'Balanced', 'Challenge'] as const).map((value) => <Button key={value} variant={difficulty === value ? 'primary' : 'secondary'} onPress={() => setDifficulty(value)} disabled={busy}>{language === 'vi' ? (value === 'Easy' ? 'Dễ' : value === 'Balanced' ? 'Trung bình' : 'Thử thách') : value}</Button>)}</View>
-        <Text style={[typography.caption, { color: palette.inkMuted, marginTop: spacing.xs }]}>{questions.length} / {count} {language === 'vi' ? 'câu sẵn sàng' : 'ready'} · {language === 'vi' ? 'Tiếng Việt' : 'English'}</Text>
         <View style={{ marginTop: spacing.sm }}>
-          <Button icon="sparkles" variant="primary" disabled={busy || !sourceText.trim()} onPress={() => void generate()} fullWidth>
+          <Button icon="sparkles" variant="primary" disabled={!canGenerate} onPress={() => void generate()} fullWidth>
             {busy ? (language === 'vi' ? 'AI đang tạo câu hỏi…' : 'Generating…') : (language === 'vi' ? 'Tạo Quiz bằng AI ngay' : 'Generate AI Quiz Now')}
           </Button>
         </View>
       </>}
     </Card>
-
-    {queuedJobs.length > 0 && <Card style={styles.queueCard}>
+  );
+  const generationQueue = !manualMode && !params.setId && queueJobs.length > 0 && <Card style={styles.queueCard}>
       <Text style={[typography.title, { color: palette.ink }]}>{language === 'vi' ? 'Hàng đợi tạo đề' : 'Generation queue'}</Text>
-      {queuedJobs.map(job => <View key={job.id} style={styles.jobRow}>
+      {queueJobs.map(job => <View key={job.id} style={styles.jobRow}>
         <View style={{ flex: 1 }}>
           <Text style={[typography.label, { color: palette.ink }]}>{job.metadata.title || (language === 'vi' ? 'Bộ đề chưa đặt tên' : 'Untitled question set')}</Text>
-          <Text style={[typography.caption, { color: palette.inkMuted }]}>{job.status} · {job.questions.length}/{job.request.questionCount} · attempt {job.attempt}</Text>
+          <Text style={[typography.caption, { color: palette.inkMuted }]}>
+            {job.metadata.sourceDocumentTitle} · {job.status} · {job.questions.length}/{job.request.questionCount}
+          </Text>
         </View>
-        {job.status !== 'running' && <Button variant="secondary" onPress={() => void retryJob(job)}>{language === 'vi' ? 'Thử lại' : 'Retry'}</Button>}
-        <Pressable accessibilityRole="button" accessibilityLabel={language === 'vi' ? 'Hủy công việc' : 'Cancel job'} onPress={() => void cancelJob(job)} style={styles.removeButton}><Ionicons name="close-circle-outline" size={22} color={palette.danger} /></Pressable>
+        {job.id !== selectedJobId && <Button variant="ghost" disabled={busy} onPress={() => void openJob(job.id)}>
+          {language === 'vi' ? 'Mở bản nháp' : 'Open draft'}
+        </Button>}
+        {(job.status === 'queued' || job.status === 'failed') && <Button variant="secondary" disabled={busy} onPress={() => void openJob(job.id, true)}>
+          {language === 'vi' ? 'Tạo tiếp' : 'Resume generation'}
+        </Button>}
+        <Pressable accessibilityRole="button" accessibilityLabel={language === 'vi' ? 'Hủy công việc' : 'Cancel job'} onPress={() => void cancelJob(job)} style={styles.removeButton}><AppIcon name="close-circle-outline" size={22} color={palette.danger} /></Pressable>
       </View>)}
-    </Card>}
+    </Card>;
 
-    <Text style={[typography.title, { color: palette.ink, marginTop: spacing.xl, marginBottom: spacing.md }]}>{manualMode ? t.home.correctAnswerHint : 'Review before saving'}</Text>
-    {questions.length === 0 && <Card><Text style={[typography.body, { color: palette.inkMuted }]}>No questions yet. Generate from your saved source or write them manually.</Text></Card>}
-    {!manualMode && questions.length > 0 && questions.length < count && <Button variant="secondary" disabled={busy} onPress={fillMissing}>{language === 'vi' ? 'Tạo bù ' + (count - questions.length) + ' câu còn thiếu' : 'Fill ' + (count - questions.length) + ' missing questions'}</Button>}
+  return <Screen maxWidth={760} scrollResetKey={reviewScrollKey}>
+    <TopBar title={existingSet ? t.home.editSet : manualMode ? t.home.manualTitle : (language === 'vi' ? 'Tạo & chỉnh sửa bộ đề' : 'Shape your quiz')} />
+    {manualMode ? (
+      <PageHeader eyebrow={t.home.manualEyebrow} title={existingSet ? t.home.editSet : t.home.manualTitle} subtitle={t.home.manualSubtitle} />
+    ) : (
+      <Card style={[styles.reviewHeader, { borderColor: palette.goldBorder }]}>
+        <Text accessibilityRole="header" style={[typography.heading, { color: palette.ink }]}>
+          {activeJob || questions.length ? (vi ? 'Duyệt câu hỏi' : 'Review questions') : (vi ? 'Tạo quiz từ tài liệu' : 'Create a quiz from a document')}
+        </Text>
+        <View style={styles.sourceLine}>
+          <AppIcon name="document-text-outline" size={17} color={palette.gold} />
+          <Text style={[typography.caption, styles.shrink, { color: palette.inkMuted }]}>
+            {vi ? 'Nguồn: ' : 'Source: '}{sourceTitle || (questions.length ? (vi ? 'Khôi phục từ phiên trước' : 'Restored from saved job') : (vi ? 'Chưa có tài liệu nguồn' : 'No source attached'))}
+          </Text>
+        </View>
+        <View style={[styles.receipt, { backgroundColor: palette.paper, borderColor: palette.paperMuted }]}>
+          <Text accessibilityLiveRegion="polite" style={[typography.title, { color: failed ? palette.danger : palette.indigoDeep }]}>{status}</Text>
+          <ProgressBar progress={receivedCount / Math.max(count, 1)} tone="reward" />
+          {(message || activeJob?.error) ? (
+            <Text accessibilityLiveRegion="polite" accessibilityRole={failed ? 'alert' : undefined} style={[typography.caption, { color: failed ? palette.danger : palette.inkMuted }]}>{message || activeJob?.error}</Text>
+          ) : null}
+        </View>
+        {running && activeJob && (
+          <Button variant="ghost" onPress={() => void cancelJob(activeJob)} multiline>
+            {vi ? 'Hủy tạo câu hỏi' : 'Cancel generation'}
+          </Button>
+        )}
+        {activeJob && !busy && (failed || activeJob.status === 'queued') && (
+          <Button variant="secondary" onPress={() => void openJob(activeJob.id, true)} multiline>
+            {vi ? 'Thử tạo tiếp' : 'Retry generation'}
+          </Button>
+        )}
+        {questions.length > 0 && (
+          <View style={styles.reviewActions}>
+            <View style={styles.reviewAction}>
+              <Button testID="save-question-set" icon="checkmark" onPress={() => void save()} disabled={busy} multiline fullWidth>{saveLabel}</Button>
+            </View>
+            {partial && (
+              <View style={styles.reviewAction}>
+                <Button variant="secondary" icon="add" disabled={!canGenerate} onPress={fillMissing} multiline fullWidth>
+                  {vi ? `Tạo bù ${count - validCount} câu` : `Fill ${count - validCount} missing questions`}
+                </Button>
+              </View>
+            )}
+          </View>
+        )}
+      </Card>
+    )}
+    {(!questions.length || manualMode) && settings}
+    {!questions.length && generationQueue}
+
+    <Text style={[typography.title, { color: palette.ink, marginTop: spacing.xl, marginBottom: spacing.md }]}>{manualMode ? t.home.correctAnswerHint : (vi ? 'Các câu hỏi' : 'Questions')}</Text>
+    {questions.length === 0 && <Card><Text style={[typography.body, { color: palette.inkMuted }]}>{vi ? 'Chưa có câu hỏi. Hãy tạo từ tài liệu hoặc thêm câu thủ công.' : 'No questions yet. Generate from your source or add a question manually.'}</Text></Card>}
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: spacing.sm }}>
       <Button
         variant="secondary"
@@ -468,11 +599,11 @@ function GenerationEditor() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={(language === 'vi' ? 'Sinh lại câu ' : 'Regenerate question ') + (index + 1)}
-              disabled={busy || !sourceText}
+              disabled={!canGenerate}
               onPress={() => regenerate(question)}
               style={styles.removeButton}
             >
-              <Ionicons name="refresh" size={20} color={palette.indigo} />
+              <AppIcon name="refresh" size={20} color={palette.indigo} />
             </Pressable>
           )}
           <Pressable
@@ -482,10 +613,12 @@ function GenerationEditor() {
             onPress={() => removeQuestion(question.id)}
             style={styles.removeButton}
           >
-            <Ionicons name="trash-outline" size={20} color={palette.danger} />
+            <AppIcon name="trash-outline" size={20} color={palette.danger} />
           </Pressable>
         </View>
       </View>
+      <Text style={[typography.title, { color: palette.ink }]}>{vi ? 'Nội dung câu hỏi' : 'Question text'}</Text>
+      <TextInput testID={`question-${index}-content`} editable={!busy} accessibilityLabel={`${t.home.questionLabel} ${index + 1}`} placeholder={t.home.questionLabel} value={question.content} onChangeText={(content) => updateQuestion(question.id, (current) => ({ ...current, content }))} multiline textAlignVertical="top" style={[styles.questionInput, { color: palette.ink, borderColor: palette.paperMuted }]} />
       <View style={styles.typeWrap}>
         {(
           [
@@ -551,7 +684,7 @@ function GenerationEditor() {
           }
           style={[styles.codeToggle, { borderColor: question.multiSelect ? palette.indigo : palette.paperMuted, backgroundColor: question.multiSelect ? palette.indigoTint : palette.paper }]}
         >
-          <Ionicons name={question.multiSelect ? 'checkbox' : 'square-outline'} size={16} color={palette.indigo} />
+          <AppIcon name={question.multiSelect ? 'checkbox' : 'square-outline'} size={16} color={palette.indigo} />
           <Text style={[typography.caption, { color: palette.indigo, fontWeight: '700' }]}>
             {language === 'vi' ? 'Cho phép nhiều đáp án đúng (Multi-select)' : 'Allow multiple correct answers'}
           </Text>
@@ -586,14 +719,13 @@ function GenerationEditor() {
             : '✍️ Người chơi sẽ nhập câu trả lời tự luận ngắn (hỗ trợ chế độ ẩn danh, không chấm điểm).'}
         </Text>
       )}
-      <TextInput testID={`question-${index}-content`} editable={!busy} accessibilityLabel={`${t.home.questionLabel} ${index + 1}`} placeholder={t.home.questionLabel} value={question.content} onChangeText={(content) => updateQuestion(question.id, (current) => ({ ...current, content }))} multiline textAlignVertical="top" style={[styles.questionInput, { color: palette.ink, borderColor: palette.paperMuted }]} />
       <Pressable
         disabled={busy}
         accessibilityRole="button"
         onPress={() => setOpenCodeIds((prev) => ({ ...prev, [question.id]: !(prev[question.id] ?? Boolean(question.codeSnippet)) }))}
         style={[styles.codeToggle, { borderColor: palette.paperMuted, backgroundColor: palette.paper }]}
       >
-        <Ionicons name="code-slash-outline" size={16} color={palette.indigo} />
+        <AppIcon name="code-slash-outline" size={16} color={palette.indigo} />
         <Text style={[typography.caption, { color: palette.indigo, fontWeight: '700' }]}>
           {(openCodeIds[question.id] ?? Boolean(question.codeSnippet))
             ? (language === 'vi' ? 'Ẩn đoạn code minh hoạ' : 'Hide code snippet')
@@ -616,6 +748,11 @@ function GenerationEditor() {
           style={styles.codeInput}
         />
       )}
+      {question.options.length > 0 && (
+        <Text style={[typography.title, { color: palette.ink, marginTop: spacing.sm }]}>
+          {question.questionType === 'poll' ? (vi ? 'Lựa chọn' : 'Options') : (vi ? 'Lựa chọn và đáp án đúng' : 'Options and correct answers')}
+        </Text>
+      )}
       {question.options.map((option, optionIndex) => {
         const isMarked = question.multiSelect
           ? (question.correctIndices ?? [question.correctIndex]).includes(optionIndex)
@@ -627,7 +764,7 @@ function GenerationEditor() {
                 disabled={busy}
                 accessibilityRole={question.multiSelect ? 'checkbox' : 'radio'}
                 accessibilityState={{ selected: isMarked, checked: isMarked }}
-                accessibilityLabel={`Mark option ${optionIndex + 1} as correct`}
+                accessibilityLabel={vi ? `Chọn phương án ${optionIndex + 1} làm đáp án đúng` : `Mark option ${optionIndex + 1} as correct`}
                 onPress={() =>
                   updateQuestion(question.id, (current) => {
                     if (!current.multiSelect) return { ...current, correctIndex: optionIndex };
@@ -642,7 +779,7 @@ function GenerationEditor() {
                 }
                 style={[styles.answerMark, { backgroundColor: isMarked ? palette.mintTint : palette.paperMuted }]}
               >
-                <Ionicons
+                <AppIcon
                   name={question.multiSelect ? (isMarked ? 'checkbox' : 'square-outline') : isMarked ? 'checkmark-circle' : 'ellipse-outline'}
                   size={20}
                   color={isMarked ? palette.mint : palette.inkMuted}
@@ -661,29 +798,38 @@ function GenerationEditor() {
                   options: current.options.map((value, currentIndex) => (currentIndex === optionIndex ? nextOption : value)),
                 }))
               }
-              style={[styles.optionInput, { color: palette.ink, borderColor: palette.paperMuted }]}
+              style={[styles.optionInput, { color: palette.ink, backgroundColor: palette.paperRaised, borderColor: isMarked && question.questionType !== 'poll' ? palette.mintBorder : palette.paperMuted }]}
             />
           </View>
         );
       })}
-      <TextInput testID={`question-${index}-explanation`} editable={!busy} accessibilityLabel="Explanation" value={question.explanation} onChangeText={(explanation) => updateQuestion(question.id, (current) => ({ ...current, explanation }))} placeholder="Add an explanation" placeholderTextColor={palette.inkMuted} multiline style={[styles.explanationInput, { color: palette.ink, borderColor: palette.paperMuted }]} />
+      <Text style={[typography.title, { color: palette.ink, marginTop: spacing.sm }]}>{vi ? 'Giải thích' : 'Explanation'}</Text>
+      <TextInput testID={`question-${index}-explanation`} editable={!busy} accessibilityLabel={vi ? 'Giải thích' : 'Explanation'} value={question.explanation} onChangeText={(explanation) => updateQuestion(question.id, (current) => ({ ...current, explanation }))} placeholder={vi ? 'Thêm giải thích' : 'Add an explanation'} placeholderTextColor={palette.inkMuted} multiline style={[styles.explanationInput, { color: palette.ink, borderColor: palette.paperMuted }]} />
     </Card>)}
 
-    {busy && queuedJobs.some(job => job.status === 'running') && <Button variant="secondary" onPress={() => {
-      const job = jobs.find(item => item.id === activeJob.current);
-      if (job) void cancelJob(job);
-    }}>{language === 'vi' ? 'Hủy tạo câu hỏi' : 'Cancel generation'}</Button>}
+    {questions.length > 0 && !manualMode && settings}
+    {questions.length > 0 && generationQueue}
     <View style={styles.actions}>
-      {!manualMode && <Button testID="generate-from-source" variant="secondary" onPress={() => void generate()} disabled={busy}>{busy ? (language === 'vi' ? 'Đang tạo…' : 'Generating…') : (language === 'vi' ? 'Tạo từ tài liệu đã xem' : 'Generate from reviewed source')}</Button>}
-      <Button testID="save-question-set" icon="checkmark" onPress={() => void save()} disabled={busy || questions.length === 0}>{busy ? 'Saving…' : existingSet ? t.home.saveChanges : manualMode ? t.home.saveSet : 'Save question set'}</Button>
+      {!manualMode && <Button testID="generate-from-source" variant="secondary" onPress={() => void generate()} disabled={!canGenerate}>{busy ? (language === 'vi' ? 'Đang tạo…' : 'Generating…') : (language === 'vi' ? 'Tạo từ tài liệu đã xem' : 'Generate from reviewed source')}</Button>}
+      {manualMode || questions.length === 0 ? (
+        <Button testID="save-question-set" icon="checkmark" onPress={() => void save()} disabled={busy || questions.length === 0} multiline>{saveLabel}</Button>
+      ) : (
+        <Button icon="checkmark" onPress={() => void save()} disabled={busy} multiline>{vi ? 'Lưu vào thư viện' : 'Save to library'}</Button>
+      )}
     </View>
   </Screen>;
 }
 
 const styles = StyleSheet.create({
-  controls: { padding: spacing.xl, gap: spacing.md },
+  reviewHeader: { padding: spacing.lg, gap: spacing.md, borderRadius: 12, marginBottom: spacing.lg },
+  sourceLine: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
+  shrink: { flexShrink: 1 },
+  receipt: { borderWidth: 1, borderRadius: 8, padding: spacing.md, gap: spacing.sm },
+  reviewActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  reviewAction: { flexGrow: 1, flexBasis: 175, minWidth: 0 },
+  controls: { padding: spacing.lg, gap: spacing.sm },
   choiceRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },
-  question: { marginBottom: spacing.md, gap: spacing.sm },
+  question: { marginBottom: spacing.md, gap: spacing.sm, borderRadius: 12 },
   queueCard: { marginTop: spacing.xl, gap: spacing.md },
   jobRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
   questionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: spacing.xs },
