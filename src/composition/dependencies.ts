@@ -23,6 +23,7 @@ import { captureSourceImage, pickSourceImages } from '@/features/scan-ocr/data/i
 import { recognizeLocalImage } from '@/features/scan-ocr/data/ocr';
 import { isGenerationConfigured, requestGeneratedQuestions } from '@/features/quiz-generation/data/edgeFunctionClient';
 import { generationJobs } from '@/features/quiz-generation/data/generationJobStorage';
+import { sourceHandoff } from '@/features/quiz-generation/data/sourceHandoff';
 import { generationNetworkAvailable, observeGenerationWake } from '@/features/quiz-generation/data/connectivity';
 import { exportStudyPdfReport } from '@/features/study/data/sessionPdf';
 import { onboardingRepository } from '@/features/onboarding/data/onboardingRepository';
@@ -42,7 +43,7 @@ export const dependencies = {
   release: releaseService,
   deleteCurrentAccount,
   intake: { pickSourceDocument, pickRichSourceDocument, captureSourceImage, pickSourceImages, recognizeLocalImage },
-  generation: { configured: isGenerationConfigured, generate: requestGeneratedQuestions, jobs: generationJobs, online: generationNetworkAvailable, observeWake: observeGenerationWake },
+  generation: { configured: isGenerationConfigured, generate: requestGeneratedQuestions, jobs: generationJobs, sourceHandoff, online: generationNetworkAvailable, observeWake: observeGenerationWake },
   questionSets: learning.questionSets,
   sources: learning.sources,
   learning,

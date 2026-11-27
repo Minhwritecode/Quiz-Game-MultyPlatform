@@ -43,6 +43,7 @@ const OCR_LANGUAGES: Array<{ code: string; label: string }> = [
 
 export default function ScanScreen() {
   const router = useRouter();
+  const signedIn = useAuthStore((state) => Boolean(state.user));
   const palette = usePalette();
   const saveSourceDocument = usePapyrusStore((state) => state.saveSourceDocument);
   const [text, setText] = useState('');
@@ -211,7 +212,7 @@ export default function ScanScreen() {
       await dependencies.sources.save(document);
       if (useAuthStore.getState().user?.id !== account) return;
       saveSourceDocument(document);
-      router.push('/create/generate');
+      router.push({ pathname: '/create/generate', params: { sourceId: document.id } });
     } catch (error) {
       setMessage(errorMessage(error, 'Không lưu được tài liệu. Hãy thử lại.'));
     } finally {
@@ -458,7 +459,9 @@ export default function ScanScreen() {
           {busy ? 'Đang xử lý…' : 'Tiếp tục'}
         </Button>
         <Text style={[typography.caption, { color: palette.inkMuted }]}>
-          Văn bản đã duyệt dùng để tạo câu hỏi và được đồng bộ khi bạn đăng nhập.
+          {signedIn
+            ? 'Văn bản đã duyệt dùng để tạo câu hỏi và được đồng bộ với tài khoản.'
+            : 'Bạn có thể duyệt nội dung trước. Khi muốn tạo bằng AI, hãy đăng nhập để tiếp tục với tài liệu này.'}
         </Text>
       </View>
     </Screen>

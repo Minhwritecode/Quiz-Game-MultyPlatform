@@ -3,6 +3,7 @@ import { seedQuestionSets } from '@/composition/preferences';
 import { gameApi } from './game.api';
 import { roomApi } from './room.api';
 
+jest.mock('expo-crypto', () => ({ randomUUID: jest.requireActual('node:crypto').randomUUID }));
 jest.mock('@/composition/platform', () => ({
   createRealtimeKahootChannel: jest.fn(() => null),
   removeRealtimeKahootChannel: jest.fn(),

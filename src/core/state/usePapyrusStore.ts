@@ -7,6 +7,7 @@ import {
   syncUserProgressToCloud,
 } from '@/composition/preferences';
 import type { QuestionSet, SourceDocument } from '@/core/domain/models';
+import { useAuthStore } from './useAuthStore';
 import { computeNextElo, ELO_INITIAL, type EloMatchOutcome } from '@/features/room-battle/domain/elo';
 
 export interface PerUserStatsSlice {
@@ -37,6 +38,7 @@ type PapyrusState = {
   questionSets: QuestionSet[];
   deletedSetIds: string[];
   sourceDocument: SourceDocument | null;
+  sourceDocumentOwner: string | null;
   hydrated: boolean;
   syncMessage: string;
   setSyncMessage: (message: string) => void;
@@ -85,11 +87,12 @@ export const usePapyrusStore = create<PapyrusState>()(
       questionSets: seedQuestionSets,
       deletedSetIds: [],
       sourceDocument: null,
+      sourceDocumentOwner: null,
       hydrated: false,
       syncMessage: '',
       setSyncMessage: (syncMessage) => set({ syncMessage }),
       replaceQuestionSets: (questionSets) => set({ questionSets, hydrated: true }),
-      resetAccountView: () => set({ questionSets: seedQuestionSets, sourceDocument: null, hydrated: false, syncMessage: '' }),
+      resetAccountView: () => set({ questionSets: seedQuestionSets, sourceDocument: null, sourceDocumentOwner: null, hydrated: false, syncMessage: '' }),
       switchAccountScope: (nextUserId) => {
         const cleanId = nextUserId || 'guest';
         const state = get();
@@ -263,8 +266,8 @@ export const usePapyrusStore = create<PapyrusState>()(
           hydrated: true,
         });
       },
-      saveSourceDocument: (document) => set({ sourceDocument: document }),
-      clearSourceDocument: () => set({ sourceDocument: null }),
+      saveSourceDocument: (document) => set({ sourceDocument: document, sourceDocumentOwner: useAuthStore.getState().user?.id ?? null }),
+      clearSourceDocument: () => set({ sourceDocument: null, sourceDocumentOwner: null }),
       saveQuestionSet: (questionSet) =>
         set((state) => ({
           deletedSetIds: state.deletedSetIds.filter((id) => id !== questionSet.id),

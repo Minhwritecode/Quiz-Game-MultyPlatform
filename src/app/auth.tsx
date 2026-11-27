@@ -1,7 +1,7 @@
 import { errorMessage } from '@/core/domain/failure';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
@@ -104,6 +104,17 @@ export default function AuthScreen() {
   const [infoMsg, setInfoMsg] = useState<string | null>(null);
 
   const user = useAuthStore((state) => state.user);
+  const routedUser = useRef<string | null>(null);
+  const finishSignIn = useCallback(async () => {
+    const owner = useAuthStore.getState().user?.id;
+    if (!owner || routedUser.current === owner) return;
+    routedUser.current = owner;
+    const isCurrent = () => useAuthStore.getState().user?.id === owner;
+    const sourceId = await dependencies.generation.sourceHandoff.claim(owner, isCurrent).catch(() => null);
+    if (!isCurrent()) return;
+    if (sourceId) router.replace({ pathname: '/create/generate', params: { sourceId, fromSignIn: '1' } });
+    else router.replace('/');
+  }, [router]);
   const enterGuestMode = useAuthStore((state) => state.enterGuestMode);
   const reduceMotion = usePapyrusStore((state) => state.reduceMotion);
 
@@ -173,10 +184,22 @@ export default function AuthScreen() {
   }, []);
 
   useEffect(() => {
-    if (user && mode !== 'resetPassword' && mode !== 'twoFactor') {
-      router.replace('/');
-    }
-  }, [user, mode, router]);
+    if (!user || busy || mode === 'resetPassword' || mode === 'twoFactor') return;
+    if (Platform.OS === 'web' && /(?:[?#&])type=recovery(?:&|$)/.test(window.location.href)) return;
+    let active = true;
+    void checkSignInRequires2FA().then((mfa) => {
+      if (!active || useAuthStore.getState().user?.id !== user.id) return;
+      if (mfa.required) {
+        setMfaFactorId(mfa.factorId);
+        setMode('twoFactor');
+      } else {
+        void finishSignIn();
+      }
+    }).catch(() => {
+      if (active) setErrorMsg(language === 'vi' ? 'Không thể kiểm tra phiên đăng nhập. Hãy thử lại.' : 'Could not verify this session. Try again.');
+    });
+    return () => { active = false; };
+  }, [user, mode, busy, finishSignIn, language]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -187,25 +210,16 @@ export default function AuthScreen() {
       }
     }
 
-    const unsubscribe = dependencies.auth.onAuthStateChange((nextUser, event) => {
+    const unsubscribe = dependencies.auth.onAuthStateChange((_nextUser, event) => {
       if (event === 'PASSWORD_RECOVERY') {
         setMode('resetPassword');
-      } else if (nextUser && event === 'SIGNED_IN') {
-        void checkSignInRequires2FA().then((mfa) => {
-          if (mfa.required) {
-            setMfaFactorId(mfa.factorId);
-            morphToMode('twoFactor');
-          } else {
-            router.replace('/');
-          }
-        });
       }
     });
 
     return () => {
       unsubscribe();
     };
-  }, [router]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   const pwStrength = useMemo(
     () => computePasswordStrength(mode === 'resetPassword' ? newPassword : password),
@@ -221,7 +235,7 @@ export default function AuthScreen() {
         setErrorMsg(res.message || 'Mã xác thực 2FA chưa chính xác.');
         return;
       }
-      router.replace('/');
+      await finishSignIn();
     } finally {
       setBusy(false);
     }
@@ -246,7 +260,7 @@ export default function AuthScreen() {
         avatarUrl: null,
         role: 'user',
       });
-      router.replace('/');
+      await finishSignIn();
     } finally {
       setBusy(false);
     }
@@ -323,7 +337,7 @@ export default function AuthScreen() {
         usePapyrusStore.getState().addBonusXp(50);
         useStreakStore.getState().recordActivity('daily_checkin');
         setInfoMsg(t.auth.signUpSuccess);
-        setTimeout(() => router.replace('/'), 900);
+        void finishSignIn();
       }
     } else {
       const error = await dependencies.auth.signInWithPassword(cleanEmail, password);
@@ -335,7 +349,7 @@ export default function AuthScreen() {
           setMfaFactorId(mfa.factorId);
           morphToMode('twoFactor');
         } else {
-          router.replace('/');
+          await finishSignIn();
         }
       }
     }
@@ -801,6 +815,7 @@ export default function AuthScreen() {
                 accessibilityRole="button"
                 onPress={() => {
                   enterGuestMode();
+                  void dependencies.generation.sourceHandoff.clear().catch(() => undefined);
                   router.replace('/');
                 }}
                 style={styles.guestFooterBtn}
