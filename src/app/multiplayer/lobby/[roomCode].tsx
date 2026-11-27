@@ -73,8 +73,41 @@ export default function LobbyRoomScreen() {
 
                 <View style={styles.badgeRow}>
                   <Badge tone="reward">Biệt danh: {nickname || 'Người chơi'}</Badge>
-                  <Badge tone="success">Đã sẵn sàng ⚡</Badge>
+                  <Badge tone="success">Đã sẵn sàng</Badge>
                 </View>
+
+                {room?.quizId ? (
+                  <View
+                    style={{
+                      marginTop: spacing.md,
+                      paddingHorizontal: 14,
+                      paddingVertical: 9,
+                      borderRadius: radii.md,
+                      backgroundColor: palette.indigoTint,
+                      borderWidth: 1,
+                      borderColor: palette.indigoBorder,
+                      width: '100%',
+                    }}
+                  >
+                    <Text
+                      style={[typography.body, { color: palette.ink, fontWeight: '800', textAlign: 'center' }]}
+                      numberOfLines={2}
+                    >
+                      {room.quizId.title}
+                    </Text>
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        color: palette.indigo,
+                        fontWeight: '700',
+                        textAlign: 'center',
+                        marginTop: 2,
+                      }}
+                    >
+                      {room.quizId.questions?.length || 0} câu hỏi · {room.timeLimit || 20}s mỗi câu
+                    </Text>
+                  </View>
+                ) : null}
               </Card>
 
               <View style={styles.sectionHeader}>

@@ -203,6 +203,10 @@ export const FriendsDiscoveryHub = memo(function FriendsDiscoveryHub({
   };
 
   const openDirectMessage = (peerId: string, peerName: string, peerAvatar: string | null) => {
+    if (!user || viewerId === 'guest') {
+      setNotice('Vui lòng đăng nhập để nhắn tin trực tiếp.');
+      return;
+    }
     if (onOpenDirectChat) {
       onOpenDirectChat({ id: peerId, name: peerName });
       return;
@@ -211,6 +215,7 @@ export const FriendsDiscoveryHub = memo(function FriendsDiscoveryHub({
       { id: viewerId, name: viewerName, avatar: user?.avatarUrl ?? null },
       { id: peerId, name: peerName, avatar: peerAvatar }
     );
+    if (!conv) return;
     router.push({ pathname: '/messages', params: { conversationId: conv.id } });
   };
 
@@ -220,9 +225,9 @@ export const FriendsDiscoveryHub = memo(function FriendsDiscoveryHub({
       <Card style={{ gap: 10, borderColor: palette.indigoBorder, borderWidth: 1.5 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
           <View style={{ flex: 1, minWidth: 180 }}>
-            <Badge tone="primary">👥 KẾT NỐI BẠN BÈ & ĐỒ THỊ XÃ HỘI</Badge>
+            <Badge tone="primary">KẾT NỐI BẠN BÈ</Badge>
             <Text style={[typography.title, { color: palette.ink, marginTop: 4 }]}>
-              Tìm Bạn Bè Theo Tên Trang Cá Nhân
+              Tìm bạn bè theo tên hiển thị
             </Text>
           </View>
           {user ? (
@@ -233,7 +238,7 @@ export const FriendsDiscoveryHub = memo(function FriendsDiscoveryHub({
             >
               <Ionicons name="share-social-outline" size={15} color={palette.indigo} />
               <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.indigo }}>
-                Chia sẻ Liên kết của {user.displayName}
+                Chia sẻ liên kết của {user.displayName}
               </Text>
             </Pressable>
           ) : null}
@@ -247,7 +252,7 @@ export const FriendsDiscoveryHub = memo(function FriendsDiscoveryHub({
               onChangeText={setQuery}
               onSubmitEditing={() => void runLiveNameSearch()}
               returnKeyType="search"
-              placeholder="Tìm bằng họ tên Profile, chuyên ngành, chủ đề quan tâm..."
+              placeholder="Nhập tên hiển thị, chuyên ngành hoặc trường học..."
               placeholderTextColor={palette.inkMuted}
               style={[styles.searchInput, { color: palette.ink }]}
             />
@@ -273,11 +278,11 @@ export const FriendsDiscoveryHub = memo(function FriendsDiscoveryHub({
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
             {(
               [
-                { id: 'recommended', label: `✨ Đề xuất thông minh (${recommendations.length})` },
-                { id: 'requests', label: `📩 Lời mời KB (${incomingRequests.length})` },
-                { id: 'friends', label: `🤝 Bạn bè (${twoWayFriends.length})` },
-                { id: 'following', label: `👤 Đang theo dõi (${followingProfiles.length})` },
-                { id: 'online', label: `🟢 Đang hoạt động` },
+                { id: 'recommended', label: `Gợi ý (${recommendations.length})` },
+                { id: 'requests', label: `Lời mời (${incomingRequests.length})` },
+                { id: 'friends', label: `Bạn bè (${twoWayFriends.length})` },
+                { id: 'following', label: `Đang theo dõi (${followingProfiles.length})` },
+                { id: 'online', label: 'Trực tuyến' },
               ] as const
             ).map((f) => {
               const active = tab === f.id;
@@ -293,7 +298,7 @@ export const FriendsDiscoveryHub = memo(function FriendsDiscoveryHub({
                     },
                   ]}
                 >
-                  <Text style={{ fontSize: 11.5, fontWeight: '800', color: active ? '#FFF' : palette.ink }}>
+                  <Text style={{ fontSize: 11.5, fontWeight: '700', color: active ? palette.onPrimary : palette.ink }}>
                     {f.label}
                   </Text>
                 </Pressable>
@@ -414,8 +419,8 @@ export const FriendsDiscoveryHub = memo(function FriendsDiscoveryHub({
                         {profile.bio}
                       </Text>
                     ) : null}
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: palette.indigo, marginTop: 4 }} numberOfLines={1}>
-                      💡 {reasonLabel}
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: palette.indigo, marginTop: 4 }} numberOfLines={1}>
+                      {reasonLabel}
                     </Text>
                   </Pressable>
 
@@ -433,7 +438,13 @@ export const FriendsDiscoveryHub = memo(function FriendsDiscoveryHub({
                 <View style={styles.peerActionsRow}>
                   <Pressable
                     accessibilityRole="button"
-                    onPress={() => toggleFollowUser(viewerId, profile.id)}
+                    onPress={() => {
+                      if (!user || viewerId === 'guest') {
+                        setNotice('Vui lòng đăng nhập để theo dõi thành viên.');
+                        return;
+                      }
+                      toggleFollowUser(viewerId, profile.id);
+                    }}
                     style={[
                       styles.peerBtn,
                       {
@@ -442,20 +453,24 @@ export const FriendsDiscoveryHub = memo(function FriendsDiscoveryHub({
                       },
                     ]}
                   >
-                    <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.indigo }}>
-                      {isFollowing ? 'Đang theo dõi' : '+ Theo dõi'}
+                    <Text style={{ fontSize: 11.5, fontWeight: '700', color: palette.indigo }}>
+                      {isFollowing ? 'Đang theo dõi' : 'Theo dõi'}
                     </Text>
                   </Pressable>
 
                   <Pressable
                     accessibilityRole="button"
                     onPress={() => {
+                      if (!user || viewerId === 'guest') {
+                        setNotice('Vui lòng đăng nhập để gửi lời mời kết bạn.');
+                        return;
+                      }
                       if (isFriend || pendingSent) {
                         cancelOrUnfriend(viewerId, profile.id);
                       } else {
                         sendFriendRequest(viewerId, profile.id);
                         void dependencies.leaderboard.addFriend(profile.id).catch(() => undefined);
-                        setNotice(`🤝 Đã gửi lời mời kết bạn tới ${profile.displayName}!`);
+                        setNotice(`Đã gửi lời mời kết bạn tới ${profile.displayName}.`);
                       }
                     }}
                     style={[
@@ -469,11 +484,11 @@ export const FriendsDiscoveryHub = memo(function FriendsDiscoveryHub({
                     <Text
                       style={{
                         fontSize: 11.5,
-                        fontWeight: '800',
-                        color: isFriend ? palette.mint : pendingSent ? palette.inkMuted : '#FFFFFF',
+                        fontWeight: '700',
+                        color: isFriend ? palette.mint : pendingSent ? palette.inkMuted : palette.onPrimary,
                       }}
                     >
-                      {isFriend ? '✓ Bạn bè' : pendingSent ? 'Đã gửi KB' : 'Kết bạn'}
+                      {isFriend ? 'Bạn bè' : pendingSent ? 'Đã gửi lời mời' : 'Kết bạn'}
                     </Text>
                   </Pressable>
 

@@ -1,4 +1,4 @@
-import { createElement, useEffect, useState } from 'react';
+import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Image,
@@ -15,38 +15,62 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { STORY_GRADIENTS, type ScholarStory } from '../domain/models';
+import { useCommunityStore } from '../state/useCommunityStore';
+import { useSocialStore } from '@/features/social/state/useSocialStore';
 import { Button, Card, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
-import { pickStoryMedia } from '@/composition/platform';
+import { pickStoryMedia, resolvePlayableVideoUri } from '@/composition/platform';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { VideoCoverEditorModal } from '@/features/social/presentation/VideoCoverEditorModal';
 import { GifStickerEmojiPickerModal } from '@/features/social/presentation/GifStickerEmojiPickerModal';
 
 /**
- * Fullscreen Facebook-Style 9:16 Story Viewer:
- * Supports full-bleed Photos, real Video playback (with sound toggle, pause/play & duration bar),
- * flying emoji bursts, and quick Direct Message reply!
+ * Single-Box Multi-Story Viewer:
+ * - Groups all slides of a user inside ONE single Story Box with segmented progress bars at top.
+ * - Tap LEFT side to flip backward, tap RIGHT side to flip forward.
+ * - Plays 100% of a video's REAL duration (driven by `<video>` `onTimeUpdate` & `onEnded`, ZERO 10s/20s truncation!).
  */
 export function StoryViewerModal({
   story,
+  stories,
+  initialIndex,
   viewerId,
   onClose,
+  onMarkViewed,
   onReact,
   onDirectMessage,
 }: {
-  story: ScholarStory | null;
+  story?: ScholarStory | null;
+  stories?: ScholarStory[] | null;
+  initialIndex?: number;
   viewerId: string;
   onClose: () => void;
+  onMarkViewed?: (storyId: string) => void;
   onReact: (storyId: string, emoji: string) => void;
   onDirectMessage?: (author: { id: string; name: string; replyText?: string }) => void;
 }) {
-  if (!story) return null;
+  const slideList = stories && stories.length > 0 ? stories : story ? [story] : [];
+  if (slideList.length === 0) return null;
+  const firstUnreadIdx = slideList.findIndex(
+    (s) => s.authorId !== viewerId && (!Array.isArray(s.viewedByIds) || !s.viewedByIds.includes(viewerId))
+  );
+  const defaultIdx =
+    initialIndex !== undefined
+      ? initialIndex
+      : firstUnreadIdx >= 0
+      ? firstUnreadIdx
+      : slideList[0]?.authorId === viewerId
+      ? slideList.length - 1
+      : 0;
+  const groupKey = `${slideList.map((s) => s.id).join('|')}::${defaultIdx}`;
   return (
     <StoryViewerModalInner
-      key={story.id}
-      story={story}
+      key={groupKey}
+      slides={slideList}
+      initialIndex={Math.min(Math.max(0, defaultIdx), slideList.length - 1)}
       viewerId={viewerId}
       onClose={onClose}
+      onMarkViewed={onMarkViewed}
       onReact={onReact}
       onDirectMessage={onDirectMessage}
     />
@@ -54,52 +78,207 @@ export function StoryViewerModal({
 }
 
 function StoryViewerModalInner({
-  story,
+  slides,
+  initialIndex,
   viewerId,
   onClose,
+  onMarkViewed,
   onReact,
   onDirectMessage,
 }: {
-  story: ScholarStory;
+  slides: ScholarStory[];
+  initialIndex: number;
   viewerId: string;
   onClose: () => void;
+  onMarkViewed?: (storyId: string) => void;
   onReact: (storyId: string, emoji: string) => void;
   onDirectMessage?: (author: { id: string; name: string; replyText?: string }) => void;
 }) {
   const router = useRouter();
+  const palette = usePalette();
   const reduceMotion = usePapyrusStore((s) => s.reduceMotion);
+  const storeStories = useCommunityStore((s) => s.stories);
+  const profilesById = useSocialStore((s) => s.profilesById);
+  const [activeIndex, setActiveIndex] = useState(initialIndex);
   const [paused, setPaused] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   const [muted, setMuted] = useState(false);
   const [replyText, setReplyText] = useState('');
   const [burstEmoji, setBurstEmoji] = useState<string | null>(null);
+  const [videoState, setVideoState] = useState<{
+    forStoryId: string;
+    playableUri: string | null;
+    failed: boolean;
+  }>({ forStoryId: '', playableUri: null, failed: false });
   const [progressAnim] = useState(() => new Animated.Value(0));
+  const [flipAnim] = useState(() => new Animated.Value(1));
   const [burstAnim] = useState(() => new Animated.Value(0));
+  const onMarkViewedRef = useRef(onMarkViewed);
+  useEffect(() => {
+    onMarkViewedRef.current = onMarkViewed;
+  }, [onMarkViewed]);
 
-  const isVideo = Boolean(story.mediaType === 'video' || story.videoUri);
-  const durationMs = Math.max(5000, Math.min(20000, (story.durationSec ?? 7) * 1000));
+  const rawSlide = slides[activeIndex] ?? slides[0]!;
+  const story = storeStories.find((s) => s.id === rawSlide.id) ?? rawSlide;
+  const isOwnStory = Boolean(viewerId && viewerId !== 'guest' && story.authorId === viewerId);
+  const safeAuthorName = story.authorName?.trim() || 'Thành viên Papyrus';
+  const safeGrad: [string, string] =
+    Array.isArray(story.gradient) && story.gradient.length >= 2
+      ? [story.gradient[0] || '#312E81', story.gradient[1] || '#7C3AED']
+      : ['#312E81', '#7C3AED'];
+  const safeViewedByIds = Array.isArray(story.viewedByIds) ? story.viewedByIds : [];
+  const otherViewerIds = useMemo(
+    () => safeViewedByIds.filter((uid) => Boolean(uid && uid !== story.authorId && uid !== 'guest')),
+    [safeViewedByIds, story.authorId]
+  );
+  const safeReactions = useMemo(
+    () =>
+      story.reactions && typeof story.reactions === 'object' && !Array.isArray(story.reactions)
+        ? story.reactions
+        : {},
+    [story.reactions]
+  );
+
+  const engagementRoster = useMemo(() => {
+    const byUser = new Map<
+      string,
+      { userId: string; viewed: boolean; emojis: string[]; isSelf: boolean }
+    >();
+    for (const uid of otherViewerIds) {
+      byUser.set(uid, { userId: uid, viewed: true, emojis: [], isSelf: false });
+    }
+    for (const [emo, uids] of Object.entries(safeReactions)) {
+      if (!Array.isArray(uids)) continue;
+      for (const uid of uids) {
+        if (!uid || uid === 'guest') continue;
+        const prev = byUser.get(uid);
+        if (prev) {
+          if (!prev.emojis.includes(emo)) prev.emojis.push(emo);
+        } else {
+          byUser.set(uid, {
+            userId: uid,
+            viewed: uid !== story.authorId,
+            emojis: [emo],
+            isSelf: uid === story.authorId,
+          });
+        }
+      }
+    }
+    return Array.from(byUser.values()).sort((a, b) => b.emojis.length - a.emojis.length);
+  }, [otherViewerIds, safeReactions, story.authorId]);
+
+  const totalReactionsCount = useMemo(
+    () =>
+      Object.values(safeReactions).reduce(
+        (acc, arr) => acc + (Array.isArray(arr) ? arr.length : 0),
+        0
+      ),
+    [safeReactions]
+  );
+
+  const rawVideoCandidate = story.mediaType === 'video' || story.videoUri ? story.videoUri : null;
 
   useEffect(() => {
-    if (paused) {
-      progressAnim.stopAnimation();
-      return;
+    let active = true;
+    if (!rawVideoCandidate) return undefined;
+    void resolvePlayableVideoUri(rawVideoCandidate).then((resolved) => {
+      if (!active) return;
+      setVideoState({
+        forStoryId: story.id,
+        playableUri: resolved,
+        failed: !resolved,
+      });
+    });
+    return () => {
+      active = false;
+    };
+  }, [rawVideoCandidate, story.id]);
+
+  const activePlayableVideo =
+    rawVideoCandidate && videoState.forStoryId === story.id && !videoState.failed
+      ? videoState.playableUri
+      : null;
+  const videoFailedForSlide =
+    Boolean(rawVideoCandidate) && videoState.forStoryId === story.id && videoState.failed;
+  const isVideo = Boolean((story.mediaType === 'video' || story.videoUri) && !videoFailedForSlide);
+  const isWebVideo = Boolean(isVideo && activePlayableVideo && Platform.OS === 'web');
+  const effectivePaused = paused || inspectorOpen;
+
+  const goNext = useCallback(() => {
+    if (activeIndex < slides.length - 1) {
+      progressAnim.setValue(0);
+      if (!reduceMotion) {
+        flipAnim.setValue(0.92);
+        Animated.spring(flipAnim, {
+          toValue: 1,
+          damping: 18,
+          stiffness: 220,
+          useNativeDriver: Platform.OS !== 'web',
+        }).start();
+      }
+      setActiveIndex((idx) => Math.min(slides.length - 1, idx + 1));
+    } else {
+      onClose();
     }
+  }, [activeIndex, flipAnim, onClose, progressAnim, reduceMotion, slides.length]);
+
+  const goPrev = useCallback(() => {
+    progressAnim.setValue(0);
+    if (activeIndex > 0) {
+      if (!reduceMotion) {
+        flipAnim.setValue(0.92);
+        Animated.spring(flipAnim, {
+          toValue: 1,
+          damping: 18,
+          stiffness: 220,
+          useNativeDriver: Platform.OS !== 'web',
+        }).start();
+      }
+      setActiveIndex((idx) => Math.max(0, idx - 1));
+    } else if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      const videoEl = document.getElementById('papyrus-story-video-el') as HTMLVideoElement | null;
+      if (videoEl) videoEl.currentTime = 0;
+    }
+  }, [activeIndex, flipAnim, progressAnim, reduceMotion]);
+
+  useEffect(() => {
+    if (story?.id) {
+      onMarkViewedRef.current?.(story.id);
+    }
+  }, [story?.id]);
+
+  // Timer ONLY runs for image/text slides (or non-web fallback).
+  // Web video slides are driven 100% by the `<video>` element's real duration (`onTimeUpdate` & `onEnded`)!
+  useEffect(() => {
+    if (isVideo && Platform.OS === 'web' && !videoFailedForSlide) {
+      progressAnim.stopAnimation();
+      return undefined;
+    }
+    if (effectivePaused) {
+      progressAnim.stopAnimation();
+      return undefined;
+    }
+    const slideDurationMs = isVideo
+      ? Math.max(6000, (story.durationSec ?? 15) * 1000)
+      : 6500;
+    progressAnim.setValue(0);
     const anim = Animated.timing(progressAnim, {
       toValue: 1,
-      duration: durationMs,
+      duration: slideDurationMs,
       useNativeDriver: false,
     });
     anim.start(({ finished }) => {
-      if (finished) onClose();
+      if (finished) goNext();
     });
     return () => anim.stop();
-  }, [durationMs, onClose, paused, progressAnim]);
+  }, [activeIndex, effectivePaused, goNext, isVideo, progressAnim, story.durationSec, story.id, videoFailedForSlide]);
 
   useEffect(() => {
-    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    if (!isWebVideo || typeof document === 'undefined') return;
     const videoEl = document.getElementById('papyrus-story-video-el') as HTMLVideoElement | null;
     if (!videoEl) return;
     videoEl.muted = muted;
-    if (paused || reduceMotion) {
+    if (effectivePaused || reduceMotion) {
       videoEl.pause();
     } else {
       void videoEl.play().catch(() => {
@@ -108,16 +287,17 @@ function StoryViewerModalInner({
         void videoEl.play().catch(() => undefined);
       });
     }
-  }, [muted, paused, reduceMotion, story.id]);
+  }, [effectivePaused, isWebVideo, muted, reduceMotion, story.id]);
 
   const triggerEmojiBurst = (emo: string) => {
+    if (!viewerId || viewerId === 'guest') return;
     onReact(story.id, emo);
     setBurstEmoji(emo);
     burstAnim.setValue(0);
     Animated.timing(burstAnim, {
       toValue: 1,
       duration: 720,
-      useNativeDriver: true,
+      useNativeDriver: Platform.OS !== 'web',
     }).start(() => setBurstEmoji(null));
   };
 
@@ -125,25 +305,52 @@ function StoryViewerModalInner({
   const bgStyle =
     Platform.OS === 'web'
       ? ({
-        backgroundImage: `linear-gradient(160deg, ${story.gradient[0]} 0%, ${story.gradient[1]} 100%)`,
+        backgroundImage: `linear-gradient(160deg, ${safeGrad[0]} 0%, ${safeGrad[1]} 100%)`,
       } as unknown as ViewStyle)
-      : { backgroundColor: story.gradient[0] };
+      : { backgroundColor: safeGrad[0] };
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.viewerBackdrop}>
-        <View style={[styles.storyCanvas, bgStyle]}>
-          {/* Full-bleed Photo OR Video Player */}
-          {isVideo && story.videoUri && Platform.OS === 'web' ? (
+        <Animated.View
+          style={[
+            styles.storyCanvas,
+            bgStyle,
+            { transform: [{ scale: flipAnim }] },
+          ]}
+        >
+          {/* Full-bleed Photo OR Full-Length Video Player (ZERO duration cap!) */}
+          {isWebVideo && activePlayableVideo ? (
             createElement('video', {
+              key: story.id,
               id: 'papyrus-story-video-el',
-              src: story.videoUri,
+              src: activePlayableVideo,
               poster: story.thumbnailUri || undefined,
               width: 390,
               height: 690,
               playsInline: true,
-              autoPlay: !reduceMotion,
+              autoPlay: !reduceMotion && !effectivePaused,
               muted,
+              onLoadedMetadata: () => {
+                progressAnim.setValue(0);
+              },
+              onTimeUpdate: (e: { currentTarget: HTMLVideoElement }) => {
+                const el = e.currentTarget;
+                if (el && Number.isFinite(el.duration) && el.duration > 0) {
+                  progressAnim.setValue(Math.min(1, el.currentTime / el.duration));
+                }
+              },
+              onEnded: () => {
+                progressAnim.setValue(1);
+                goNext();
+              },
+              onError: () => {
+                setVideoState({
+                  forStoryId: story.id,
+                  playableUri: null,
+                  failed: true,
+                });
+              },
               style: {
                 position: 'absolute',
                 top: 0,
@@ -171,20 +378,28 @@ function StoryViewerModalInner({
             ]}
           />
 
-          {/* Top Progress + Controls */}
-          <View style={{ zIndex: 3 }}>
-            <View style={styles.progressTrack}>
-              <Animated.View
-                style={[
-                  styles.progressFill,
-                  {
-                    width: progressAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: ['0%', '100%'],
-                    }),
-                  },
-                ]}
-              />
+          {/* Top Segmented Progress Bars + Header Controls */}
+          <View style={{ zIndex: 4 }}>
+            <View style={styles.segmentedRow}>
+              {slides.map((sl, idx) => (
+                <View key={sl.id} style={styles.progressTrack}>
+                  {idx < activeIndex ? (
+                    <View style={[styles.progressFill, { width: '100%' }]} />
+                  ) : idx > activeIndex ? null : (
+                    <Animated.View
+                      style={[
+                        styles.progressFill,
+                        {
+                          width: progressAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: ['0%', '100%'],
+                          }),
+                        },
+                      ]}
+                    />
+                  )}
+                </View>
+              ))}
             </View>
 
             <View style={styles.viewerHeader}>
@@ -202,21 +417,23 @@ function StoryViewerModalInner({
                     <Image source={{ uri: story.authorAvatar }} style={styles.authorAvatarImg} />
                   ) : (
                     <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 15 }}>
-                      {(story.authorName[0] || 'S').toUpperCase()}
+                      {(safeAuthorName[0] || 'P').toUpperCase()}
                     </Text>
                   )}
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 14 }} numberOfLines={1}>
-                    {story.authorName}
+                    {safeAuthorName}
                   </Text>
                   <Text style={{ color: 'rgba(255,255,255,0.82)', fontSize: 11 }} numberOfLines={1}>
-                    {story.badgeLabel ? `${story.badgeLabel} · ` : ''}👁️ {story.viewedByIds.length} lượt xem
+                    {slides.length > 1 ? `Tin ${activeIndex + 1}/${slides.length} · ` : ''}
+                    {otherViewerIds.length} lượt xem
+                    {totalReactionsCount > 0 ? ` · ${totalReactionsCount} tương tác` : ''}
                   </Text>
                 </View>
               </Pressable>
 
-              {isVideo && (
+              {isVideo ? (
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={muted ? 'Bật âm thanh' : 'Tắt âm thanh'}
@@ -225,7 +442,7 @@ function StoryViewerModalInner({
                 >
                   <Ionicons name={muted ? 'volume-mute' : 'volume-high'} size={18} color="#FFFFFF" />
                 </Pressable>
-              )}
+              ) : null}
 
               <Pressable
                 accessibilityRole="button"
@@ -236,19 +453,47 @@ function StoryViewerModalInner({
                 <Ionicons name={paused ? 'play' : 'pause'} size={18} color="#FFFFFF" />
               </Pressable>
 
-              <Pressable accessibilityRole="button" accessibilityLabel="Đóng Story" onPress={onClose} style={styles.ctrlBtn}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Đóng"
+                onPress={onClose}
+                style={styles.ctrlBtn}
+              >
                 <Ionicons name="close" size={21} color="#FFFFFF" />
               </Pressable>
             </View>
           </View>
 
-          {/* Center / Lower Caption Overlay */}
-          <Pressable
-            onPress={() => setPaused((p) => !p)}
-            style={styles.storyTapZone}
-          >
+          {/* Left / Right Tap Flip Zones inside the Single Story Box */}
+          <View style={styles.storyTapZone}>
+            <View style={styles.flipTouchOverlay}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Tin trước"
+                onPress={goPrev}
+                onLongPress={() => setPaused(true)}
+                onPressOut={() => {
+                  if (paused) setPaused(false);
+                }}
+                style={styles.leftFlipZone}
+              />
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Tin tiếp theo"
+                onPress={goNext}
+                onLongPress={() => setPaused(true)}
+                onPressOut={() => {
+                  if (paused) setPaused(false);
+                }}
+                style={styles.rightFlipZone}
+              />
+            </View>
+
             {story.text ? (
-              <View style={fullPhoto || isVideo ? styles.captionPillOverlay : undefined}>
+              <View
+                pointerEvents="none"
+                style={fullPhoto || isVideo ? styles.captionPillOverlay : undefined}
+              >
                 <Text style={fullPhoto || isVideo ? styles.captionOnMedia : styles.storyHeadline}>
                   {story.text}
                 </Text>
@@ -258,17 +503,27 @@ function StoryViewerModalInner({
 
             {burstEmoji ? (
               <Animated.Text
+                pointerEvents="none"
                 style={{
                   position: 'absolute',
                   bottom: 60,
                   fontSize: 54,
-                  opacity: burstAnim.interpolate({ inputRange: [0, 0.7, 1], outputRange: [1, 1, 0] }),
+                  opacity: burstAnim.interpolate({
+                    inputRange: [0, 0.7, 1],
+                    outputRange: [1, 1, 0],
+                  }),
                   transform: [
                     {
-                      translateY: burstAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -160] }),
+                      translateY: burstAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0, -160],
+                      }),
                     },
                     {
-                      scale: burstAnim.interpolate({ inputRange: [0, 0.4, 1], outputRange: [0.6, 1.35, 1.1] }),
+                      scale: burstAnim.interpolate({
+                        inputRange: [0, 0.4, 1],
+                        outputRange: [0.6, 1.35, 1.1],
+                      }),
                     },
                   ],
                 }}
@@ -276,66 +531,257 @@ function StoryViewerModalInner({
                 {burstEmoji}
               </Animated.Text>
             ) : null}
-          </Pressable>
-
-          {/* Facebook Bottom Reply Input + Emoji Bar */}
-          <View style={styles.viewerFooter}>
-            {onDirectMessage && story.authorId !== viewerId ? (
-              <View style={styles.replyRow}>
-                <TextInput
-                  value={replyText}
-                  onFocus={() => setPaused(true)}
-                  onBlur={() => setPaused(false)}
-                  onChangeText={setReplyText}
-                  placeholder={`Gửi tin nhắn cho ${story.authorName}...`}
-                  placeholderTextColor="rgba(255,255,255,0.72)"
-                  style={styles.replyInput}
-                />
-                {replyText.trim().length > 0 ? (
-                  <Pressable
-                    onPress={() => {
-                      const msg = replyText.trim();
-                      onClose();
-                      onDirectMessage({ id: story.authorId, name: story.authorName, replyText: msg });
-                    }}
-                    style={styles.sendStoryReplyBtn}
-                  >
-                    <Ionicons name="send" size={16} color="#FFFFFF" />
-                  </Pressable>
-                ) : null}
-              </View>
-            ) : null}
-
-            <View style={styles.emojiBar}>
-              {(['❤️', '🔥', '😂', '😮', '👏'] as const).map((emo) => {
-                const count = story.reactions[emo]?.length ?? 0;
-                const reacted = story.reactions[emo]?.includes(viewerId);
-                return (
-                  <Pressable
-                    key={emo}
-                    onPress={() => triggerEmojiBurst(emo)}
-                    style={[
-                      styles.emojiBtn,
-                      reacted && { backgroundColor: 'rgba(59, 130, 246, 0.42)', borderColor: '#93C5FD' },
-                    ]}
-                  >
-                    <Text style={{ fontSize: 19 }}>{emo}</Text>
-                    {count > 0 ? (
-                      <Text style={{ color: '#FFF', fontSize: 11, fontWeight: '800' }}>{count}</Text>
-                    ) : null}
-                  </Pressable>
-                );
-              })}
-            </View>
           </View>
-        </View>
+
+          {/* Bottom Reply Input + Owner Viewers/Reactors Inspector + Quick Reactions */}
+          {viewerId !== 'guest' ? (
+            <View style={styles.viewerFooter}>
+              {isOwnStory ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Xem danh sách người đã xem và tương tác với tin của bạn"
+                  onPress={() => setInspectorOpen(true)}
+                  style={styles.ownerInsightsPill}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+                    <Ionicons name="eye-outline" size={16} color="#FFFFFF" />
+                    <Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '800' }}>
+                      {otherViewerIds.length} người xem · {totalReactionsCount} tương tác
+                    </Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Text style={{ color: '#93C5FD', fontSize: 11.5, fontWeight: '800' }}>
+                      Chi tiết
+                    </Text>
+                    <Ionicons name="chevron-up" size={15} color="#93C5FD" />
+                  </View>
+                </Pressable>
+              ) : onDirectMessage ? (
+                <View style={styles.replyRow}>
+                  <TextInput
+                    value={replyText}
+                    onFocus={() => setPaused(true)}
+                    onBlur={() => setPaused(false)}
+                    onChangeText={setReplyText}
+                    placeholder={`Gửi tin nhắn cho ${story.authorName}...`}
+                    placeholderTextColor="rgba(255,255,255,0.72)"
+                    style={styles.replyInput}
+                  />
+                  {replyText.trim().length > 0 ? (
+                    <Pressable
+                      onPress={() => {
+                        const msg = replyText.trim();
+                        onClose();
+                        onDirectMessage({
+                          id: story.authorId,
+                          name: story.authorName,
+                          replyText: msg,
+                        });
+                      }}
+                      style={styles.sendStoryReplyBtn}
+                    >
+                      <Ionicons name="send" size={16} color="#FFFFFF" />
+                    </Pressable>
+                  ) : null}
+                </View>
+              ) : null}
+
+              <View style={styles.emojiBar}>
+                {(['❤️', '🔥', '😂', '😮', '👏'] as const).map((emo) => {
+                  const arr = Array.isArray(safeReactions[emo]) ? safeReactions[emo]! : [];
+                  const count = arr.length;
+                  const reacted = arr.includes(viewerId);
+                  return (
+                    <Pressable
+                      key={emo}
+                      onPress={() => triggerEmojiBurst(emo)}
+                      style={[
+                        styles.emojiBtn,
+                        reacted && {
+                          backgroundColor: 'rgba(59, 130, 246, 0.42)',
+                          borderColor: '#93C5FD',
+                        },
+                      ]}
+                    >
+                      <Text style={{ fontSize: 19 }}>{emo}</Text>
+                      {count > 0 ? (
+                        <Text style={{ color: '#FFF', fontSize: 11, fontWeight: '800' }}>
+                          {count}
+                        </Text>
+                      ) : null}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          ) : null}
+
+          {/* Owner Story Viewers & Reactions Inspector Sheet */}
+          {isOwnStory && inspectorOpen ? (
+            <View style={styles.inspectorBackdrop}>
+              <View style={[styles.inspectorSheet, { backgroundColor: palette.paper }]}>
+                <View style={styles.inspectorHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[typography.title, { color: palette.ink }]}>
+                      Người xem & Tương tác
+                    </Text>
+                    <Text style={{ fontSize: 12, color: palette.inkMuted, marginTop: 2 }}>
+                      {otherViewerIds.length} người đã xem · {totalReactionsCount} cảm xúc
+                    </Text>
+                  </View>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Đóng danh sách người xem"
+                    onPress={() => setInspectorOpen(false)}
+                    hitSlop={8}
+                    style={[styles.inspectorCloseBtn, { backgroundColor: palette.paperRaised }]}
+                  >
+                    <Ionicons name="close" size={18} color={palette.ink} />
+                  </Pressable>
+                </View>
+
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {(['❤️', '🔥', '😂', '😮', '👏'] as const).map((emo) => {
+                    const c = Array.isArray(safeReactions[emo]) ? safeReactions[emo]!.length : 0;
+                    return (
+                      <View
+                        key={emo}
+                        style={[
+                          styles.reactionStatChip,
+                          {
+                            backgroundColor: c > 0 ? palette.indigoTint : palette.paperRaised,
+                            borderColor: c > 0 ? palette.indigoBorder : palette.paperMuted,
+                          },
+                        ]}
+                      >
+                        <Text style={{ fontSize: 13 }}>{emo}</Text>
+                        <Text style={{ fontSize: 12, fontWeight: '800', color: palette.ink }}>
+                          {c}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
+
+                <ScrollView
+                  style={{ maxHeight: 310 }}
+                  contentContainerStyle={{ gap: 8, paddingVertical: 4 }}
+                  showsVerticalScrollIndicator={false}
+                >
+                  {engagementRoster.length === 0 ? (
+                    <View style={{ alignItems: 'center', paddingVertical: 28, gap: 6 }}>
+                      <Ionicons name="eye-off-outline" size={28} color={palette.inkMuted} />
+                      <Text
+                        style={{
+                          fontSize: 13,
+                          fontWeight: '700',
+                          color: palette.ink,
+                          textAlign: 'center',
+                        }}
+                      >
+                        Chưa có người xem nào khác
+                      </Text>
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          color: palette.inkMuted,
+                          textAlign: 'center',
+                        }}
+                      >
+                        Khi bạn bè xem hoặc thả biểu cảm vào tin này, tên và cảm xúc sẽ xuất hiện tại đây.
+                      </Text>
+                    </View>
+                  ) : (
+                    engagementRoster.map((entry) => {
+                      const prof = profilesById[entry.userId];
+                      const displayName = entry.isSelf
+                        ? `${safeAuthorName} (Bạn)`
+                        : prof?.displayName || 'Thành viên Papyrus';
+                      const avatarUri = entry.isSelf
+                        ? story.authorAvatar
+                        : prof?.avatarUrl ?? null;
+                      return (
+                        <Pressable
+                          key={entry.userId}
+                          onPress={() => {
+                            setInspectorOpen(false);
+                            onClose();
+                            if (entry.isSelf) {
+                              router.push('/profile');
+                            } else {
+                              router.push({
+                                pathname: '/user/[userId]',
+                                params: { userId: entry.userId },
+                              });
+                            }
+                          }}
+                          style={[
+                            styles.viewerPersonRow,
+                            {
+                              backgroundColor: palette.paperRaised,
+                              borderColor: palette.paperMuted,
+                            },
+                          ]}
+                        >
+                          <View
+                            style={[
+                              styles.viewerPersonAvatar,
+                              { backgroundColor: palette.indigo },
+                            ]}
+                          >
+                            {avatarUri ? (
+                              <Image
+                                source={{ uri: avatarUri }}
+                                style={styles.viewerPersonAvatarImg}
+                              />
+                            ) : (
+                              <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 13 }}>
+                                {(displayName[0] || 'P').toUpperCase()}
+                              </Text>
+                            )}
+                          </View>
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <Text
+                              style={{ fontSize: 13.5, fontWeight: '800', color: palette.ink }}
+                              numberOfLines={1}
+                            >
+                              {displayName}
+                            </Text>
+                            <Text style={{ fontSize: 11.5, color: palette.inkMuted }}>
+                              {entry.emojis.length > 0
+                                ? entry.isSelf
+                                  ? 'Đã thả cảm xúc trên tin của bạn'
+                                  : 'Đã xem và bày tỏ cảm xúc'
+                                : 'Đã xem tin của bạn'}
+                            </Text>
+                          </View>
+                          {entry.emojis.length > 0 ? (
+                            <View style={styles.personEmojiRow}>
+                              {entry.emojis.map((em) => (
+                                <Text key={em} style={{ fontSize: 17 }}>
+                                  {em}
+                                </Text>
+                              ))}
+                            </View>
+                          ) : (
+                            <Ionicons name="eye" size={16} color={palette.indigo} />
+                          )}
+                        </Pressable>
+                      );
+                    })
+                  )}
+                </ScrollView>
+              </View>
+            </View>
+          ) : null}
+        </Animated.View>
       </View>
     </Modal>
   );
 }
 
 /**
- * Facebook-Style Story Composer Modal (Supports Photo Story, Video Story with auto First-Frame Thumbnail, or Gradient Text Story!)
+ * Clean Story Composer Modal (Photo, Full-Length Video + Cover Image Picker, or Gradient Text Story)
  */
 export function StoryComposerModal({
   visible,
@@ -360,6 +806,7 @@ export function StoryComposerModal({
     thumbnailUri?: string | null;
     durationSec?: number;
     isHighlight: boolean;
+    pinnedOnProfile: boolean;
   }) => void;
 }) {
   if (!visible) return null;
@@ -395,13 +842,12 @@ function StoryComposerModalInner({
     thumbnailUri?: string | null;
     durationSec?: number;
     isHighlight: boolean;
+    pinnedOnProfile: boolean;
   }) => void;
 }) {
   const palette = usePalette();
   const [text, setText] = useState(initialDraft?.text ?? '');
-  const [subtext, setSubtext] = useState(
-    initialDraft?.subtext ?? (initialDraft ? '#TriThứcHômNay · Papyrus' : '#StudyWithMe · Papyrus')
-  );
+  const [subtext, setSubtext] = useState(initialDraft?.subtext ?? '');
   const [gradIdx, setGradIdx] = useState(0);
   const [mediaType, setMediaType] = useState<'text' | 'image' | 'video'>(
     initialDraft?.imageUri ? 'image' : 'text'
@@ -409,9 +855,9 @@ function StoryComposerModalInner({
   const [imageUri, setImageUri] = useState<string | null>(initialDraft?.imageUri ?? null);
   const [videoUri, setVideoUri] = useState<string | null>(null);
   const [thumbnailUri, setThumbnailUri] = useState<string | null>(initialDraft?.imageUri ?? null);
-  const [durationSec, setDurationSec] = useState<number>(8);
+  const [durationSec, setDurationSec] = useState<number | undefined>(undefined);
   const [picking, setPicking] = useState(false);
-  const [isHighlight, setIsHighlight] = useState(true);
+  const [pinnedOnProfile, setPinnedOnProfile] = useState(false);
   const [coverEditorOpen, setCoverEditorOpen] = useState(false);
   const [stickerModalOpen, setStickerModalOpen] = useState(false);
 
@@ -428,13 +874,13 @@ function StoryComposerModalInner({
         setVideoUri(picked.uri);
         setThumbnailUri(picked.thumbnailUri || null);
         setImageUri(picked.thumbnailUri || null);
-        setDurationSec(picked.durationSec ?? 10);
+        setDurationSec(picked.durationSec);
       } else {
         setMediaType('image');
         setImageUri(picked.uri);
         setThumbnailUri(picked.thumbnailUri || picked.uri);
         setVideoUri(null);
-        setDurationSec(7);
+        setDurationSec(undefined);
       }
     } finally {
       setPicking(false);
@@ -448,13 +894,13 @@ function StoryComposerModalInner({
       <View style={styles.viewerBackdrop}>
         <Card style={[styles.composerCard, { backgroundColor: palette.paper }]}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Text style={[typography.title, { color: palette.ink }]}>✨ Tạo Tin Story 24h (Ảnh / Video)</Text>
+            <Text style={[typography.title, { color: palette.ink }]}>Tạo tin mới (24h)</Text>
             <Pressable onPress={onClose} hitSlop={8}>
               <Ionicons name="close" size={22} color={palette.inkMuted} />
             </Pressable>
           </View>
 
-          {/* Media Picker Buttons (Facebook Story Style: Photo | Video | Clear Media) */}
+          {/* Media Picker Buttons */}
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
             <Pressable
               disabled={picking}
@@ -467,7 +913,11 @@ function StoryComposerModalInner({
                 },
               ]}
             >
-              <Ionicons name="image" size={16} color={mediaType === 'image' ? '#FFFFFF' : palette.indigo} />
+              <Ionicons
+                name="image-outline"
+                size={16}
+                color={mediaType === 'image' ? '#FFFFFF' : palette.indigo}
+              />
               <Text
                 style={{
                   fontSize: 12,
@@ -475,7 +925,7 @@ function StoryComposerModalInner({
                   color: mediaType === 'image' ? '#FFFFFF' : palette.indigo,
                 }}
               >
-                Chọn Ảnh Story
+                Ảnh
               </Text>
             </Pressable>
 
@@ -490,7 +940,11 @@ function StoryComposerModalInner({
                 },
               ]}
             >
-              <Ionicons name="videocam" size={16} color={mediaType === 'video' ? '#FFFFFF' : '#E11D48'} />
+              <Ionicons
+                name="videocam-outline"
+                size={16}
+                color={mediaType === 'video' ? '#FFFFFF' : '#E11D48'}
+              />
               <Text
                 style={{
                   fontSize: 12,
@@ -498,25 +952,35 @@ function StoryComposerModalInner({
                   color: mediaType === 'video' ? '#FFFFFF' : '#E11D48',
                 }}
               >
-                Chọn Video Story
+                Video
               </Text>
             </Pressable>
 
             <Pressable
               onPress={() => setStickerModalOpen(true)}
-              style={[styles.mediaPickBtn, { backgroundColor: palette.paperRaised, borderColor: palette.indigo }]}
+              style={[
+                styles.mediaPickBtn,
+                { backgroundColor: palette.paperRaised, borderColor: palette.indigo },
+              ]}
             >
               <Ionicons name="happy-outline" size={16} color={palette.indigo} />
-              <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.indigo }}>Sticker / GIF</Text>
+              <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.indigo }}>
+                GIF & Nhãn dán
+              </Text>
             </Pressable>
 
             {mediaType === 'video' && videoUri ? (
               <Pressable
                 onPress={() => setCoverEditorOpen(true)}
-                style={[styles.mediaPickBtn, { backgroundColor: palette.goldTint, borderColor: palette.gold }]}
+                style={[
+                  styles.mediaPickBtn,
+                  { backgroundColor: palette.goldTint, borderColor: palette.gold },
+                ]}
               >
                 <Ionicons name="film-outline" size={15} color={palette.gold} />
-                <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.gold }}>Chọn Ảnh Bìa Video</Text>
+                <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.gold }}>
+                  Chọn ảnh bìa
+                </Text>
               </Pressable>
             ) : null}
 
@@ -527,11 +991,17 @@ function StoryComposerModalInner({
                   setImageUri(null);
                   setVideoUri(null);
                   setThumbnailUri(null);
+                  setDurationSec(undefined);
                 }}
-                style={[styles.mediaPickBtn, { backgroundColor: palette.paperRaised, borderColor: palette.paperMuted }]}
+                style={[
+                  styles.mediaPickBtn,
+                  { backgroundColor: palette.paperRaised, borderColor: palette.paperMuted },
+                ]}
               >
                 <Ionicons name="trash-outline" size={15} color={palette.inkMuted} />
-                <Text style={{ fontSize: 11.5, fontWeight: '700', color: palette.inkMuted }}>Chỉ chữ</Text>
+                <Text style={{ fontSize: 11.5, fontWeight: '700', color: palette.inkMuted }}>
+                  Chỉ văn bản
+                </Text>
               </Pressable>
             )}
           </View>
@@ -548,26 +1018,38 @@ function StoryComposerModalInner({
             ]}
           >
             {previewThumb ? (
-              <Image source={{ uri: previewThumb }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+              <Image
+                source={{ uri: previewThumb }}
+                style={StyleSheet.absoluteFill}
+                resizeMode="cover"
+              />
             ) : null}
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: previewThumb ? 'rgba(2,6,23,0.28)' : 'transparent' }]} />
-            {mediaType === 'video' && (
+            <View
+              style={[
+                StyleSheet.absoluteFill,
+                { backgroundColor: previewThumb ? 'rgba(2,6,23,0.28)' : 'transparent' },
+              ]}
+            />
+            {mediaType === 'video' ? (
               <View style={styles.previewVidTag}>
                 <Ionicons name="play-circle" size={15} color="#FFFFFF" />
                 <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '800' }}>
-                  Thumbnail khung đầu Video ({durationSec}s)
+                  Ảnh bìa video{durationSec ? ` · Thời lượng gốc ${durationSec}s` : ''}
                 </Text>
               </View>
-            )}
+            ) : null}
             <Text style={styles.previewText} numberOfLines={3}>
-              {text.trim() || (previewThumb ? '' : 'Chia sẻ khoảnh khắc học tập, ảnh hoặc video lên Tin 24h…')}
+              {text.trim() || (previewThumb ? '' : 'Nhập nội dung hoặc chọn ảnh, video...')}
             </Text>
             {!!subtext && <Text style={styles.previewSub}>{subtext}</Text>}
           </View>
 
-          {/* Background Gradients when posting text */}
           {!previewThumb && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ gap: 8 }}
+            >
               {STORY_GRADIENTS.map((g, idx) => (
                 <Pressable
                   key={g.id}
@@ -591,42 +1073,49 @@ function StoryComposerModalInner({
             onChangeText={setText}
             multiline
             maxLength={240}
-            placeholder="Thêm dòng chú thích trên Story (tùy chọn khi đã có Ảnh/Video)..."
+            placeholder="Thêm chú thích..."
             placeholderTextColor={palette.inkMuted}
             style={[
               styles.storyInput,
-              { color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paperRaised },
+              {
+                color: palette.ink,
+                borderColor: palette.paperMuted,
+                backgroundColor: palette.paperRaised,
+              },
             ]}
           />
           <TextInput
             value={subtext}
             onChangeText={setSubtext}
             maxLength={70}
-            placeholder="Hashtag hoặc ghi chú phụ..."
+            placeholder="Thẻ chủ đề (tùy chọn)..."
             placeholderTextColor={palette.inkMuted}
             style={[
               styles.subInput,
-              { color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paperRaised },
+              {
+                color: palette.ink,
+                borderColor: palette.paperMuted,
+                backgroundColor: palette.paperRaised,
+              },
             ]}
           />
 
           <Pressable
-            onPress={() => setIsHighlight((v) => !v)}
+            onPress={() => setPinnedOnProfile((v) => !v)}
             style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
           >
             <Ionicons
-              name={isHighlight ? 'checkbox' : 'square-outline'}
+              name={pinnedOnProfile ? 'checkbox' : 'square-outline'}
               size={20}
               color={palette.indigo}
             />
             <Text style={[typography.caption, { color: palette.ink, fontWeight: '700', flex: 1 }]}>
-              Lưu vào dải «Tin Nổi Bật» trên Trang Cá Nhân
+              Gắn tin này lên trang cá nhân sau khi hết 24 giờ
             </Text>
           </Pressable>
 
           <Button
             variant="primary"
-            icon="sparkles"
             disabled={picking || (!text.trim() && !imageUri && !videoUri)}
             onPress={() => {
               onPublish({
@@ -638,7 +1127,8 @@ function StoryComposerModalInner({
                 videoUri,
                 thumbnailUri: thumbnailUri || imageUri,
                 durationSec,
-                isHighlight,
+                isHighlight: pinnedOnProfile,
+                pinnedOnProfile,
               });
               setText('');
               setImageUri(null);
@@ -649,7 +1139,7 @@ function StoryComposerModalInner({
             }}
             fullWidth
           >
-            {picking ? 'Đang xử lý ảnh/video…' : 'Đăng lên Story 24h (+20 XP)'}
+            {picking ? 'Đang tải tệp...' : 'Đăng tin'}
           </Button>
         </Card>
 
@@ -675,7 +1165,7 @@ function StoryComposerModalInner({
               setImageUri(media.uri);
               setThumbnailUri(media.thumbnailUri || media.uri);
             } else {
-              setText((prev) => `${prev} ✨ ${media.altText || ''}`.trim());
+              setText((prev) => `${prev} ${media.altText || ''}`.trim());
             }
           }}
         />
@@ -705,7 +1195,12 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.18)',
     position: 'relative',
   },
+  segmentedRow: {
+    flexDirection: 'row',
+    gap: 4,
+  },
   progressTrack: {
+    flex: 1,
     height: 3.5,
     borderRadius: 2,
     backgroundColor: 'rgba(255,255,255,0.32)',
@@ -747,6 +1242,23 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     paddingBottom: spacing.lg,
     zIndex: 2,
+    position: 'relative',
+  },
+  flipTouchOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: 'row',
+  },
+  leftFlipZone: {
+    width: '34%',
+    height: '100%',
+  },
+  rightFlipZone: {
+    width: '66%',
+    height: '100%',
   },
   captionPillOverlay: {
     backgroundColor: 'rgba(2, 6, 23, 0.58)',
@@ -779,7 +1291,7 @@ const styles = StyleSheet.create({
   },
   viewerFooter: {
     gap: 10,
-    zIndex: 3,
+    zIndex: 4,
   },
   replyRow: {
     flexDirection: 'row',
@@ -807,44 +1319,124 @@ const styles = StyleSheet.create({
   },
   emojiBar: {
     flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 8,
+    justifyContent: 'space-between',
+    gap: 6,
   },
   emojiBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 4,
-    paddingHorizontal: 11,
-    paddingVertical: 6,
+    paddingVertical: 8,
     borderRadius: radii.pill,
-    backgroundColor: 'rgba(0,0,0,0.38)',
+    backgroundColor: 'rgba(255,255,255,0.16)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderColor: 'rgba(255,255,255,0.22)',
+  },
+  ownerInsightsPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: radii.pill,
+    backgroundColor: 'rgba(2, 6, 23, 0.68)',
+    borderWidth: 1,
+    borderColor: 'rgba(147, 197, 253, 0.42)',
+  },
+  inspectorBackdrop: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    zIndex: 20,
+    backgroundColor: 'rgba(2, 6, 23, 0.62)',
+    justifyContent: 'flex-end',
+  },
+  inspectorSheet: {
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    padding: spacing.md,
+    gap: 10,
+    maxHeight: '78%',
+  },
+  inspectorHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  inspectorCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reactionStatChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+  },
+  viewerPersonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: radii.md,
+    borderWidth: 1,
+  },
+  viewerPersonAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  viewerPersonAvatarImg: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+  },
+  personEmojiRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
   },
   composerCard: {
     width: '100%',
-    maxWidth: 450,
-    borderRadius: 24,
+    maxWidth: 460,
     gap: 10,
+    maxHeight: '92%',
   },
   mediaPickBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
+    gap: 5,
+    paddingHorizontal: 11,
     paddingVertical: 8,
     borderRadius: radii.pill,
     borderWidth: 1,
   },
   preview916Box: {
-    height: 220,
+    width: '100%',
+    height: 205,
     borderRadius: 18,
     padding: spacing.md,
     alignItems: 'center',
     justifyContent: 'flex-end',
+    gap: 5,
     overflow: 'hidden',
     position: 'relative',
-    gap: 4,
   },
   previewVidTag: {
     position: 'absolute',
@@ -852,15 +1444,16 @@ const styles = StyleSheet.create({
     left: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    backgroundColor: 'rgba(225, 29, 72, 0.86)',
-    paddingHorizontal: 10,
+    gap: 4,
+    paddingHorizontal: 9,
     paddingVertical: 4,
     borderRadius: radii.pill,
+    backgroundColor: 'rgba(2,6,23,0.72)',
   },
   previewText: {
     color: '#FFFFFF',
-    fontSize: 15,
+    fontSize: 14,
+    lineHeight: 20,
     fontWeight: '800',
     textAlign: 'center',
     zIndex: 2,
@@ -872,26 +1465,24 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   gradChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: radii.pill,
     borderWidth: 2,
   },
   storyInput: {
-    minHeight: 58,
+    minHeight: 54,
     borderWidth: 1,
     borderRadius: radii.sm,
-    padding: 10,
-    fontSize: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 13.5,
   },
   subInput: {
     minHeight: 40,
     borderWidth: 1,
     borderRadius: radii.sm,
-    paddingHorizontal: 10,
-    fontSize: 13,
+    paddingHorizontal: 12,
+    fontSize: 12.5,
   },
 });

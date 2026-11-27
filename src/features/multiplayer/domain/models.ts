@@ -18,6 +18,7 @@ export interface RoomData {
       question: string;
       options: string[];
       correctAnswer?: number;
+      explanation?: string;
       codeSnippet?: string;
     }>;
   };
@@ -27,6 +28,8 @@ export interface RoomData {
   remainingTime?: number;
   maxPlayers?: number;
   timeLimit?: number;
+  readTimeSec?: 0 | 3 | 5 | 10;
+  reactionsEnabled?: boolean;
 }
 
 export interface CurrentQuestionData {
@@ -35,6 +38,7 @@ export interface CurrentQuestionData {
   question: string;
   options: string[];
   remainingTime: number;
+  explanation?: string;
   codeSnippet?: string;
 }
 

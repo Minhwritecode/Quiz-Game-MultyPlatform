@@ -117,8 +117,21 @@ export default function BattleScreen() {
   const [setCategoryFilter, setSetCategoryFilter] = useState<'all' | 'it' | 'stem' | 'humanities' | 'mine'>('all');
   const [setSearchQuery, setSetSearchQuery] = useState('');
   const [showAllSets, setShowAllSets] = useState(false);
+  const [openingSetKey, setOpeningSetKey] = useState<string | null>(null);
+  const [inlineSetError, setInlineSetError] = useState<{ setId: string; message: string } | null>(null);
   const [showConfetti, setShowConfetti] = useState(false);
   const recordedRef = useRef(false);
+
+  const mergedLocalPool = useMemo(() => {
+    const seenIds = new Set(localQuestionSets.map((s) => s.id));
+    const seenTitles = new Set(localQuestionSets.map((s) => s.title.trim().toLowerCase()));
+    return [
+      ...localQuestionSets,
+      ...seedQuestionSets.filter(
+        (sd) => !seenIds.has(sd.id) && !seenTitles.has(sd.title.trim().toLowerCase())
+      ),
+    ];
+  }, [localQuestionSets]);
 
   useEffect(() => {
     if (!battle?.question || battle.phase !== 'question_open') { setRemainingSeconds(null); return; }
@@ -149,8 +162,7 @@ export default function BattleScreen() {
     let active = true;
     setRoomId(null);
     setBattle(null);
-    const availableLocal = localQuestionSets.length > 0 ? localQuestionSets : seedQuestionSets;
-    setSets(availableLocal.map((s) => ({ id: s.id, title: s.title })));
+    setSets(mergedLocalPool.map((s) => ({ id: s.id, title: s.title })));
 
     if (user) {
       void dependencies.battleSession
@@ -163,11 +175,11 @@ export default function BattleScreen() {
         .sets()
         .then((cloudValue: { id: string; title: string }[]) => {
           if (!active) return;
-          const byTitle = new Set(cloudValue.map((c) => c.title.toLowerCase()));
+          const byTitle = new Set(cloudValue.map((c) => c.title.trim().toLowerCase()));
           const merged = [
             ...cloudValue,
-            ...availableLocal
-              .filter((loc) => !byTitle.has(loc.title.toLowerCase()))
+            ...mergedLocalPool
+              .filter((loc) => !byTitle.has(loc.title.trim().toLowerCase()))
               .map((loc) => ({ id: loc.id, title: loc.title })),
           ];
           setSets(merged);
@@ -177,7 +189,7 @@ export default function BattleScreen() {
     return () => {
       active = false;
     };
-  }, [user?.id, roomOwner, localQuestionSets]);
+  }, [user?.id, roomOwner, mergedLocalPool]);
 
   // Handle deep-link room/duel invites reliably when app is opened, resumed, or unauthenticated
   useEffect(() => {
@@ -215,6 +227,18 @@ export default function BattleScreen() {
     if (!roomId) return;
     let active = true;
     let fetching = false;
+    let consecutiveSnapshotFailures = 0;
+    let hasLoadedSnapshot = false;
+
+    const clearStaleSession = () => {
+      if (!active) return;
+      active = false;
+      void dependencies.battleSession.clear(roomOwner).catch(() => undefined);
+      setRoomId(null);
+      setBattle(null);
+      setConnectionBanner('connected');
+      setError('');
+    };
 
     const refresh = async () => {
       if (fetching || AppState.currentState === 'background') return;
@@ -222,6 +246,8 @@ export default function BattleScreen() {
       try {
         const next = await dependencies.battle.snapshot(roomId);
         if (active) {
+          hasLoadedSnapshot = true;
+          consecutiveSnapshotFailures = 0;
           setBattle(next);
           const myState = next.players.find((p) => p.userId === user?.id);
           if (myState?.forfeited || myState?.connectionState === 'forfeited') {
@@ -235,8 +261,18 @@ export default function BattleScreen() {
         }
       } catch (e) {
         if (active) {
+          consecutiveSnapshotFailures += 1;
+          const msg = errorMessage(e, t.battle.reconnecting);
+          if (
+            !hasLoadedSnapshot &&
+            (consecutiveSnapshotFailures >= 2 ||
+              /not found|không tồn tại|expired|invalid|permission/i.test(msg))
+          ) {
+            clearStaleSession();
+            return;
+          }
           setConnectionBanner('reconnecting');
-          setError(errorMessage(e, t.battle.reconnecting));
+          setError(msg);
         }
       } finally {
         fetching = false;
@@ -250,12 +286,17 @@ export default function BattleScreen() {
         .catch((err) => {
           if (!active) return;
           const msg = err instanceof Error ? err.message : '';
+          if (!hasLoadedSnapshot && /not found|không tồn tại|expired|invalid/i.test(msg)) {
+            clearStaleSession();
+            return;
+          }
           if (msg.includes('seat_forfeited')) {
             setConnectionBanner('forfeited');
             setError('Hết thời gian giữ chỗ 30 giây — bạn đã bị tính bỏ cuộc trong trận này.');
           } else {
             setConnectionBanner('reconnecting');
             setError(t.battle.lostConnection);
+            void refresh();
           }
         });
     };
@@ -302,19 +343,26 @@ export default function BattleScreen() {
   };
 
   const leave = async () => {
-    if (roomId) await dependencies.battle.leave(roomId);
-    await dependencies.battleSession.clear(roomOwner);
+    const previousRoomId = roomId;
     setRoomId(null);
     setBattle(null);
+    setError('');
+    setConnectionBanner('connected');
+    setBusy(false);
+    await dependencies.battleSession.clear(roomOwner).catch(() => undefined);
+    if (previousRoomId) {
+      await dependencies.battle.leave(previousRoomId).catch(() => undefined);
+    }
   };
 
   const me = battle?.players.find((p) => p.userId === user?.id);
   const question = battle?.question;
 
   const enrichedSets = useMemo(() => {
-    const sourcePool = localQuestionSets.length > 0 ? localQuestionSets : seedQuestionSets;
     return sets.map((s) => {
-      const matched = sourcePool.find((loc) => loc.id === s.id || loc.title === s.title);
+      const matched = mergedLocalPool.find(
+        (loc) => loc.id === s.id || loc.title.trim().toLowerCase() === s.title.trim().toLowerCase()
+      );
       const subj = matched?.subject || 'Đại học';
       const qCount = matched?.questions.length ?? 10;
       const isSeed = String(matched?.id || s.id).startsWith('seed-');
@@ -325,7 +373,7 @@ export default function BattleScreen() {
       else if (/(lịch sử|văn học|sử|triết|văn)/i.test(hay)) cat = 'humanities';
       return { ...s, subject: subj, qCount, cat, isSeed };
     });
-  }, [localQuestionSets, sets]);
+  }, [mergedLocalPool, sets]);
 
   const filteredBattleSets = useMemo(() => {
     const q = setSearchQuery.trim().toLowerCase();
@@ -594,11 +642,20 @@ export default function BattleScreen() {
                 <Button
                   variant="secondary"
                   icon="megaphone-outline"
+                  disabled={busy}
                   onPress={async () => {
-                    const sourcePool = localQuestionSets.length > 0 ? localQuestionSets : seedQuestionSets;
-                    const firstSet = sourcePool[0];
+                    const firstSet = mergedLocalPool[0];
                     if (!firstSet) return;
-                    const created = await roomApi.create(firstSet.id, user?.displayName || 'Chủ phòng');
+                    const created = await roomApi.create(
+                      firstSet.id,
+                      user?.displayName || 'Chủ phòng',
+                      {
+                        questionSet: firstSet,
+                        questionCount,
+                        secondsPerQuestion,
+                        maxPlayers,
+                      }
+                    );
                     router.push({ pathname: '/multiplayer/host/[roomCode]', params: { roomCode: created.roomCode } });
                   }}
                 >
@@ -790,7 +847,7 @@ export default function BattleScreen() {
                 <View style={{ marginTop: spacing.md, gap: 10 }}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
                     <Text style={[typography.title, { color: palette.ink, fontSize: 16 }]}>
-                      📚 Chọn Bộ Đề Mở Phòng Kahoot hoặc Colosseum ({filteredBattleSets.length})
+                      Chọn bộ đề mở phòng Kahoot hoặc Colosseum ({filteredBattleSets.length})
                     </Text>
                   </View>
 
@@ -816,10 +873,10 @@ export default function BattleScreen() {
                     {(
                       [
                         { id: 'all', label: 'Tất cả bộ đề' },
-                        { id: 'it', label: '💻 CNTT & AI' },
-                        { id: 'stem', label: '🔬 Lý · Hóa · Sinh' },
-                        { id: 'humanities', label: '🏛️ Sử & Văn học' },
-                        { id: 'mine', label: '✨ Đề của tôi' },
+                        { id: 'it', label: 'CNTT & AI' },
+                        { id: 'stem', label: 'Lý · Hóa · Sinh' },
+                        { id: 'humanities', label: 'Sử & Văn học' },
+                        { id: 'mine', label: 'Đề của tôi' },
                       ] as const
                     ).map((cat) => {
                       const active = setCategoryFilter === cat.id;
@@ -854,110 +911,196 @@ export default function BattleScreen() {
                   </ScrollView>
 
                   <View style={{ gap: 8 }}>
-                    {(showAllSets ? filteredBattleSets : filteredBattleSets.slice(0, 6)).map((set) => (
-                      <View
-                        key={set.id}
-                        style={{
-                          padding: 12,
-                          borderRadius: radii.md,
-                          borderWidth: 1,
-                          borderColor: palette.paperMuted,
-                          backgroundColor: palette.paper,
-                          gap: 8,
-                        }}
-                      >
-                        <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
-                          <View style={{ flex: 1, minWidth: 0 }}>
-                            <Text style={[typography.body, { color: palette.ink, fontWeight: '800' }]} numberOfLines={2}>
-                              {set.title}
-                            </Text>
-                            <Text style={{ fontSize: 11.5, color: palette.inkMuted, marginTop: 2 }}>
-                              {set.subject} · {set.qCount} câu hỏi
-                            </Text>
+                    {(showAllSets ? filteredBattleSets : filteredBattleSets.slice(0, 6)).map((set) => {
+                      const kahootLoading = openingSetKey === `kahoot:${set.id}`;
+                      const colosseumLoading = openingSetKey === `colosseum:${set.id}`;
+                      const cardErr = inlineSetError?.setId === set.id ? inlineSetError.message : null;
+
+                      return (
+                        <View
+                          key={set.id}
+                          style={{
+                            padding: 12,
+                            borderRadius: radii.md,
+                            borderWidth: 1,
+                            borderColor: cardErr ? palette.danger : palette.paperMuted,
+                            backgroundColor: palette.paper,
+                            gap: 8,
+                          }}
+                        >
+                          <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                            <View style={{ flex: 1, minWidth: 0 }}>
+                              <Text style={[typography.body, { color: palette.ink, fontWeight: '800' }]} numberOfLines={2}>
+                                {set.title}
+                              </Text>
+                              <Text style={{ fontSize: 11.5, color: palette.inkMuted, marginTop: 2 }}>
+                                {set.subject} · {set.qCount} câu hỏi
+                              </Text>
+                            </View>
                           </View>
-                        </View>
 
-                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                          <Pressable
-                            disabled={busy}
-                            accessibilityRole="button"
-                            onPress={async () => {
-                              const created = await roomApi.create(set.id, user?.displayName || 'Chủ phòng');
-                              router.push({
-                                pathname: '/multiplayer/host/[roomCode]',
-                                params: { roomCode: created.roomCode },
-                              });
-                            }}
-                            style={{
-                              flex: 1,
-                              minWidth: 125,
-                              minHeight: 40,
-                              paddingHorizontal: 12,
-                              borderRadius: radii.sm,
-                              backgroundColor: palette.goldTint,
-                              borderWidth: 1,
-                              borderColor: palette.gold,
-                              flexDirection: 'row',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              gap: 5,
-                            }}
-                          >
-                            <Ionicons name="flash" size={14} color={palette.gold} />
-                            <Text style={{ color: palette.gold, fontWeight: '900', fontSize: 12 }}>Mở Kahoot Live</Text>
-                          </Pressable>
+                          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                            <Pressable
+                              disabled={busy || Boolean(openingSetKey)}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Mở Kahoot Live bộ đề ${set.title}`}
+                              onPress={() => {
+                                void (async () => {
+                                  if (openingSetKey) return;
+                                  setOpeningSetKey(`kahoot:${set.id}`);
+                                  setInlineSetError(null);
+                                  setError('');
+                                  try {
+                                    const localMatch = mergedLocalPool.find(
+                                      (item) =>
+                                        item.id === set.id ||
+                                        item.title.trim().toLowerCase() === set.title.trim().toLowerCase()
+                                    );
+                                    const resolvedSet =
+                                      localMatch ??
+                                      (await dependencies.battle.loadCloudSetWithQuestions(set.id));
+                                    const created = await roomApi.create(
+                                      set.id,
+                                      user?.displayName || 'Chủ phòng',
+                                      {
+                                        questionSet: resolvedSet,
+                                        questionCount,
+                                        secondsPerQuestion,
+                                        maxPlayers,
+                                      }
+                                    );
+                                    router.push({
+                                      pathname: '/multiplayer/host/[roomCode]',
+                                      params: { roomCode: created.roomCode },
+                                    });
+                                  } catch (err) {
+                                    const msg = errorMessage(err, 'Không thể mở phòng Kahoot lúc này.');
+                                    setInlineSetError({ setId: set.id, message: msg });
+                                    setError(msg);
+                                  } finally {
+                                    setOpeningSetKey(null);
+                                  }
+                                })();
+                              }}
+                              style={({ pressed }) => ({
+                                flex: 1,
+                                minWidth: 125,
+                                minHeight: 42,
+                                paddingHorizontal: 12,
+                                borderRadius: radii.sm,
+                                backgroundColor: palette.goldTint,
+                                borderWidth: 1,
+                                borderColor: palette.gold,
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: 5,
+                                opacity: pressed || kahootLoading ? 0.78 : 1,
+                              })}
+                            >
+                              <Ionicons name="flash" size={14} color={palette.gold} />
+                              <Text style={{ color: palette.gold, fontWeight: '900', fontSize: 12 }}>
+                                {kahootLoading ? 'Đang mở Kahoot...' : 'Mở Kahoot Live'}
+                              </Text>
+                            </Pressable>
 
-                          <Pressable
-                            disabled={busy}
-                            accessibilityRole="button"
-                            onPress={() =>
-                              void run(async () => {
-                                if (!useMembershipStore.getState().canCreateBattle()) {
-                                  Alert.alert(
-                                    'Đạt giới hạn tạo phòng hôm nay',
-                                    'Học Giả Tập Sự được tạo tối đa 3 phòng đấu/ngày. Bạn có thể nâng cấp lên VIP để tạo phòng không giới hạn!'
-                                  );
-                                  return;
-                                }
-                                const sourcePool = localQuestionSets.length > 0 ? localQuestionSets : seedQuestionSets;
-                                const fullLocal = sourcePool.find(
-                                  (item) => item.id === set.id || item.title === set.title
-                                );
-                                const cloudSetId = fullLocal
-                                  ? await dependencies.battle.ensureCloudSet(fullLocal)
-                                  : set.id;
-                                const room = await dependencies.rooms.create({
-                                  setId: cloudSetId,
-                                  questionCount: Math.min(questionCount, fullLocal?.questions.length ?? questionCount),
-                                  secondsPerQuestion,
-                                  mode: roomMode,
-                                  maxPlayers,
-                                });
-                                useMembershipStore.getState().consumeBattle();
-                                await enter(room.id);
-                              })
-                            }
-                            style={{
-                              flex: 1,
-                              minWidth: 135,
-                              minHeight: 40,
-                              paddingHorizontal: 12,
-                              borderRadius: radii.sm,
-                              backgroundColor: palette.indigo,
-                              flexDirection: 'row',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              gap: 5,
-                            }}
-                          >
-                            <Ionicons name="shield-checkmark" size={14} color="#FFFFFF" />
-                            <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 12 }}>
-                              Phòng Colosseum ({maxPlayers}P)
-                            </Text>
-                          </Pressable>
+                            <Pressable
+                              disabled={busy || Boolean(openingSetKey)}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Mở Phòng Colosseum bộ đề ${set.title}`}
+                              onPress={() => {
+                                void (async () => {
+                                  if (busy || openingSetKey) return;
+                                  setInlineSetError(null);
+                                  setError('');
+                                  if (!useMembershipStore.getState().canCreateBattle()) {
+                                    const limitMsg =
+                                      'Tài khoản miễn phí tạo tối đa 3 phòng Colosseum mỗi ngày. Bạn vẫn có thể mở Kahoot Live không giới hạn hoặc nâng cấp VIP.';
+                                    setInlineSetError({ setId: set.id, message: limitMsg });
+                                    setError(limitMsg);
+                                    return;
+                                  }
+                                  setOpeningSetKey(`colosseum:${set.id}`);
+                                  setBusy(true);
+                                  try {
+                                    const localMatch = mergedLocalPool.find(
+                                      (item) =>
+                                        item.id === set.id ||
+                                        item.title.trim().toLowerCase() === set.title.trim().toLowerCase()
+                                    );
+                                    const fullSet =
+                                      localMatch ??
+                                      (await dependencies.battle.loadCloudSetWithQuestions(set.id));
+                                    const cloudSetId = fullSet
+                                      ? await dependencies.battle.ensureCloudSet(fullSet)
+                                      : set.id;
+                                    const room = await dependencies.rooms.create({
+                                      setId: cloudSetId,
+                                      questionCount: Math.min(
+                                        questionCount,
+                                        fullSet?.questions.length ?? questionCount
+                                      ),
+                                      secondsPerQuestion,
+                                      mode: roomMode,
+                                      maxPlayers,
+                                    });
+                                    useMembershipStore.getState().consumeBattle();
+                                    await enter(room.id);
+                                  } catch (err) {
+                                    const msg = errorMessage(
+                                      err,
+                                      'Không thể khởi tạo phòng Colosseum lúc này. Bạn có thể bấm Mở Kahoot Live ngay kế bên.'
+                                    );
+                                    setInlineSetError({ setId: set.id, message: msg });
+                                    setError(msg);
+                                  } finally {
+                                    setOpeningSetKey(null);
+                                    setBusy(false);
+                                  }
+                                })();
+                              }}
+                              style={({ pressed }) => ({
+                                flex: 1,
+                                minWidth: 135,
+                                minHeight: 42,
+                                paddingHorizontal: 12,
+                                borderRadius: radii.sm,
+                                backgroundColor: palette.indigo,
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: 5,
+                                opacity: pressed || colosseumLoading ? 0.78 : 1,
+                              })}
+                            >
+                              <Ionicons name="shield-checkmark" size={14} color="#FFFFFF" />
+                              <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 12 }}>
+                                {colosseumLoading ? 'Đang tạo phòng...' : `Phòng Colosseum (${maxPlayers}P)`}
+                              </Text>
+                            </Pressable>
+                          </View>
+
+                          {cardErr ? (
+                            <View
+                              style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: 6,
+                                paddingHorizontal: 10,
+                                paddingVertical: 7,
+                                borderRadius: radii.sm,
+                                backgroundColor: palette.dangerTint,
+                              }}
+                            >
+                              <Ionicons name="alert-circle" size={15} color={palette.danger} />
+                              <Text style={{ fontSize: 12, color: palette.danger, flex: 1, fontWeight: '700' }}>
+                                {cardErr}
+                              </Text>
+                            </View>
+                          ) : null}
                         </View>
-                      </View>
-                    ))}
+                      );
+                    })}
                   </View>
 
                   {filteredBattleSets.length > 6 && (
@@ -1224,10 +1367,10 @@ export default function BattleScreen() {
           </View>
         )}
 
-        {/* Leave Button */}
+        {/* Leave Button — always operable even during reconnect or busy RPCs */}
         {roomId && (
           <View style={{ marginTop: spacing.md, marginBottom: spacing.xxl }}>
-            <Button disabled={busy} variant="danger" icon="exit-outline" onPress={() => void run(leave)} fullWidth>
+            <Button variant="danger" icon="exit-outline" onPress={() => void leave()} fullWidth>
               {t.battle.leaveRoom}
             </Button>
           </View>

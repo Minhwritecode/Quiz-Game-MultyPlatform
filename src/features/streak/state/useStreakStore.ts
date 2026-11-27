@@ -10,6 +10,7 @@ import {
   StreakActivityType,
   getLocalDateString,
   getDaysDifference,
+  reconcileStreakWithHistory,
 } from '../domain/models';
 import { useMembershipStore } from '@/features/membership/state/useMembershipStore';
 
@@ -93,26 +94,41 @@ export const useStreakStore = create<StreakState>()(
         if (!snap) return;
         const today = getLocalDateString();
         set((prev) => {
-          const mergedDates = Array.from(
-            new Set([...(prev.historyDates ?? []), ...(snap.historyDates ?? [])])
-          ).slice(0, 35);
           const mergedLast =
             prev.lastActiveDate && snap.lastActiveDate
               ? prev.lastActiveDate >= snap.lastActiveDate
                 ? prev.lastActiveDate
                 : snap.lastActiveDate
               : prev.lastActiveDate || snap.lastActiveDate;
-          const mergedCurrent = Math.max(prev.currentStreak, snap.currentStreak);
-          const mergedLongest = Math.max(prev.longestStreak, snap.longestStreak, mergedCurrent);
+          const fallbackBaseStreak = Math.max(prev.currentStreak, snap.currentStreak);
+          const combinedRawDates = [...(prev.historyDates ?? []), ...(snap.historyDates ?? [])];
+          const reconciled = reconcileStreakWithHistory(combinedRawDates, today, {
+            allowFrozenGap: prev.status === 'frozen',
+            fallbackLastActiveDate: mergedLast,
+            fallbackCurrentStreak: fallbackBaseStreak,
+          });
+          const effectiveLast = reconciled.latestDate ?? mergedLast;
+          const mergedCurrent =
+            prev.status === 'broken'
+              ? 0
+              : reconciled.normalizedDates.length > 0 && prev.status !== 'frozen'
+              ? reconciled.consecutiveDays
+              : Math.max(fallbackBaseStreak, reconciled.consecutiveDays);
+          const mergedLongest = Math.max(
+            prev.longestStreak,
+            snap.longestStreak,
+            mergedCurrent,
+            reconciled.longestInHistory
+          );
           const nextSlice: PerUserStreakSlice = {
             ...extractSlice(prev),
             currentStreak: mergedCurrent,
             longestStreak: mergedLongest,
             streakFreezeCount: Math.max(prev.streakFreezeCount, snap.streakFreezeCount),
-            lastActiveDate: mergedLast,
-            todayCompleted: mergedLast === today,
-            status: mergedLast === today ? 'active' : prev.status,
-            historyDates: mergedDates,
+            lastActiveDate: effectiveLast,
+            todayCompleted: effectiveLast === today,
+            status: effectiveLast === today ? 'active' : prev.status,
+            historyDates: reconciled.normalizedDates.slice(0, 35),
           };
           return {
             ...nextSlice,
@@ -140,9 +156,21 @@ export const useStreakStore = create<StreakState>()(
           }
         }
 
-        if (!state.lastActiveDate) {
+        const reconciled = reconcileStreakWithHistory(state.historyDates, today, {
+          allowFrozenGap: state.status === 'frozen',
+          fallbackLastActiveDate: state.lastActiveDate,
+          fallbackCurrentStreak: state.currentStreak,
+        });
+        const effectiveLast = reconciled.latestDate ?? state.lastActiveDate;
+
+        if (!effectiveLast) {
           set((prev) => {
-            const nextSlice = { ...extractSlice(prev), status: 'at_risk' as const, todayCompleted: false };
+            const nextSlice = {
+              ...extractSlice(prev),
+              currentStreak: 0,
+              status: 'at_risk' as const,
+              todayCompleted: false,
+            };
             return {
               ...nextSlice,
               byUser: { ...prev.byUser, [prev.activeUserId]: nextSlice },
@@ -151,9 +179,26 @@ export const useStreakStore = create<StreakState>()(
           return;
         }
 
-        if (state.lastActiveDate === today) {
+        if (effectiveLast === today) {
           set((prev) => {
-            const nextSlice = { ...extractSlice(prev), todayCompleted: true, status: 'active' as const };
+            const syncedCurrent =
+              reconciled.normalizedDates.length > 0 && prev.status !== 'frozen'
+                ? Math.max(1, reconciled.consecutiveDays)
+                : Math.max(1, prev.currentStreak);
+            const syncedLongest = Math.max(
+              prev.longestStreak,
+              syncedCurrent,
+              reconciled.longestInHistory
+            );
+            const nextSlice = {
+              ...extractSlice(prev),
+              lastActiveDate: effectiveLast,
+              currentStreak: syncedCurrent,
+              longestStreak: syncedLongest,
+              historyDates: reconciled.normalizedDates.slice(0, 35),
+              todayCompleted: true,
+              status: 'active' as const,
+            };
             return {
               ...nextSlice,
               byUser: { ...prev.byUser, [prev.activeUserId]: nextSlice },
@@ -162,11 +207,28 @@ export const useStreakStore = create<StreakState>()(
           return;
         }
 
-        const diff = getDaysDifference(state.lastActiveDate, today);
+        const diff = getDaysDifference(effectiveLast, today);
 
         if (diff === 1) {
           set((prev) => {
-            const nextSlice = { ...extractSlice(prev), todayCompleted: false, status: 'at_risk' as const };
+            const syncedCurrent =
+              reconciled.normalizedDates.length > 0
+                ? reconciled.consecutiveDays
+                : prev.currentStreak;
+            const syncedLongest = Math.max(
+              prev.longestStreak,
+              syncedCurrent,
+              reconciled.longestInHistory
+            );
+            const nextSlice = {
+              ...extractSlice(prev),
+              lastActiveDate: effectiveLast,
+              currentStreak: syncedCurrent,
+              longestStreak: syncedLongest,
+              historyDates: reconciled.normalizedDates.slice(0, 35),
+              todayCompleted: false,
+              status: 'at_risk' as const,
+            };
             return {
               ...nextSlice,
               byUser: { ...prev.byUser, [prev.activeUserId]: nextSlice },
@@ -174,8 +236,16 @@ export const useStreakStore = create<StreakState>()(
           });
         } else if (diff === 2 && state.streakFreezeCount > 0) {
           set((prev) => {
+            const frozenReconciled = reconcileStreakWithHistory(prev.historyDates, today, {
+              allowFrozenGap: true,
+              fallbackLastActiveDate: effectiveLast,
+              fallbackCurrentStreak: prev.currentStreak,
+            });
             const nextSlice = {
               ...extractSlice(prev),
+              lastActiveDate: effectiveLast,
+              currentStreak: Math.max(prev.currentStreak, frozenReconciled.consecutiveDays),
+              historyDates: frozenReconciled.normalizedDates.slice(0, 35),
               streakFreezeCount: Math.max(0, prev.streakFreezeCount - 1),
               status: 'frozen' as const,
               todayCompleted: false,
@@ -186,10 +256,12 @@ export const useStreakStore = create<StreakState>()(
             };
           });
         } else if (diff >= 2) {
-          const brokenDays = state.currentStreak;
+          const brokenDays = Math.max(state.currentStreak, reconciled.consecutiveDays);
           set((prev) => {
             const nextSlice = {
               ...extractSlice(prev),
+              lastActiveDate: effectiveLast,
+              historyDates: reconciled.normalizedDates.slice(0, 35),
               brokenStreakDays: brokenDays,
               brokenAtDate: today,
               currentStreak: 0,
@@ -208,25 +280,50 @@ export const useStreakStore = create<StreakState>()(
       recordActivity: (_type: StreakActivityType) => {
         const today = getLocalDateString();
         const state = get();
+        const priorReconciled = reconcileStreakWithHistory(state.historyDates, today, {
+          allowFrozenGap: state.status === 'frozen',
+          fallbackLastActiveDate: state.lastActiveDate,
+          fallbackCurrentStreak: state.currentStreak,
+        });
 
         if (state.todayCompleted && state.lastActiveDate === today) {
-          return { streakUpdated: false, newStreak: state.currentStreak };
+          const synced =
+            priorReconciled.normalizedDates.length > 0 && state.status !== 'frozen'
+              ? Math.max(1, priorReconciled.consecutiveDays)
+              : state.currentStreak;
+          if (synced !== state.currentStreak) {
+            set((prev) => {
+              const nextSlice = {
+                ...extractSlice(prev),
+                currentStreak: synced,
+                longestStreak: Math.max(prev.longestStreak, synced),
+              };
+              return {
+                ...nextSlice,
+                byUser: { ...prev.byUser, [prev.activeUserId]: nextSlice },
+              };
+            });
+          }
+          return { streakUpdated: false, newStreak: synced };
         }
 
-        let newStreak = state.currentStreak;
-        if (!state.lastActiveDate) {
-          newStreak = 1;
-        } else {
+        const nextRawDates = [today, ...priorReconciled.normalizedDates];
+        const afterReconciled = reconcileStreakWithHistory(nextRawDates, today);
+        let newStreak = afterReconciled.consecutiveDays;
+        if (state.status === 'frozen' && state.lastActiveDate) {
           const diff = getDaysDifference(state.lastActiveDate, today);
-          if (diff <= 1 || state.status === 'frozen') {
-            newStreak += 1;
-          } else {
-            newStreak = 1;
+          if (diff <= 2) {
+            newStreak = Math.max(newStreak, state.currentStreak + 1);
           }
         }
+        newStreak = Math.max(1, newStreak);
 
-        const longest = Math.max(state.longestStreak, newStreak);
-        const nextHistory = Array.from(new Set([today, ...(state.historyDates ?? [])])).slice(0, 35);
+        const longest = Math.max(
+          state.longestStreak,
+          newStreak,
+          afterReconciled.longestInHistory
+        );
+        const nextHistory = afterReconciled.normalizedDates.slice(0, 35);
 
         const nextSlice: PerUserStreakSlice = {
           ...extractSlice(state),
@@ -321,6 +418,9 @@ export const useStreakStore = create<StreakState>()(
     {
       name: 'papyrus.streak.v3',
       storage: createJSONStorage(() => preferenceStorage),
+      onRehydrateStorage: () => (rehydrated) => {
+        rehydrated?.refreshStreakStatus();
+      },
     }
   )
 );

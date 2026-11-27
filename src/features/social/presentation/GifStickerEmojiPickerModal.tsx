@@ -61,7 +61,7 @@ export function GifStickerEmojiPickerModal({
       <View style={styles.backdrop}>
         <Card style={[styles.sheet, { backgroundColor: palette.paper }]}>
           <View style={styles.header}>
-            <Text style={[typography.title, { color: palette.ink }]}>✨ Thư viện Sticker · GIF · Emoji</Text>
+            <Text style={[typography.title, { color: palette.ink }]}>Nhãn dán, GIF & Biểu cảm</Text>
             <Pressable onPress={onClose} hitSlop={8}>
               <Ionicons name="close" size={22} color={palette.inkMuted} />
             </Pressable>
@@ -70,9 +70,9 @@ export function GifStickerEmojiPickerModal({
           <View style={styles.tabRow}>
             {(
               [
-                { id: 'sticker', label: '🎨 Sticker động' },
-                { id: 'gif', label: '🎬 GIF thịnh hành' },
-                { id: 'emoji', label: '😊 Biểu cảm Emoji' },
+                { id: 'sticker', label: 'Nhãn dán' },
+                { id: 'gif', label: 'GIF' },
+                { id: 'emoji', label: 'Biểu cảm' },
               ] as const
             ).map((t) => (
               <Pressable
@@ -86,7 +86,7 @@ export function GifStickerEmojiPickerModal({
                   },
                 ]}
               >
-                <Text style={{ fontSize: 12, fontWeight: '800', color: tab === t.id ? '#FFF' : palette.ink }}>
+                <Text style={{ fontSize: 12, fontWeight: '800', color: tab === t.id ? palette.onPrimary : palette.ink }}>
                   {t.label}
                 </Text>
               </Pressable>
@@ -96,7 +96,7 @@ export function GifStickerEmojiPickerModal({
           <TextInput
             value={query}
             onChangeText={setQuery}
-            placeholder="Tìm GIF, Sticker hoặc cảm xúc (vd: đỉnh, a+, vui, code)..."
+            placeholder="Tìm GIF hoặc nhãn dán..."
             placeholderTextColor={palette.inkMuted}
             style={[
               styles.searchInput,
@@ -109,11 +109,11 @@ export function GifStickerEmojiPickerModal({
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
                 {[
                   { id: 'all', label: 'Tất cả' },
-                  { id: 'trending', label: '🔥 Xu hướng' },
-                  { id: 'study', label: '📚 Học tập' },
-                  { id: 'celebrate', label: '🎉 Ăn mừng' },
-                  { id: 'funny', label: '😂 Hài hước' },
-                  { id: 'love', label: '💖 Yêu thương' },
+                  { id: 'trending', label: 'Xu hướng' },
+                  { id: 'study', label: 'Học tập' },
+                  { id: 'celebrate', label: 'Chúc mừng' },
+                  { id: 'funny', label: 'Hài hước' },
+                  { id: 'love', label: 'Yêu thích' },
                 ].map((cat) => (
                   <Pressable
                     key={cat.id}

@@ -42,10 +42,12 @@ export const EMOJI_PICKER_CATEGORIES: Array<{
   { id: 'faces', label: 'Biểu cảm', emojis: ['😊', '😎', '🤓', '🤔', '🥳', '🤩', '😅', '😭', '😤', '🫡', '🤝', '🙏'] },
 ];
 
+const DEFAULT_GIPHY_WEB_SDK_KEY = 'Mh4EFv3xXfqWSMPOp1Jb8C9N9RCCM3yE';
+
 /**
  * Lazy-loaded, paginated GIF & Sticker search.
- * Uses GIPHY API (`EXPO_PUBLIC_GIPHY_API_KEY`) when configured by admin/env with G-rated safety filter + attribution,
- * and seamlessly merges animated built-in packs without loading heavy libraries upfront!
+ * Uses GIPHY API (`EXPO_PUBLIC_GIPHY_API_KEY`) with G-rated safety filter + attribution,
+ * and seamlessly falls back to animated built-in packs when offline!
  */
 export async function searchGifsAndStickers(params: {
   query?: string;
@@ -54,27 +56,43 @@ export async function searchGifsAndStickers(params: {
   offset?: number;
   limit?: number;
 }): Promise<{ items: StickerOrGifItem[]; hasMore: boolean; attribution?: string }> {
-  const q = (params.query || '').trim().toLowerCase();
-  const limit = params.limit ?? 12;
+  const rawQuery = (params.query || '').trim();
+  const q = rawQuery.toLowerCase();
+  const limit = params.limit ?? 16;
   const offset = params.offset ?? 0;
 
-  const giphyKey = (process.env.EXPO_PUBLIC_GIPHY_API_KEY || '').trim();
-  if (giphyKey && (params.kind === 'gif' || params.kind === 'all')) {
+  const giphyKey = (process.env.EXPO_PUBLIC_GIPHY_API_KEY || DEFAULT_GIPHY_WEB_SDK_KEY).trim();
+  if (giphyKey) {
     try {
-      const endpoint = q
-        ? `https://api.giphy.com/v1/gifs/search?api_key=${encodeURIComponent(giphyKey)}&q=${encodeURIComponent(q)}&limit=${limit}&offset=${offset}&rating=g&lang=vi`
-        : `https://api.giphy.com/v1/gifs/trending?api_key=${encodeURIComponent(giphyKey)}&limit=${limit}&offset=${offset}&rating=g`;
+      const resource = params.kind === 'sticker' ? 'stickers' : 'gifs';
+      const itemKind: 'gif' | 'sticker' = params.kind === 'sticker' ? 'sticker' : 'gif';
+      const categoryQueryMap: Record<string, string> = {
+        study: 'study coding',
+        celebrate: 'celebrate party',
+        funny: 'funny reaction',
+        love: 'love heart',
+      };
+      const effectiveSearch =
+        rawQuery || (params.category && categoryQueryMap[params.category]) || '';
+      const endpoint = effectiveSearch
+        ? `https://api.giphy.com/v1/${resource}/search?api_key=${encodeURIComponent(giphyKey)}&q=${encodeURIComponent(effectiveSearch)}&limit=${limit}&offset=${offset}&rating=g&lang=vi`
+        : `https://api.giphy.com/v1/${resource}/trending?api_key=${encodeURIComponent(giphyKey)}&limit=${limit}&offset=${offset}&rating=g`;
       const res = await fetch(endpoint);
       if (res.ok) {
         const json = (await res.json()) as { data?: any[]; pagination?: { total_count?: number } };
         const mapped: StickerOrGifItem[] = (json.data ?? [])
           .map((item: any) => ({
-            id: `giphy-${item.id}`,
-            kind: 'gif' as const,
+            id: `giphy-${itemKind}-${item.id}`,
+            kind: itemKind,
             category: 'trending' as const,
-            title: String(item.title || 'GIF'),
+            title: String(item.title || (itemKind === 'sticker' ? 'Nhãn dán' : 'GIF')).replace(/\s+GIF.*$/i, '').trim() || (itemKind === 'sticker' ? 'Nhãn dán' : 'GIF'),
             shortcode: `:${item.slug || item.id}:`,
-            uri: String(item.images?.fixed_height?.url || item.images?.original?.url || ''),
+            uri: String(
+              item.images?.fixed_height?.url ||
+                item.images?.fixed_width?.url ||
+                item.images?.original?.url ||
+                ''
+            ),
             attribution: 'Powered by GIPHY',
           }))
           .filter((x) => Boolean(x.uri));
@@ -87,7 +105,7 @@ export async function searchGifsAndStickers(params: {
         }
       }
     } catch {
-      // Fall back to built-in curated animated stickers & GIFs
+      // Fall back to built-in curated animated stickers & GIFs when offline
     }
   }
 

@@ -19,7 +19,7 @@ import { wrapRoot, reportFailure } from '@/core/observability/monitoring';
 import { ReleaseGate } from '@/shared/ReleaseGate';
 import { AppUpdateBanner } from '@/shared/AppUpdateBanner';
 import { InAppNotificationBanner } from '@/shared/InAppNotificationBanner';
-import { Button, Card, Screen } from '@/shared/ui';
+import { Button, Card, Screen, usePalette } from '@/shared/ui';
 import { PapyrusMorphLoader } from '@/shared/PapyrusLoader';
 import { PapyrusSplash3D } from '@/shared/visuals/PapyrusSplash3D';
 import { OnboardingIllusionModal } from '@/features/onboarding/presentation/OnboardingIllusionModal';
@@ -54,15 +54,20 @@ function isAppActivelyForegrounded(): boolean {
 }
 
 export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+  const palette = usePalette();
   useEffect(() => {
     reportFailure(error, 'startup');
   }, [error]);
   return (
     <SafeAreaProvider>
       <Screen>
-        <Card>
-          <Text>Không mở được màn hình này. Dữ liệu đã lưu vẫn được giữ lại.</Text>
-          <Button onPress={() => void retry()}>Thử lại / Retry</Button>
+        <Card style={{ gap: spacing.md, marginTop: spacing.lg }}>
+          <Text style={{ color: palette.ink, fontSize: 15, fontWeight: '700', lineHeight: 22 }}>
+            Không mở được màn hình này. Dữ liệu đã lưu vẫn được giữ lại.
+          </Text>
+          <Button onPress={() => void retry()} fullWidth>
+            Thử lại / Retry
+          </Button>
         </Card>
       </Screen>
     </SafeAreaProvider>
@@ -94,16 +99,67 @@ function RootLayout() {
   const [navLoadingActive, setNavLoadingActive] = useState(false);
   const prevPathRef = useRef(pathname);
 
-  // Track global Online/Offline state so PapyrusPageSkeleton renders ONLY on weak/offline network
+  // Track global Online/Offline state + Lock Web/PWA root viewport so iOS keyboard/overscroll never pushes UI down
   useEffect(() => {
-    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof document === 'undefined') {
+      return;
+    }
+    const styleId = 'papyrus-viewport-lock-style';
+    if (!document.getElementById(styleId)) {
+      const styleEl = document.createElement('style');
+      styleEl.id = styleId;
+      styleEl.textContent = `
+        html, body {
+          margin: 0;
+          padding: 0;
+          width: 100%;
+          height: 100%;
+          height: 100dvh;
+          overflow: hidden;
+          overscroll-behavior: none;
+          -webkit-text-size-adjust: 100%;
+        }
+        #root {
+          display: flex;
+          flex-direction: column;
+          width: 100%;
+          height: 100%;
+          height: 100dvh;
+          min-height: 0;
+          overflow: hidden;
+        }
+      `;
+      document.head.appendChild(styleEl);
+    }
+
+    const snapViewportOrigin = () => {
+      if (window.scrollY !== 0 || window.scrollX !== 0) {
+        window.scrollTo(0, 0);
+      }
+      if (document.documentElement.scrollTop !== 0) {
+        document.documentElement.scrollTop = 0;
+      }
+      if (document.body && document.body.scrollTop !== 0) {
+        document.body.scrollTop = 0;
+      }
+    };
+
+    const onFocusOut = () => {
+      setTimeout(snapViewportOrigin, 60);
+    };
     const onUp = () => useRouteRefreshStore.getState().setOnline(true);
     const onDown = () => useRouteRefreshStore.getState().setOnline(false);
+
+    snapViewportOrigin();
     window.addEventListener('online', onUp);
     window.addEventListener('offline', onDown);
+    window.addEventListener('focusout', onFocusOut);
+    window.visualViewport?.addEventListener('resize', snapViewportOrigin);
     return () => {
       window.removeEventListener('online', onUp);
       window.removeEventListener('offline', onDown);
+      window.removeEventListener('focusout', onFocusOut);
+      window.visualViewport?.removeEventListener('resize', snapViewportOrigin);
     };
   }, []);
 

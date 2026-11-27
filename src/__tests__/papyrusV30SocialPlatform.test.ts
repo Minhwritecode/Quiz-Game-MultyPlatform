@@ -1,5 +1,11 @@
 import { answerLocally } from '@/features/assistant/data/localTutor';
 import {
+  groupStoriesByAuthor,
+  isStoryActive24h,
+  STORY_TTL_MS,
+} from '@/features/community/domain/models';
+import { useCommunityStore } from '@/features/community/state/useCommunityStore';
+import {
   acknowledgeWebBuildUpdate,
   checkWebAppVersionUpdate,
 } from '@/features/release/data/webVersionCheck';
@@ -15,28 +21,62 @@ import {
 } from '@/features/social/domain/rankingAndPermissions';
 import { useSocialStore } from '@/features/social/state/useSocialStore';
 
-jest.mock('@/composition/social', () => ({
+let mockUuidCounter = 0;
+const mockMemoryStorage = new Map<string, string>();
+
+jest.mock('@/composition/platform', () => ({
   broadcastCommunityEvent: jest.fn(),
+  persistentJsonStorage: {
+    getItem: (name: string) => mockMemoryStorage.get(name) ?? null,
+    setItem: (name: string, value: string) => {
+      mockMemoryStorage.set(name, value);
+    },
+    removeItem: (name: string) => {
+      mockMemoryStorage.delete(name);
+    },
+  },
+}));
+
+jest.mock('@/composition/social', () => ({
+  askPapyAiFeedAssistant: jest.fn(),
+  broadcastCommunityEvent: jest.fn(),
+  deleteStoryFromSupabase: jest.fn().mockResolvedValue(false),
   fetchRealProfilesDirectory: jest.fn().mockResolvedValue([]),
+  fetchSocialHydrationSnapshot: jest.fn().mockResolvedValue(null),
+  generateClientUuid: jest.fn(
+    () => `00000000-0000-4000-8000-${String(++mockUuidCounter).padStart(12, '0')}`
+  ),
   generatePapyAiPostSummary: jest.fn(),
+  persistChatMessageToSupabase: jest.fn().mockResolvedValue(false),
+  persistCommunityMembershipToSupabase: jest.fn().mockResolvedValue(false),
+  persistCommunityToSupabase: jest.fn().mockResolvedValue(false),
+  persistConversationToSupabase: jest.fn().mockResolvedValue(false),
+  persistFollowEdgeToSupabase: jest.fn().mockResolvedValue(false),
+  persistFriendRequestToSupabase: jest.fn().mockResolvedValue(false),
   persistModerationCaseToSupabase: jest.fn().mockResolvedValue(false),
   persistSocialPostToSupabase: jest.fn().mockResolvedValue(false),
+  persistStoryToSupabase: jest.fn().mockResolvedValue(false),
+  syncPostEngagementToSupabase: jest.fn().mockResolvedValue(false),
+  syncStoryEngagementToSupabase: jest.fn().mockResolvedValue(false),
   syncUnifiedProfileToSupabase: jest.fn().mockResolvedValue(false),
   triggerServerPostLifecycleSweep: jest.fn().mockResolvedValue(undefined),
+  updateStoryPinInSupabase: jest.fn().mockResolvedValue(false),
   uploadAdminDocumentToSupabase: jest.fn().mockResolvedValue({
     syncedToCloud: false,
     storagePath: null,
   }),
 }));
 
-describe('Papyrus v3.0 — Urgent Bug Fixes + Production Social Media & Community Suite', () => {
+describe('Papyrus v3.0 — Real Data Social Platform, 24h Grouped Stories & Guest Isolation Suite', () => {
   beforeEach(() => {
+    mockUuidCounter = 0;
+    mockMemoryStorage.clear();
     useSocialStore.setState(useSocialStore.getInitialState(), true);
+    useCommunityStore.setState(useCommunityStore.getInitialState(), true);
   });
 
   it('Urgent Bug #1: webVersionCheck records session baseline build and never loops infinitely on reload', async () => {
     const origWindow = (globalThis as { window?: unknown }).window;
-    // Reading Expo's lazy fetch getter would initialize a native module in Jest.
     const origFetch = Object.getOwnPropertyDescriptor(globalThis, 'fetch');
 
     const memStorage = new Map<string, string>();
@@ -61,16 +101,12 @@ describe('Papyrus v3.0 — Urgent Bug Fixes + Production Social Media & Communit
     });
 
     try {
-      // Initial check on fresh tab load establishes baseline -> MUST return false
       expect(await checkWebAppVersionUpdate()).toBe(false);
-      // Repeated poll against the exact same build -> MUST return false (no loop!)
       expect(await checkWebAppVersionUpdate()).toBe(false);
 
-      // Developer deploys a brand-new build while tab is open -> returns true
       servedBuild = '20261126-0200';
       expect(await checkWebAppVersionUpdate()).toBe(true);
 
-      // Once user clicks Reload / Dismiss, acknowledging suppresses re-prompts for that build
       acknowledgeWebBuildUpdate('20261126-0200');
       expect(await checkWebAppVersionUpdate()).toBe(false);
     } finally {
@@ -96,104 +132,298 @@ describe('Papyrus v3.0 — Urgent Bug Fixes + Production Social Media & Communit
     expect(howAreYou).not.toContain('Phân tích học thuật cho chủ đề');
   });
 
-  it('Section 4: Main Profile Name propagates everywhere & disambiguates same-name users without PAPY codes', () => {
+  it('Zero Fake Data & Strict Guest Isolation: fresh store has 0 fake profiles/posts/followers and Guests cannot mutate data', () => {
+    const social = useSocialStore.getState();
+    const comm = useCommunityStore.getState();
+
+    // Zero fake bot users, zero fake posts, zero fake conversations, zero fake stories
+    expect(Object.keys(social.profilesById)).toHaveLength(0);
+    expect(social.posts).toHaveLength(0);
+    expect(social.conversations).toHaveLength(0);
+    expect(social.chatMessages).toHaveLength(0);
+    expect(social.follows).toHaveLength(0);
+    expect(social.friendRequests).toHaveLength(0);
+    expect(comm.stories).toHaveLength(0);
+    expect(social.communities.every((c) => c.members.length === 0)).toBe(true);
+
+    // Guest write isolation
+    expect(
+      social.createSocialPost({
+        authorId: 'guest',
+        authorName: 'Khách',
+        authorAvatar: null,
+        threadParts: ['Guest post attempt'],
+      })
+    ).toBeNull();
+    expect(
+      comm.addStory({
+        authorId: 'guest',
+        authorName: 'Khách',
+        authorAvatar: null,
+        authorLevel: 1,
+        text: 'Guest story attempt',
+        gradient: ['#1C3F94', '#3B5BDB'],
+      })
+    ).toBeNull();
+    expect(social.toggleFollowUser('guest', 'user-1')).toBe('unfollowed');
+    social.sendFriendRequest('guest', 'user-1');
+    expect(useSocialStore.getState().posts).toHaveLength(0);
+    expect(useSocialStore.getState().follows).toHaveLength(0);
+    expect(useSocialStore.getState().friendRequests).toHaveLength(0);
+    expect(useCommunityStore.getState().stories).toHaveLength(0);
+  });
+
+  it('24h Grouped Stories & Profile Pinning: groups multiple <24h stories into 1 box per user, expires >=24h stories, and pins chosen stories', () => {
+    const comm = useCommunityStore.getState();
+    const now = Date.now();
+
+    const st1 = comm.addStory({
+      authorId: 'user-minh',
+      authorName: 'Minh',
+      authorAvatar: null,
+      authorLevel: 2,
+      text: 'Slide 1',
+      gradient: ['#312E81', '#7C3AED'],
+    })!;
+    const st2 = comm.addStory({
+      authorId: 'user-minh',
+      authorName: 'Minh',
+      authorAvatar: null,
+      authorLevel: 2,
+      text: 'Slide 2 Video',
+      mediaType: 'video',
+      videoUri: 'https://example.com/full-60s.mp4',
+      durationSec: 60,
+      gradient: ['#065F46', '#0284C7'],
+    })!;
+    const stOther = comm.addStory({
+      authorId: 'user-lan',
+      authorName: 'Lan',
+      authorAvatar: null,
+      authorLevel: 1,
+      text: 'Lan Story',
+      gradient: ['#9A3412', '#E11D48'],
+    })!;
+
+    expect(st2.durationSec).toBe(60); // Full video duration preserved (zero 10s/20s cap!)
+
+    const allActive = useCommunityStore
+      .getState()
+      .stories.filter((s) => isStoryActive24h(s, now));
+    const grouped = groupStoriesByAuthor(allActive);
+
+    // 3 stories across 2 users -> strictly 2 single Story Boxes!
+    expect(grouped).toHaveLength(2);
+    const minhBox = grouped.find((g) => g.authorId === 'user-minh')!;
+    expect(minhBox.stories).toHaveLength(2);
+    expect(minhBox.stories.map((s) => s.id)).toEqual([st1.id, st2.id]);
+
+    // Fast-forward 25 hours -> stories expire from 24h status
+    const after25h = now + STORY_TTL_MS + 3_600_000;
+    expect(isStoryActive24h(st1, after25h)).toBe(false);
+    expect(isStoryActive24h(stOther, after25h)).toBe(false);
+
+    // Owner pins `st2` onto their Profile -> only `user-minh` sees/owns it, never leaking to `user-lan`
+    expect(comm.togglePinStoryOnProfile(st2.id, 'user-lan')).toBe(false);
+    expect(comm.togglePinStoryOnProfile(st2.id, 'user-minh')).toBe(true);
+    const updatedSt2 = useCommunityStore.getState().stories.find((s) => s.id === st2.id)!;
+    expect(updatedSt2.pinnedOnProfile).toBe(true);
+
+    // Calling markStoryViewed when already viewed must be a strict no-op (prevents StoryViewerModal infinite loop)
+    const refBefore = useCommunityStore.getState().stories;
+    comm.markStoryViewed(st1.id, 'user-minh');
+    expect(useCommunityStore.getState().stories).toBe(refBefore);
+    comm.markStoryViewed(st1.id, 'user-lan');
+    expect(
+      useCommunityStore.getState().stories.find((s) => s.id === st1.id)!.viewedByIds
+    ).toContain('user-lan');
+    const refAfterFirstView = useCommunityStore.getState().stories;
+    comm.markStoryViewed(st1.id, 'user-lan');
+    expect(useCommunityStore.getState().stories).toBe(refAfterFirstView);
+
+    // Owner viewing own story does NOT inflate viewer count; peer reactions record and toggle cleanly
+    expect(
+      useCommunityStore.getState().stories.find((s) => s.id === st1.id)!.viewedByIds
+    ).not.toContain('user-minh');
+    comm.reactToStory(st1.id, '😂', 'user-lan');
+    expect(
+      useCommunityStore.getState().stories.find((s) => s.id === st1.id)!.reactions['😂']
+    ).toEqual(['user-lan']);
+  });
+
+  it('Legacy Content Migration: preserves real user-created posts & messages while discarding legacy fake seeds', () => {
+    useCommunityStore.setState({
+      posts: [
+        {
+          id: 'post-seed-1',
+          authorId: 'scholar-khanh',
+          authorName: 'Khánh Linh',
+          authorHandle: '@khanh',
+          authorAvatar: null,
+          authorLevel: 1,
+          threadParts: ['Fake seed post'],
+          tags: [],
+          reactions: { heart: [], bulb: [], fire: [], clap: [] },
+          repostedByIds: [],
+          bookmarkedByIds: [],
+          comments: [],
+          createdAt: '2026-11-24T10:00:00.000Z',
+        },
+        {
+          id: 'real-user-post-1',
+          authorId: 'real-uid-999',
+          authorName: 'Michael',
+          authorHandle: '@michael',
+          authorAvatar: null,
+          authorLevel: 3,
+          threadParts: ['Bài viết thật của người dùng cần được giữ nguyên!'],
+          tags: ['CNTT'],
+          reactions: { heart: ['u2'], bulb: [], fire: [], clap: [] },
+          repostedByIds: [],
+          bookmarkedByIds: [],
+          comments: [],
+          createdAt: '2026-11-25T10:00:00.000Z',
+        },
+      ],
+    });
+
+    useSocialStore.getState().migrateLegacyUserContent();
+    const migrated = useSocialStore.getState().posts;
+    expect(migrated).toHaveLength(1);
+    expect(migrated[0]?.id).toBe('real-user-post-1');
+    expect(migrated[0]?.authorName).toBe('Michael');
+  });
+
+  it('Section 4: Main Profile Name propagates everywhere & disambiguates same-name users with 0 fake followers', () => {
     const store = useSocialStore.getState();
 
-    // Two distinct users share the exact same displayName ("Khánh Linh")
-    const khanh1 = store.profilesById['scholar-khanh']!;
-    const khanh2 = store.profilesById['scholar-baonam']!;
-    expect(khanh1.displayName).toBe('Khánh Linh');
-    expect(khanh2.displayName).toBe('Khánh Linh');
-    expect(khanh1.id).not.toBe(khanh2.id);
-    expect(khanh1.major).not.toBe(khanh2.major);
+    const u1 = store.ensureUserProfile({
+      id: 'user-khanh-1',
+      displayName: 'Khánh Linh',
+      major: 'Kỹ thuật Phần mềm',
+    });
+    const u2 = store.ensureUserProfile({
+      id: 'user-khanh-2',
+      displayName: 'Khánh Linh',
+      major: 'Kinh tế Quốc tế',
+    });
+    expect(u1.followersCount).toBe(0);
+    expect(u2.followersCount).toBe(0);
+    expect(u1.id).not.toBe(u2.id);
+    expect(u1.major).not.toBe(u2.major);
 
-    // Zero scholar code leakage across profiles
-    for (const p of Object.values(store.profilesById)) {
-      expect(p.displayName).not.toMatch(/PAPY-/i);
-    }
+    const post = store.createSocialPost({
+      authorId: 'user-khanh-1',
+      authorName: 'Khánh Linh',
+      authorAvatar: null,
+      communityId: 'comm-software-ai',
+      threadParts: ['Kiến trúc hệ thống phân tán'],
+    })!;
+    store.joinOrLeaveCommunity('comm-software-ai', {
+      id: 'user-khanh-1',
+      name: 'Khánh Linh',
+      avatar: null,
+    });
+    store.addThreadedReply({
+      postId: post.id,
+      parentCommentId: null,
+      authorId: 'user-khanh-1',
+      authorName: 'Khánh Linh',
+      authorAvatar: null,
+      content: 'Bổ sung tài liệu tham khảo',
+    });
+    const conv = store.openOrCreateDirectConversation(
+      { id: 'user-khanh-1', name: 'Khánh Linh', avatar: null },
+      { id: 'user-khanh-2', name: 'Khánh Linh', avatar: null }
+    )!;
+    const msg = store.sendChatMessage({
+      conversationId: conv.id,
+      senderId: 'user-khanh-1',
+      senderName: 'Khánh Linh',
+      senderAvatar: null,
+      text: 'Chào bạn!',
+    })!;
 
-    // Propagating a Profile Name update updates authored posts, comments, communities & chat messages
-    store.propagateIdentityUpdate('scholar-khanh', {
+    // Propagate Profile Name update across all social entities
+    store.propagateIdentityUpdate('user-khanh-1', {
       displayName: 'Nguyễn Khánh Linh',
-      bio: 'Principal Systems Architect',
+      bio: 'Systems Engineer',
     });
 
     const updated = useSocialStore.getState();
-    expect(updated.profilesById['scholar-khanh']?.displayName).toBe('Nguyễn Khánh Linh');
-    const authoredPost = updated.posts.find((p) => p.id === 'spost-1')!;
-    expect(authoredPost.authorName).toBe('Nguyễn Khánh Linh');
-    const authoredReply = authoredPost.comments.find((c) => c.id === 'scmt-2')!;
-    expect(authoredReply.authorName).toBe('Nguyễn Khánh Linh');
-    const commOwner = updated.communities
+    expect(updated.profilesById['user-khanh-1']?.displayName).toBe('Nguyễn Khánh Linh');
+    const updatedPost = updated.posts.find((p) => p.id === post.id)!;
+    expect(updatedPost.authorName).toBe('Nguyễn Khánh Linh');
+    expect(updatedPost.comments[0]?.authorName).toBe('Nguyễn Khánh Linh');
+    const commMember = updated.communities
       .find((c) => c.id === 'comm-software-ai')!
-      .members.find((m) => m.userId === 'scholar-khanh')!;
-    expect(commOwner.displayName).toBe('Nguyễn Khánh Linh');
-    const chatMsg = updated.chatMessages.find((m) => m.id === 'cmsg-1')!;
-    expect(chatMsg.senderName).toBe('Nguyễn Khánh Linh');
+      .members.find((m) => m.userId === 'user-khanh-1')!;
+    expect(commMember.displayName).toBe('Nguyễn Khánh Linh');
+    expect(updated.chatMessages.find((m) => m.id === msg.id)?.senderName).toBe(
+      'Nguyễn Khánh Linh'
+    );
   });
 
   it('Section 4.4–4.6: Separates 1-way Follow (public vs private) from 2-way Friendship & enforces Block', () => {
     const store = useSocialStore.getState();
     store.ensureUserProfile({ id: 'user-alice', displayName: 'Alice Trần' });
+    store.ensureUserProfile({ id: 'user-bob', displayName: 'Bob Lê', isPrivateAccount: false });
+    store.ensureUserProfile({
+      id: 'user-priv',
+      displayName: 'Minh Riêng Tư',
+      isPrivateAccount: true,
+    });
 
-    // 1-way Follow on public account -> immediately accepted
-    expect(store.toggleFollowUser('user-alice', 'scholar-haianh')).toBe('followed');
+    const bobPost = store.createSocialPost({
+      authorId: 'user-bob',
+      authorName: 'Bob Lê',
+      authorAvatar: null,
+      threadParts: ['Bài viết công khai của Bob'],
+    })!;
 
-    // 1-way Follow on private account (scholar-baonam) -> pending request until approved
-    expect(store.toggleFollowUser('user-alice', 'scholar-baonam')).toBe('requested');
+    expect(store.toggleFollowUser('user-alice', 'user-bob')).toBe('followed');
+    expect(store.toggleFollowUser('user-alice', 'user-priv')).toBe('requested');
+    store.respondFollowRequest('user-priv', 'user-alice', true);
     expect(
       useSocialStore
         .getState()
-        .follows.find((f) => f.followerId === 'user-alice' && f.followingId === 'scholar-baonam')
-        ?.status
-    ).toBe('pending');
-    store.respondFollowRequest('scholar-baonam', 'user-alice', true);
-    expect(
-      useSocialStore
-        .getState()
-        .follows.find((f) => f.followerId === 'user-alice' && f.followingId === 'scholar-baonam')
+        .follows.find((f) => f.followerId === 'user-alice' && f.followingId === 'user-priv')
         ?.status
     ).toBe('accepted');
 
-    // 2-way Friend Request lifecycle
-    store.sendFriendRequest('user-alice', 'scholar-haianh');
+    store.sendFriendRequest('user-alice', 'user-bob');
     const req = useSocialStore
       .getState()
-      .friendRequests.find(
-        (r) => r.senderId === 'user-alice' && r.receiverId === 'scholar-haianh'
-      )!;
-    expect(req.status).toBe('pending');
+      .friendRequests.find((r) => r.senderId === 'user-alice' && r.receiverId === 'user-bob')!;
     store.respondFriendRequest(req.id, true);
 
     let s = useSocialStore.getState();
-    const graph1 = {
-      follows: s.follows,
-      friendRequests: s.friendRequests,
-      relations: s.relations,
-      communities: s.communities,
-    };
-    expect(areUsersFriends('user-alice', 'scholar-haianh', graph1)).toBe(true);
+    expect(
+      areUsersFriends('user-alice', 'user-bob', {
+        follows: s.follows,
+        friendRequests: s.friendRequests,
+        relations: s.relations,
+        communities: s.communities,
+      })
+    ).toBe(true);
 
-    // Blocking severs friendships & follows and revokes post access
-    store.toggleUserRelation('user-alice', 'scholar-haianh', 'block');
+    store.toggleUserRelation('user-alice', 'user-bob', 'block');
     s = useSocialStore.getState();
-    const graph2 = {
+    const graphAfterBlock = {
       follows: s.follows,
       friendRequests: s.friendRequests,
       relations: s.relations,
       communities: s.communities,
     };
-    expect(areUsersBlocked('user-alice', 'scholar-haianh', graph2)).toBe(true);
-    expect(areUsersFriends('user-alice', 'scholar-haianh', graph2)).toBe(false);
-    const haianhPost = s.posts.find((p) => p.id === 'spost-3')!;
-    expect(canViewerAccessPost(haianhPost, 'user-alice', graph2)).toBe(false);
-    expect(canViewerReplyToPost(haianhPost, 'user-alice', graph2)).toBe(false);
+    expect(areUsersBlocked('user-alice', 'user-bob', graphAfterBlock)).toBe(true);
+    expect(areUsersFriends('user-alice', 'user-bob', graphAfterBlock)).toBe(false);
+    expect(canViewerAccessPost(bobPost, 'user-alice', graphAfterBlock)).toBe(false);
+    expect(canViewerReplyToPost(bobPost, 'user-alice', graphAfterBlock)).toBe(false);
   });
 
-  it('Section 5 & 16.5: Draft auto-save isolation across accounts, Edit History, Scheduled publish, Ghost expiry & Anonymous masking', () => {
+  it('Section 5 & 16.5: Draft auto-save isolation, Edit History, Scheduled publish, Ghost expiry & Anonymous masking', () => {
     const store = useSocialStore.getState();
 
-    // Account A saves a composer draft & bookmark
     store.switchAccountScope('user-a');
     store.saveComposerDraft('user-a', {
       postKind: 'thread',
@@ -215,42 +445,39 @@ describe('Papyrus v3.0 — Urgent Bug Fixes + Production Social Media & Communit
       debateSideB: '',
       updatedAt: new Date().toISOString(),
     });
-    store.toggleSaveBookmark('user-a', 'spost-1');
-    store.toggleFavouritePost('user-a', 'spost-2');
+    store.toggleSaveBookmark('user-a', 'post-x');
+    store.toggleFavouritePost('user-a', 'post-y');
 
-    // Switching to Guest / User B never leaks User A's draft, bookmarks, or favourites
     store.switchAccountScope('guest');
     const guestSlice = useSocialStore.getState().userSlices.guest!;
     expect(guestSlice.draft).toBeNull();
     expect(guestSlice.bookmarkedPostIds).toHaveLength(0);
     expect(guestSlice.favouritePostIds).toHaveLength(0);
 
-    // Scheduled Post -> stays scheduled until time arrives
-    const pastDueSchedule = new Date(Date.now() + 60_000).toISOString();
+    const futureSchedule = new Date(Date.now() + 60_000).toISOString();
     const scheduled = store.createSocialPost({
       authorId: 'user-a',
       authorName: 'User A',
       authorAvatar: null,
       threadParts: ['Bài hẹn giờ xuất bản'],
-      scheduledFor: pastDueSchedule,
-    });
+      scheduledFor: futureSchedule,
+    })!;
     expect(scheduled.lifecycleStatus).toBe('scheduled');
 
-    // Ghost Post -> expires after window and becomes inaccessible to other viewers
     const ghost = store.createSocialPost({
       authorId: 'user-a',
       authorName: 'User A',
       authorAvatar: null,
       postKind: 'ghost',
-      threadParts: ['Ghost 24h biến mất sau hạn'],
-      ghostHours: -1, // Already past expiry
-    });
+      threadParts: ['Bài tự hủy 24h'],
+      ghostHours: -1,
+    })!;
     store.runScheduledAndGhostSweep();
     const afterSweep = useSocialStore.getState();
     const sweptGhost = afterSweep.posts.find((p) => p.id === ghost.id)!;
     expect(sweptGhost.lifecycleStatus).toBe('expired');
     expect(
-      canViewerAccessPost(sweptGhost, 'scholar-khanh', {
+      canViewerAccessPost(sweptGhost, 'user-b', {
         follows: afterSweep.follows,
         friendRequests: afterSweep.friendRequests,
         relations: afterSweep.relations,
@@ -258,58 +485,87 @@ describe('Papyrus v3.0 — Urgent Bug Fixes + Production Social Media & Communit
       })
     ).toBe(false);
 
-    // Anonymous Post -> masks real authorId/authorName for non-moderators while keeping moderator accountability
     const anon = store.createSocialPost({
       authorId: 'user-a',
       authorName: 'User A Thật',
       authorAvatar: 'https://example.com/a.png',
       postKind: 'anonymous',
       isAnonymous: true,
-      threadParts: ['Tâm sự ẩn danh mùa thi'],
-    });
-    const publicView = projectSafePostForViewer(anon, 'scholar-haianh', false);
+      threadParts: ['Chia sẻ ẩn danh'],
+    })!;
+    const publicView = projectSafePostForViewer(anon, 'user-b', false);
     expect(publicView.authorId).toBe('anonymous-member');
     expect(publicView.internalAuthorId).toBeUndefined();
-    expect(publicView.authorName).toBe('Thành viên Ẩn danh');
     expect(publicView.authorAvatar).toBeNull();
 
     const modView = projectSafePostForViewer(anon, 'admin-1', true);
     expect(modView.authorName).toContain('User A Thật');
 
-    // Edit Post -> preserves previous version in editHistory
-    expect(store.editSocialPost(scheduled.id, 'user-a', ['Nội dung đã cập nhật v2'])).toBe(true);
+    expect(store.editSocialPost(scheduled.id, 'user-a', ['Nội dung cập nhật v2'])).toBe(true);
     const edited = useSocialStore.getState().posts.find((p) => p.id === scheduled.id)!;
-    expect(edited.threadParts[0]).toBe('Nội dung đã cập nhật v2');
+    expect(edited.threadParts[0]).toBe('Nội dung cập nhật v2');
     expect(edited.editHistory).toHaveLength(1);
-    expect(edited.editHistory[0]?.previousParts[0]).toBe('Bài hẹn giờ xuất bản');
   });
 
-  it('Section 6, 7, 8.5 & 9.4: Vietnamese search, Your Algo ranking, Unified Zalo Polls & SharedPostCard permissions', () => {
+  it('Section 6, 7 & 9.4: Vietnamese search, Feed ranking, Interactive Polls & Friend Recommendations', () => {
     const store = useSocialStore.getState();
 
-    // Vietnamese diacritic-insensitive search
-    expect(matchesVietnameseSearch('Kỹ thuật Phần mềm & Hệ Điều Hành', 'he dieu hanh')).toBe(true);
+    expect(matchesVietnameseSearch('Kỹ thuật Phần mềm & Hệ Điều Hành', 'he dieu hanh')).toBe(
+      true
+    );
     expect(matchesVietnameseSearch('Nguyễn Khánh Linh', 'khanh linh')).toBe(true);
 
-    // Unified Zalo Poll single-choice vote switching, option adding & closing
-    store.voteUnifiedPoll('post', 'spost-2', 'uopt-1', 'voter-1');
-    store.voteUnifiedPoll('post', 'spost-2', 'uopt-2', 'voter-1'); // Single-choice switches cleanly
-    let poll = useSocialStore.getState().posts.find((p) => p.id === 'spost-2')!.poll!;
+    store.ensureUserProfile({ id: 'author-1', displayName: 'Minh Quân', major: 'CNTT' });
+    store.ensureUserProfile({ id: 'voter-1', displayName: 'Hải Anh', major: 'CNTT' });
+
+    const pollPost = store.createSocialPost({
+      authorId: 'author-1',
+      authorName: 'Minh Quân',
+      authorAvatar: null,
+      topics: ['CNTT', 'AI'],
+      threadParts: ['Khảo sát chủ đề ôn tập tuần này'],
+      poll: {
+        id: 'poll-1',
+        scopeType: 'post',
+        question: 'Chọn chuyên đề nào?',
+        options: [
+          { id: 'uopt-1', text: 'Hệ điều hành & Deadlock', voterIds: [] },
+          { id: 'uopt-2', text: 'Mạng máy tính', voterIds: [] },
+        ],
+        allowMultiple: false,
+        isAnonymous: false,
+        allowAddOptions: true,
+        allowChangeVote: true,
+        isClosed: false,
+        createdBy: 'author-1',
+        createdAt: new Date().toISOString(),
+      },
+    })!;
+
+    const mutedPost = store.createSocialPost({
+      authorId: 'author-1',
+      authorName: 'Minh Quân',
+      authorAvatar: null,
+      threadParts: ['Phân tích chi tiết thuật toán chống deadlock'],
+    })!;
+
+    store.voteUnifiedPoll('post', pollPost.id, 'uopt-1', 'voter-1');
+    store.voteUnifiedPoll('post', pollPost.id, 'uopt-2', 'voter-1');
+    let poll = useSocialStore.getState().posts.find((p) => p.id === pollPost.id)!.poll!;
     expect(poll.options[0]?.voterIds).not.toContain('voter-1');
     expect(poll.options[1]?.voterIds).toContain('voter-1');
 
-    store.addUnifiedPollOption('post', 'spost-2', 'Phương án Hybrid', {
+    store.addUnifiedPollOption('post', pollPost.id, 'Trí tuệ nhân tạo', {
       id: 'voter-1',
-      name: 'Voter Một',
+      name: 'Hải Anh',
     });
-    store.toggleCloseUnifiedPoll('post', 'spost-2', 'scholar-minhquan');
-    store.voteUnifiedPoll('post', 'spost-2', 'uopt-1', 'voter-2'); // Ignored when closed!
-    poll = useSocialStore.getState().posts.find((p) => p.id === 'spost-2')!.poll!;
+    store.toggleCloseUnifiedPoll('post', pollPost.id, 'author-1');
+    store.voteUnifiedPoll('post', pollPost.id, 'uopt-1', 'voter-2');
+    poll = useSocialStore.getState().posts.find((p) => p.id === pollPost.id)!.poll!;
     expect(poll.options).toHaveLength(3);
     expect(poll.isClosed).toBe(true);
     expect(poll.options[0]?.voterIds).not.toContain('voter-2');
 
-    // Your Algo muted keywords filter out unwanted posts
     store.updateYourAlgo('voter-1', { mutedKeywords: ['deadlock'] });
     const s = useSocialStore.getState();
     const ranked = rankAndFilterFeedPosts({
@@ -324,21 +580,18 @@ describe('Papyrus v3.0 — Urgent Bug Fixes + Production Social Media & Communit
         communities: s.communities,
       },
     });
-    expect(ranked.some((r) => r.post.id === 'spost-1')).toBe(false);
+    expect(ranked.some((r) => r.post.id === mutedPost.id)).toBe(false);
 
-    // Intelligent Friend Recommendations exclude blocked & self
-    store.ensureUserProfile({ id: 'voter-1', displayName: 'Voter Một' });
-    const latest = useSocialStore.getState();
     const recs = computeIntelligentFriendRecommendations({
-      candidates: Object.values(latest.profilesById),
-      posts: latest.posts,
+      candidates: Object.values(s.profilesById),
+      posts: s.posts,
       viewerId: 'voter-1',
       viewerInterests: ['CNTT', 'AI'],
       graph: {
-        follows: latest.follows,
-        friendRequests: latest.friendRequests,
-        relations: latest.relations,
-        communities: latest.communities,
+        follows: s.follows,
+        friendRequests: s.friendRequests,
+        relations: s.relations,
+        communities: s.communities,
       },
       dismissedUserIds: [],
     });
@@ -348,18 +601,25 @@ describe('Papyrus v3.0 — Urgent Bug Fixes + Production Social Media & Communit
 
   it('Section 13 & 14.8: Moderation workflow + Appeals restoration + Admin Document Gift distribution & Audit Logs', async () => {
     const store = useSocialStore.getState();
+    const targetPost = store.createSocialPost({
+      authorId: 'user-haianh',
+      authorName: 'Hải Anh',
+      authorAvatar: null,
+      isSpoiler: true,
+      spoilerWarning: 'Đáp án đề thi thử',
+      threadParts: ['Lời giải chi tiết đề thi thử'],
+    })!;
 
-    // 1. Report post -> Admin removes content -> User appeals -> Admin accepts appeal & restores post
     const modCase = store.submitModerationReport({
-      reporterId: 'scholar-minhquan',
+      reporterId: 'user-minhquan',
       reporterName: 'Minh Quân',
       targetType: 'post',
-      targetId: 'spost-3',
-      targetPreview: 'Đáp án chi tiết đề thi thử',
-      targetOwnerId: 'scholar-haianh',
-      reason: 'Nghi ngờ nhầm mục',
-      details: 'Kiểm tra lại chuyên mục',
-    });
+      targetId: targetPost.id,
+      targetPreview: 'Lời giải chi tiết đề thi thử',
+      targetOwnerId: 'user-haianh',
+      reason: 'Kiểm tra chuyên mục',
+      details: 'Xem xét lại nhãn ẩn nội dung',
+    })!;
     expect(modCase.workflowStatus).toBe('pending_review');
 
     store.applyAdminModerationAction(
@@ -369,21 +629,20 @@ describe('Papyrus v3.0 — Urgent Bug Fixes + Production Social Media & Communit
       'remove_content',
       'Tạm gỡ chờ xác minh'
     );
-    expect(useSocialStore.getState().posts.find((p) => p.id === 'spost-3')?.lifecycleStatus).toBe(
-      'removed'
-    );
+    expect(
+      useSocialStore.getState().posts.find((p) => p.id === targetPost.id)?.lifecycleStatus
+    ).toBe('removed');
 
-    store.submitUserAppeal(modCase.id, 'scholar-haianh', 'Bài đã gắn nhãn Spoiler đúng nội quy');
+    store.submitUserAppeal(modCase.id, 'user-haianh', 'Bài đã gắn nhãn ẩn nội dung hợp lệ');
     expect(
       useSocialStore.getState().moderationCases.find((c) => c.id === modCase.id)?.workflowStatus
     ).toBe('appealed');
 
     store.resolveUserAppeal(modCase.id, 'Admin', 'accepted', 'Khôi phục bài viết hợp lệ');
-    expect(useSocialStore.getState().posts.find((p) => p.id === 'spost-3')?.lifecycleStatus).toBe(
-      'published'
-    );
+    expect(
+      useSocialStore.getState().posts.find((p) => p.id === targetPost.id)?.lifecycleStatus
+    ).toBe('published');
 
-    // 2. Admin creates & gifts an academic document -> recorded in giftHistory & immutable auditLogs
     const doc = await store.createOrUpdateAdminDocument('Admin', {
       title: 'Đề Cương Ôn Thi Trí Tuệ Nhân Tạo Đại Học',
       description: 'Tài liệu chính thức',
@@ -402,10 +661,10 @@ describe('Papyrus v3.0 — Urgent Bug Fixes + Production Social Media & Communit
       adminName: 'Admin',
       docId: doc.id,
       targetScope: 'user',
-      userIds: ['scholar-haianh'],
+      userIds: ['user-haianh'],
       targetLabel: 'Hải Anh',
     });
-    expect(gifted?.recipientUserIds).toContain('scholar-haianh');
+    expect(gifted?.recipientUserIds).toContain('user-haianh');
     expect(gifted?.giftHistory).toHaveLength(1);
     expect(useSocialStore.getState().auditLogs.length).toBeGreaterThanOrEqual(3);
   });

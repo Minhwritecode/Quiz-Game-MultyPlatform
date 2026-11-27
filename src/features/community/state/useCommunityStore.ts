@@ -3,7 +3,15 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { preferenceStorage } from '@/composition/preferences';
 import { broadcastCommunityEvent } from '@/composition/platform';
 import {
+  deleteStoryFromSupabase,
+  generateClientUuid,
+  persistStoryToSupabase,
+  syncStoryEngagementToSupabase,
+  updateStoryPinInSupabase,
+} from '@/composition/social';
+import {
   DEFAULT_STUDY_GROUPS,
+  STORY_TTL_MS,
   type GroupChatMessage,
   type ReactionKey,
   type ScholarStory,
@@ -11,184 +19,15 @@ import {
   type ThreadPost,
 } from '../domain/models';
 
-function makeStoryPosterSvg(c1: string, c2: string, emoji: string, title: string): string {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="540" height="960" viewBox="0 0 540 960"><defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${c1}"/><stop offset="100%" stop-color="${c2}"/></linearGradient><radialGradient id="gl" cx="50%" cy="38%" r="52%"><stop offset="0%" stop-color="rgba(255,255,255,0.28)"/><stop offset="100%" stop-color="rgba(255,255,255,0)"/></radialGradient></defs><rect width="540" height="960" fill="url(#bg)"/><circle cx="270" cy="360" r="240" fill="url(#gl)"/><circle cx="440" cy="180" r="90" fill="rgba(255,255,255,0.08)"/><circle cx="95" cy="760" r="130" fill="rgba(0,0,0,0.16)"/><text x="50%" y="37%" dominant-baseline="middle" text-anchor="middle" font-size="112">${emoji}</text><text x="50%" y="52%" dominant-baseline="middle" text-anchor="middle" fill="#FFFFFF" font-family="system-ui,sans-serif" font-size="34" font-weight="800">${title}</text></svg>`;
-  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
-}
-
-const SEED_STORIES: ScholarStory[] = [
-  {
-    id: 'story-seed-1',
-    authorId: 'scholar-khanh',
-    authorName: 'Khánh Linh',
-    authorAvatar: null,
-    authorLevel: 12,
-    text: 'Cày xong bộ Cấu trúc Dữ liệu & Giải thuật đạt 98% chính xác trên Cung Thủ 3D! 🏹🔥',
-    subtext: '#StudyWithMe · Chuỗi 14 ngày',
-    gradient: ['#312E81', '#7C3AED'],
-    mediaType: 'image',
-    imageUri: makeStoryPosterSvg('#1E1B4B', '#7C3AED', '🏹', '98% Thuật Toán 3D'),
-    thumbnailUri: makeStoryPosterSvg('#1E1B4B', '#7C3AED', '🏹', '98% Thuật Toán 3D'),
-    badgeLabel: '🔮 Pháp Sư Hàn Lâm',
-    viewedByIds: [],
-    reactions: { '🔥': ['u1', 'u2'], '❤️': ['u3'] },
-    isHighlight: true,
-    createdAt: '2026-11-25T01:00:00.000Z',
-  },
-  {
-    id: 'story-seed-2',
-    authorId: 'scholar-minhquan',
-    authorName: 'Minh Quân',
-    authorAvatar: null,
-    authorLevel: 16,
-    text: 'Mẹo phân biệt TCP vs UDP trong 15 giây: TCP có bắt tay 3 bước, UDP bắn tốc độ ánh sáng! ⚡',
-    subtext: 'Mạng Máy Tính Đại Cương',
-    gradient: ['#065F46', '#0284C7'],
-    mediaType: 'image',
-    imageUri: makeStoryPosterSvg('#064E3B', '#0284C7', '⚡', 'TCP vs UDP 15s'),
-    thumbnailUri: makeStoryPosterSvg('#064E3B', '#0284C7', '⚡', 'TCP vs UDP 15s'),
-    badgeLabel: '👑 Đại Học Sĩ',
-    viewedByIds: [],
-    reactions: { '👏': ['u1'] },
-    isHighlight: true,
-    createdAt: '2026-11-25T02:00:00.000Z',
-  },
-  {
-    id: 'story-seed-3',
-    authorId: 'scholar-haianh',
-    authorName: 'Hải Anh',
-    authorAvatar: null,
-    authorLevel: 8,
-    text: 'Ba mốc vàng Lịch sử Thế giới hiện đại không thể nhầm trước ngày thi cuối kỳ 📜✨',
-    subtext: 'Lịch Sử & Văn Chương',
-    gradient: ['#9A3412', '#E11D48'],
-    mediaType: 'image',
-    imageUri: makeStoryPosterSvg('#7C2D12', '#E11D48', '🏛️', 'Mốc Vàng Lịch Sử'),
-    thumbnailUri: makeStoryPosterSvg('#7C2D12', '#E11D48', '🏛️', 'Mốc Vàng Lịch Sử'),
-    badgeLabel: '⚔️ Hiệp Sĩ Tri Thức',
-    viewedByIds: [],
-    reactions: { '❤️': ['u1', 'u4'] },
-    createdAt: '2026-11-25T02:30:00.000Z',
-  },
-];
-
-const SEED_POSTS: ThreadPost[] = [
-  {
-    id: 'post-seed-1',
-    authorId: 'scholar-khanh',
-    authorName: 'Khánh Linh',
-    authorHandle: '@khanhlinh.cs',
-    authorAvatar: null,
-    authorLevel: 12,
-    authorRoleBadge: '🔮 Pháp Sư Hàn Lâm',
-    templateBadge: '🔥 Giải ngố 60s',
-    threadParts: [
-      '90% sinh viên học thuộc lòng "Deadlock (Tắc nghẽn)", nhưng chỉ cần nhớ đúng 4 điều kiện Coffman này là giải quyết trọn vẹn mọi câu hỏi Hệ Điều Hành trong 30 giây 👇',
-      '1/ Bốn điều kiện cần và đủ để xảy ra Deadlock:\n• Mutual Exclusion (Loại trừ tương hỗ)\n• Hold and Wait (Giữ và chờ tài nguyên)\n• No Preemption (Không trưng dụng)\n• Circular Wait (Chờ đợi vòng tròn)',
-      '2/ Mẹo ăn điểm tuyệt đối (TL;DR): Chỉ cần PHÁ VỠ 1 trong 4 điều kiện trên (thường nhất là đánh số thứ tự tài nguyên để triệt tiêu Circular Wait) là hệ thống không bao giờ treo! Bấm làm thử bộ đề Hệ Điều Hành bên dưới nhé 🔖',
-    ],
-    codeSnippet:
-      '// Phòng chống Circular Wait bằng thứ tự khóa tăng dần:\nlock(Math.min(resA, resB));\nlock(Math.max(resA, resB));',
-    attachedQuiz: {
-      setId: 'seed-uni-os-arch',
-      title: 'Hệ Điều Hành & Kiến Trúc Máy Tính',
-      questionCount: 8,
-      subject: 'Công nghệ thông tin',
-    },
-    tags: ['CNTT', 'HệĐiềuHành', 'ÔnThi'],
-    reactions: {
-      heart: ['u1', 'u2', 'u3'],
-      bulb: ['u4', 'u5'],
-      fire: ['u1', 'u6'],
-      clap: ['u2'],
-    },
-    repostedByIds: ['u3'],
-    bookmarkedByIds: [],
-    comments: [
-      {
-        id: 'cmt-1',
-        authorId: 'scholar-minhquan',
-        authorName: 'Minh Quân',
-        authorAvatar: null,
-        content: 'Chuỗi Thread quá dễ nhớ luôn! Phần đánh số thứ tự khóa mình vừa gặp y hệt trong đề thi giữa kỳ.',
-        likes: 5,
-        createdAt: '2026-11-25T01:45:00.000Z',
-      },
-    ],
-    createdAt: '2026-11-25T01:15:00.000Z',
-  },
-  {
-    id: 'post-seed-2',
-    authorId: 'scholar-minhquan',
-    authorName: 'Minh Quân',
-    authorHandle: '@minhquan.bk',
-    authorAvatar: null,
-    authorLevel: 16,
-    authorRoleBadge: '👑 Đại Học Sĩ Hoàng Gia',
-    templateBadge: '🧩 Đố vui Phản biện',
-    threadParts: [
-      'Thử thách tư duy 10 giây: Cấu trúc dữ liệu nào cho độ phức tạp tìm kiếm trung bình O(1) nhưng trường hợp xấu nhất bị suy biến thành O(n)? 🧠',
-      'Hãy bình chọn ngay ở Poll bên dưới trước khi xem lời giải ở bình luận nhé!',
-    ],
-    poll: {
-      question: 'Đâu là đáp án chính xác nhất?',
-      options: [
-        { id: 'opt-1', text: 'Bảng băm (Hash Table) khi đụng độ chuỗi', voterIds: ['u1', 'u2', 'u4', 'u5'] },
-        { id: 'opt-2', text: 'Cây Đỏ - Đen (Red-Black Tree)', voterIds: ['u3'] },
-        { id: 'opt-3', text: 'Mảng tĩnh đã sắp xếp (Sorted Array)', voterIds: [] },
-      ],
-    },
-    tags: ['CNTT', 'ThuậtToán', 'TưDuy'],
-    reactions: {
-      heart: ['u2'],
-      bulb: ['u1', 'u3', 'u5'],
-      fire: ['u4'],
-      clap: [],
-    },
-    repostedByIds: [],
-    bookmarkedByIds: [],
-    comments: [],
-    createdAt: '2026-11-25T02:10:00.000Z',
-  },
-];
-
-const SEED_MESSAGES: GroupChatMessage[] = [
-  {
-    id: 'msg-pin-it',
-    channelId: 'grp-it-algo',
-    senderId: 'scholar-khanh',
-    senderName: 'Khánh Linh',
-    senderAvatar: null,
-    text: '📌 Lịch ôn nhóm tối nay 21:00: Giải 20 câu Cấu trúc dữ liệu & Hệ điều hành trên Kahoot Live! Ai vào điểm danh thả 🔥 nhé.',
-    reactions: { '🔥': ['u1', 'u2', 'u3'], '❤️': ['u4'] },
-    createdAt: '2026-11-25T01:00:00.000Z',
-  },
-  {
-    id: 'msg-it-2',
-    channelId: 'grp-it-algo',
-    senderId: 'scholar-minhquan',
-    senderName: 'Minh Quân',
-    senderAvatar: null,
-    text: 'Mình gửi sẵn bộ đề Mạng Máy Tính & Giao Thức TCP/IP vào nhóm cho anh em khởi động trước giờ G nha!',
-    quizCard: {
-      setId: 'seed-uni-networks-sec',
-      title: 'Mạng Máy Tính & An Toàn Thông Tin',
-      questionCount: 8,
-    },
-    reactions: { '👍': ['u1', 'u2'] },
-    createdAt: '2026-11-25T01:12:00.000Z',
-  },
-  {
-    id: 'msg-pin-stem',
-    channelId: 'grp-stem-lab',
-    senderId: 'scholar-haianh',
-    senderName: 'Hải Anh',
-    senderAvatar: null,
-    text: '📌 Tổng hợp công thức Nhiệt động lực học & Di truyền học phân tử đã ghim tại đây cho các bạn năm nhất & năm hai!',
-    reactions: { '❤️': ['u1', 'u5'] },
-    createdAt: '2026-11-25T01:20:00.000Z',
-  },
-];
+const LEGACY_SEED_STORY_IDS = new Set(['story-seed-1', 'story-seed-2', 'story-seed-3']);
+const LEGACY_SEED_POST_IDS = new Set(['post-seed-1', 'post-seed-2']);
+const LEGACY_SEED_MSG_IDS = new Set(['msg-pin-it', 'msg-it-2', 'msg-pin-stem']);
+const LEGACY_FAKE_USER_IDS = new Set([
+  'scholar-khanh',
+  'scholar-minhquan',
+  'scholar-haianh',
+  'scholar-baonam',
+]);
 
 interface CommunityState {
   stories: ScholarStory[];
@@ -197,28 +36,42 @@ interface CommunityState {
   messages: GroupChatMessage[];
   followingAuthorIds: string[];
 
-  addStory: (story: Omit<ScholarStory, 'id' | 'viewedByIds' | 'reactions' | 'createdAt'>) => ScholarStory;
+  addStory: (
+    story: Omit<ScholarStory, 'id' | 'viewedByIds' | 'reactions' | 'createdAt'>
+  ) => ScholarStory | null;
   markStoryViewed: (storyId: string, viewerId: string) => void;
   reactToStory: (storyId: string, emoji: string, viewerId: string) => void;
+  togglePinStoryOnProfile: (storyId: string, ownerId: string) => boolean;
+  deleteStory: (storyId: string, ownerId: string) => void;
+  mergeCloudStories: (remoteStories: ScholarStory[]) => void;
 
   addPost: (
     post: Omit<
       ThreadPost,
       'id' | 'reactions' | 'repostedByIds' | 'bookmarkedByIds' | 'comments' | 'createdAt'
     >
-  ) => ThreadPost;
+  ) => ThreadPost | null;
   togglePostReaction: (postId: string, key: ReactionKey, userId: string) => void;
   votePostPoll: (postId: string, optionId: string, userId: string) => void;
   toggleBookmarkPost: (postId: string, userId: string) => void;
   toggleRepost: (postId: string, userId: string) => void;
-  addComment: (postId: string, author: { id: string; name: string; avatar: string | null }, content: string) => void;
+  addComment: (
+    postId: string,
+    author: { id: string; name: string; avatar: string | null },
+    content: string
+  ) => void;
   toggleFollowAuthor: (authorId: string) => void;
 
-  createStudyGroup: (input: { name: string; subtitle: string; topic: string; accentColor: string }) => StudyGroupChannel;
+  createStudyGroup: (input: {
+    name: string;
+    subtitle: string;
+    topic: string;
+    accentColor: string;
+  }) => StudyGroupChannel;
   ensureDirectChannel: (peer: { id: string; name: string }) => StudyGroupChannel;
   sendGroupMessage: (
     msg: Omit<GroupChatMessage, 'id' | 'reactions' | 'createdAt'>
-  ) => GroupChatMessage;
+  ) => GroupChatMessage | null;
   toggleMessageReaction: (messageId: string, emoji: string, userId: string) => void;
   voteGroupPoll: (messageId: string, optionId: string, userId: string) => void;
   pinChannelMessage: (channelId: string, messageId: string | null) => void;
@@ -231,50 +84,143 @@ interface CommunityState {
 export const useCommunityStore = create<CommunityState>()(
   persist(
     (set, get) => ({
-      stories: SEED_STORIES,
-      posts: SEED_POSTS,
+      stories: [],
+      posts: [],
       channels: DEFAULT_STUDY_GROUPS,
-      messages: SEED_MESSAGES,
-      followingAuthorIds: ['scholar-khanh', 'scholar-minhquan'],
+      messages: [],
+      followingAuthorIds: [],
 
       addStory: (input) => {
+        if (!input.authorId || input.authorId === 'guest') return null;
+        const now = Date.now();
+        const createdAt = new Date(now).toISOString();
+        const expiresAt = new Date(now + STORY_TTL_MS).toISOString();
+        const pinned = Boolean(input.pinnedOnProfile ?? input.isHighlight);
         const story: ScholarStory = {
           ...input,
-          id: `story-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          viewedByIds: [input.authorId],
+          id: generateClientUuid(),
+          isHighlight: pinned,
+          pinnedOnProfile: pinned,
+          viewedByIds: [],
           reactions: {},
-          createdAt: new Date().toISOString(),
+          expiresAt,
+          createdAt,
         };
-        set((state) => ({ stories: [story, ...state.stories].slice(0, 50) }));
+        set((state) => ({ stories: [story, ...state.stories].slice(0, 80) }));
+        void persistStoryToSupabase(story);
         broadcastCommunityEvent({ type: 'new-story', story });
         return story;
       },
 
       markStoryViewed: (storyId, viewerId) => {
+        if (!viewerId || viewerId === 'guest') return;
+        const target = get().stories.find((s) => s.id === storyId);
+        if (!target || target.authorId === viewerId) return;
+        const currentViewed = Array.isArray(target.viewedByIds) ? target.viewedByIds : [];
+        if (currentViewed.includes(viewerId)) return;
+        const nextViewed = [...currentViewed, viewerId];
+        const currentReactions =
+          target.reactions && typeof target.reactions === 'object' ? target.reactions : {};
         set((state) => ({
           stories: state.stories.map((s) =>
-            s.id === storyId && !s.viewedByIds.includes(viewerId)
-              ? { ...s, viewedByIds: [...s.viewedByIds, viewerId] }
+            s.id === storyId
+              ? {
+                  ...s,
+                  viewedByIds: nextViewed,
+                }
               : s
           ),
         }));
+        if (typeof syncStoryEngagementToSupabase === 'function') {
+          void syncStoryEngagementToSupabase(storyId, nextViewed, currentReactions);
+        }
       },
 
       reactToStory: (storyId, emoji, viewerId) => {
+        if (!viewerId || viewerId === 'guest') return;
+        let syncedViewed: string[] | null = null;
+        let syncedReactions: Record<string, string[]> | null = null;
         set((state) => ({
           stories: state.stories.map((s) => {
             if (s.id !== storyId) return s;
-            const prev = s.reactions[emoji] ?? [];
-            const next = prev.includes(viewerId) ? prev : [...prev, viewerId];
-            return { ...s, reactions: { ...s.reactions, [emoji]: next } };
+            const currentReactions =
+              s.reactions && typeof s.reactions === 'object' ? s.reactions : {};
+            const prev = Array.isArray(currentReactions[emoji]) ? currentReactions[emoji]! : [];
+            const next = prev.includes(viewerId)
+              ? prev.filter((id) => id !== viewerId)
+              : [...prev, viewerId];
+            const nextReactions = { ...currentReactions, [emoji]: next };
+            syncedViewed = Array.isArray(s.viewedByIds) ? s.viewedByIds : [];
+            syncedReactions = nextReactions;
+            return { ...s, reactions: nextReactions };
           }),
         }));
+        if (syncedViewed && syncedReactions && typeof syncStoryEngagementToSupabase === 'function') {
+          void syncStoryEngagementToSupabase(storyId, syncedViewed, syncedReactions);
+        }
+      },
+
+      togglePinStoryOnProfile: (storyId, ownerId) => {
+        if (!ownerId || ownerId === 'guest') return false;
+        let nextPinned = false;
+        set((state) => ({
+          stories: state.stories.map((s) => {
+            if (s.id !== storyId || s.authorId !== ownerId) return s;
+            nextPinned = !Boolean(s.pinnedOnProfile ?? s.isHighlight);
+            return { ...s, pinnedOnProfile: nextPinned, isHighlight: nextPinned };
+          }),
+        }));
+        void updateStoryPinInSupabase(storyId, nextPinned);
+        return nextPinned;
+      },
+
+      deleteStory: (storyId, ownerId) => {
+        if (!ownerId || ownerId === 'guest') return;
+        set((state) => ({
+          stories: state.stories.filter(
+            (s) => !(s.id === storyId && (s.authorId === ownerId || ownerId === 'admin'))
+          ),
+        }));
+        void deleteStoryFromSupabase(storyId);
+      },
+
+      mergeCloudStories: (remoteStories) => {
+        if (remoteStories.length === 0) return;
+        set((state) => {
+          const map = new Map<string, ScholarStory>();
+          for (const local of state.stories) {
+            if (!LEGACY_SEED_STORY_IDS.has(local.id) && !LEGACY_FAKE_USER_IDS.has(local.authorId)) {
+              map.set(local.id, local);
+            }
+          }
+          for (const rem of remoteStories) {
+            const existing = map.get(rem.id);
+            map.set(
+              rem.id,
+              existing
+                ? {
+                  ...existing,
+                  ...rem,
+                  // Preserve local blob video URI during the active browser session if present
+                  videoUri: rem.videoUri || existing.videoUri || null,
+                  thumbnailUri: rem.thumbnailUri || existing.thumbnailUri || null,
+                }
+                : rem
+            );
+          }
+          return {
+            stories: Array.from(map.values()).sort(
+              (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)
+            ),
+          };
+        });
       },
 
       addPost: (input) => {
+        if (!input.authorId || input.authorId === 'guest') return null;
         const post: ThreadPost = {
           ...input,
-          id: `post-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          id: generateClientUuid(),
           reactions: { heart: [], bulb: [], fire: [], clap: [] },
           repostedByIds: [],
           bookmarkedByIds: [],
@@ -287,6 +233,7 @@ export const useCommunityStore = create<CommunityState>()(
       },
 
       togglePostReaction: (postId, key, userId) => {
+        if (!userId || userId === 'guest') return;
         set((state) => ({
           posts: state.posts.map((p) => {
             if (p.id !== postId) return p;
@@ -298,6 +245,7 @@ export const useCommunityStore = create<CommunityState>()(
       },
 
       votePostPoll: (postId, optionId, userId) => {
+        if (!userId || userId === 'guest') return;
         set((state) => ({
           posts: state.posts.map((p) => {
             if (p.id !== postId || !p.poll) return p;
@@ -321,6 +269,7 @@ export const useCommunityStore = create<CommunityState>()(
       },
 
       toggleBookmarkPost: (postId, userId) => {
+        if (!userId || userId === 'guest') return;
         set((state) => ({
           posts: state.posts.map((p) => {
             if (p.id !== postId) return p;
@@ -336,6 +285,7 @@ export const useCommunityStore = create<CommunityState>()(
       },
 
       toggleRepost: (postId, userId) => {
+        if (!userId || userId === 'guest') return;
         set((state) => ({
           posts: state.posts.map((p) => {
             if (p.id !== postId) return p;
@@ -351,6 +301,7 @@ export const useCommunityStore = create<CommunityState>()(
       },
 
       addComment: (postId, author, content) => {
+        if (!author.id || author.id === 'guest') return;
         const clean = content.trim();
         if (!clean) return;
         set((state) => ({
@@ -358,20 +309,20 @@ export const useCommunityStore = create<CommunityState>()(
             p.id !== postId
               ? p
               : {
-                  ...p,
-                  comments: [
-                    ...p.comments,
-                    {
-                      id: `cmt-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
-                      authorId: author.id,
-                      authorName: author.name,
-                      authorAvatar: author.avatar,
-                      content: clean,
-                      likes: 0,
-                      createdAt: new Date().toISOString(),
-                    },
-                  ],
-                }
+                ...p,
+                comments: [
+                  ...p.comments,
+                  {
+                    id: `cmt-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+                    authorId: author.id,
+                    authorName: author.name,
+                    authorAvatar: author.avatar,
+                    content: clean,
+                    likes: 0,
+                    createdAt: new Date().toISOString(),
+                  },
+                ],
+              }
           ),
         }));
       },
@@ -404,8 +355,8 @@ export const useCommunityStore = create<CommunityState>()(
         if (existing) return existing;
         const dm: StudyGroupChannel = {
           id: `dm-${peer.id.slice(0, 12)}`,
-          name: `💬 ${peer.name}`,
-          subtitle: 'Tin nhắn trực tiếp 1-1 · Bảo mật & Tức thì',
+          name: peer.name,
+          subtitle: 'Tin nhắn trực tiếp',
           topic: '1-1 Chat',
           icon: 'chatbubble-ellipses',
           accentColor: '#06B6D4',
@@ -419,9 +370,10 @@ export const useCommunityStore = create<CommunityState>()(
       },
 
       sendGroupMessage: (input) => {
+        if (!input.senderId || input.senderId === 'guest') return null;
         const msg: GroupChatMessage = {
           ...input,
-          id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          id: generateClientUuid(),
           reactions: {},
           createdAt: new Date().toISOString(),
         };
@@ -431,6 +383,7 @@ export const useCommunityStore = create<CommunityState>()(
       },
 
       toggleMessageReaction: (messageId, emoji, userId) => {
+        if (!userId || userId === 'guest') return;
         set((state) => ({
           messages: state.messages.map((m) => {
             if (m.id !== messageId) return m;
@@ -444,6 +397,7 @@ export const useCommunityStore = create<CommunityState>()(
       },
 
       voteGroupPoll: (messageId, optionId, userId) => {
+        if (!userId || userId === 'guest') return;
         set((state) => ({
           messages: state.messages.map((m) => {
             if (m.id !== messageId || !m.poll) return m;
@@ -484,7 +438,7 @@ export const useCommunityStore = create<CommunityState>()(
       ingestRealtimeStory: (story) => {
         set((state) => {
           if (state.stories.some((s) => s.id === story.id)) return state;
-          return { stories: [story, ...state.stories].slice(0, 50) };
+          return { stories: [story, ...state.stories].slice(0, 80) };
         });
       },
 
@@ -498,6 +452,76 @@ export const useCommunityStore = create<CommunityState>()(
     {
       name: 'papyrus.community.v1',
       storage: createJSONStorage(() => preferenceStorage),
+      merge: (persistedState, currentState) => {
+        const persisted = (persistedState as Partial<CommunityState> | undefined) ?? {};
+        // Strip legacy fake seed stories/posts/messages while preserving 100% of real user content!
+        const cleanStories = (persisted.stories ?? [])
+          .filter(
+            (s) =>
+              Boolean(s && s.id) &&
+              !LEGACY_SEED_STORY_IDS.has(s.id) &&
+              !LEGACY_FAKE_USER_IDS.has(s.authorId) &&
+              s.authorId !== 'guest'
+          )
+          .map((s) => {
+            const rawGrad = Array.isArray(s.gradient) ? s.gradient : [];
+            const g0 = typeof rawGrad[0] === 'string' && rawGrad[0] ? rawGrad[0] : '#312E81';
+            const g1 = typeof rawGrad[1] === 'string' && rawGrad[1] ? rawGrad[1] : '#7C3AED';
+            const cleanVideoUri =
+              typeof s.videoUri === 'string' && !s.videoUri.startsWith('blob:')
+                ? s.videoUri
+                : null;
+            const cleanImageUri =
+              typeof s.imageUri === 'string' && !s.imageUri.startsWith('blob:')
+                ? s.imageUri
+                : null;
+            const cleanThumbUri =
+              typeof s.thumbnailUri === 'string' && !s.thumbnailUri.startsWith('blob:')
+                ? s.thumbnailUri
+                : cleanImageUri;
+            return {
+              ...s,
+              authorName: s.authorName || 'Thành viên Papyrus',
+              text: typeof s.text === 'string' ? s.text : '',
+              subtext: typeof s.subtext === 'string' ? s.subtext : '',
+              gradient: [g0, g1] as [string, string],
+              videoUri: cleanVideoUri,
+              imageUri: cleanImageUri,
+              thumbnailUri: cleanThumbUri,
+              viewedByIds: Array.isArray(s.viewedByIds)
+                ? s.viewedByIds.filter((uid) => uid && uid !== s.authorId && uid !== 'guest')
+                : [],
+              reactions:
+                s.reactions && typeof s.reactions === 'object' && !Array.isArray(s.reactions)
+                  ? s.reactions
+                  : {},
+              pinnedOnProfile: s.pinnedOnProfile ?? Boolean(s.isHighlight),
+            };
+          });
+        const cleanPosts = (persisted.posts ?? []).filter(
+          (p) =>
+            !LEGACY_SEED_POST_IDS.has(p.id) &&
+            !LEGACY_FAKE_USER_IDS.has(p.authorId) &&
+            p.authorId !== 'guest'
+        );
+        const cleanMessages = (persisted.messages ?? []).filter(
+          (m) =>
+            !LEGACY_SEED_MSG_IDS.has(m.id) &&
+            !LEGACY_FAKE_USER_IDS.has(m.senderId) &&
+            m.senderId !== 'guest'
+        );
+        const cleanFollows = (persisted.followingAuthorIds ?? []).filter(
+          (id) => !LEGACY_FAKE_USER_IDS.has(id)
+        );
+        return {
+          ...currentState,
+          ...persisted,
+          stories: cleanStories,
+          posts: cleanPosts,
+          messages: cleanMessages,
+          followingAuthorIds: cleanFollows,
+        };
+      },
     }
   )
 );

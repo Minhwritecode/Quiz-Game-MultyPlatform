@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { FlatList, Platform, Share, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Button, Card, Screen, TopBar, usePalette } from '@/shared/ui';
@@ -6,23 +7,48 @@ import { useMultiplayerStore } from '@/features/multiplayer/state/useMultiplayer
 import type { LeaderboardPlayer } from '@/features/multiplayer/domain/models';
 import { LiveReactionsBar } from '@/features/room-battle/components/LiveReactionsBar';
 import { buildLeaderboardCsv } from '@/features/study/domain/sessionReport';
-import { exportBattlePdfReport } from '@/composition/platform';
+import { exportBattlePdfReport, roomApi } from '@/composition/platform';
 
 export default function MultiplayerResultsScreen() {
   const router = useRouter();
   const palette = usePalette();
   const { roomCode } = useLocalSearchParams<{ roomCode: string }>();
   const finalResults = useMultiplayerStore((state) => state.finalResults);
+  const currentRoom = useMultiplayerStore((state) => state.currentRoom);
   const reset = useMultiplayerStore((state) => state.reset);
+  const [fallbackRoomPlayers, setFallbackRoomPlayers] = useState<LeaderboardPlayer[]>([]);
+
+  useEffect(() => {
+    if (finalResults.length > 0 || !roomCode) return;
+    let active = true;
+    void roomApi.get(roomCode).then((data) => {
+      if (!active || !data?.players?.length) return;
+      const sorted = [...data.players]
+        .sort((a, b) => b.score - a.score)
+        .map((p, idx) => ({
+          playerId: p.playerId,
+          nickname: p.nickname,
+          score: p.score,
+          rank: idx + 1,
+        }));
+      setFallbackRoomPlayers(sorted);
+    });
+    return () => {
+      active = false;
+    };
+  }, [finalResults.length, roomCode]);
 
   const displayResults: LeaderboardPlayer[] =
     finalResults.length > 0
       ? finalResults
-      : [
-          { playerId: 'r1', nickname: 'Anh Minh 👑', score: 480 },
-          { playerId: 'r2', nickname: 'Lan Chi', score: 360 },
-          { playerId: 'r3', nickname: 'Tuấn Khang', score: 250 },
-        ];
+      : fallbackRoomPlayers.length > 0
+      ? fallbackRoomPlayers
+      : (currentRoom?.players ?? []).map((p, idx) => ({
+          playerId: p.playerId,
+          nickname: p.nickname,
+          score: p.score,
+          rank: idx + 1,
+        }));
 
   const handleFinish = () => {
     reset();
@@ -118,10 +144,10 @@ export default function MultiplayerResultsScreen() {
             icon="document-text-outline"
             onPress={() => void exportBattlePdfReport(roomCode || 'LIVE', displayResults)}
           >
-            🖨️ In / Xuất báo cáo PDF
+            Xuất báo cáo PDF
           </Button>
           <Button variant="secondary" icon="download-outline" onPress={() => void handleExportReport()}>
-            📊 Xuất bảng điểm CSV
+            Xuất bảng điểm CSV
           </Button>
           <Button variant="reward" icon="home-outline" onPress={handleFinish}>
             Về Trang chủ Papyrus

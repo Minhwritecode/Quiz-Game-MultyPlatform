@@ -5,7 +5,7 @@ import type { ScholarStory } from '../domain/models';
 import { usePalette } from '@/shared/ui';
 
 /**
- * Facebook-Exact "Create Story" 9:16 Card (Top 66% user photo, bottom 34% dark panel with overlapping + badge).
+ * Facebook-Style "Create Story" 9:16 Card (Warm Paper & Egyptian Ink).
  */
 export const CreateStoryCard916 = memo(function CreateStoryCard916({
   avatarUrl,
@@ -22,7 +22,7 @@ export const CreateStoryCard916 = memo(function CreateStoryCard916({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel="Tạo tin Story 24h mới"
+      accessibilityLabel="Tạo tin 24 giờ mới"
       onPress={onPress}
       style={({ pressed }) => [
         styles.card,
@@ -53,7 +53,12 @@ export const CreateStoryCard916 = memo(function CreateStoryCard916({
       </View>
 
       <View style={[styles.createBottomBar, { backgroundColor: palette.paperRaised }]}>
-        <View style={[styles.plusCircle, { backgroundColor: palette.indigo, borderColor: palette.paperRaised }]}>
+        <View
+          style={[
+            styles.plusCircle,
+            { backgroundColor: palette.indigo, borderColor: palette.paperRaised },
+          ]}
+        >
           <Ionicons name="add" size={20} color={palette.onPrimary} />
         </View>
         <Text style={[styles.createLabel, { color: palette.ink }]} numberOfLines={1}>
@@ -65,45 +70,53 @@ export const CreateStoryCard916 = memo(function CreateStoryCard916({
 });
 
 /**
- * Facebook-Exact 9:16 Vertical Story Card (`112 × 192`).
- * Renders the full photo or video first-frame thumbnail crisp edge-to-edge,
- * with author's circular ringed avatar in top-left, video badge in top-right, and name over bottom gradient.
+ * Single Grouped 9:16 Vertical Story Box (`112 × 194`) per User:
+ * Shows segmented slide bars when a user has multiple active 24h stories inside the box.
  */
 export const StoryCard916 = memo(function StoryCard916({
   story,
   seen,
+  totalCount = 1,
+  customLabel,
   onPress,
 }: {
   story: ScholarStory;
   seen: boolean;
+  totalCount?: number;
+  customLabel?: string;
   onPress: () => void;
 }) {
   const palette = usePalette();
   const thumb = story.thumbnailUri || story.imageUri || null;
   const isVideo = story.mediaType === 'video' || Boolean(story.videoUri);
-  const initial = (story.authorName.trim()[0] || 'S').toUpperCase();
+  const label = customLabel || story.authorName || 'Thành viên Papyrus';
+  const initial = (label.trim()[0] || 'S').toUpperCase();
+  const segmentBars = Math.min(Math.max(1, totalCount), 6);
+  const safeGrad: [string, string] =
+    Array.isArray(story.gradient) && story.gradient.length >= 2
+      ? [story.gradient[0] || '#312E81', story.gradient[1] || '#7C3AED']
+      : ['#312E81', '#7C3AED'];
 
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Xem tin của ${story.authorName}`}
+      accessibilityLabel={`Xem tin của ${label}`}
       onPress={onPress}
       style={({ pressed }) => [
         styles.card,
         {
-          backgroundColor: story.gradient[0],
+          backgroundColor: safeGrad[0],
           borderColor: seen ? palette.paperMuted : palette.indigo,
           opacity: pressed ? 0.9 : 1,
           transform: pressed ? [{ scale: 0.97 }] : undefined,
         },
         !thumb && Platform.OS === 'web'
           ? ({
-              backgroundImage: `linear-gradient(160deg, ${story.gradient[0]} 0%, ${story.gradient[1]} 100%)`,
+              backgroundImage: `linear-gradient(160deg, ${safeGrad[0]} 0%, ${safeGrad[1]} 100%)`,
             } as unknown as ViewStyle)
           : undefined,
       ]}
     >
-      {/* Full-bleed Photo or Video First-Frame Thumbnail */}
       {thumb ? (
         <Image source={{ uri: thumb }} style={StyleSheet.absoluteFill} resizeMode="cover" />
       ) : (
@@ -114,7 +127,6 @@ export const StoryCard916 = memo(function StoryCard916({
         </View>
       )}
 
-      {/* Subtle Top & Bottom Scrims for crisp readability over bright photos/videos */}
       <View
         pointerEvents="none"
         style={[
@@ -122,42 +134,67 @@ export const StoryCard916 = memo(function StoryCard916({
           Platform.OS === 'web'
             ? ({
                 backgroundImage:
-                  'linear-gradient(180deg, rgba(2,6,23,0.42) 0%, rgba(2,6,23,0.04) 40%, rgba(2,6,23,0.82) 100%)',
+                  'linear-gradient(180deg, rgba(2,6,23,0.44) 0%, rgba(2,6,23,0.04) 40%, rgba(2,6,23,0.82) 100%)',
               } as unknown as ViewStyle)
             : { backgroundColor: 'rgba(2, 6, 23, 0.24)' },
         ]}
       />
 
-      {/* Top Row: Facebook Blue Ringed Avatar + Optional Video Pill */}
-      <View style={styles.topRow}>
-        <View
-          style={[
-            styles.avatarRing,
-            {
-              borderColor: seen ? palette.paperMuted : palette.indigo,
-            },
-          ]}
-        >
-          {story.authorAvatar ? (
-            <Image source={{ uri: story.authorAvatar }} style={styles.avatarImg} />
-          ) : (
-            <View style={[styles.avatarFallback, { backgroundColor: palette.indigo }]}>
-              <Text style={{ color: palette.onPrimary, fontSize: 12, fontWeight: '900' }}>{initial}</Text>
-            </View>
-          )}
-        </View>
-
-        {isVideo ? (
-          <View style={styles.videoBadge}>
-            <Ionicons name="play" size={10} color="#FFFFFF" />
-            <Text style={{ color: '#FFFFFF', fontSize: 9.5, fontWeight: '800' }}>
-              {story.durationSec ? `${story.durationSec}s` : 'Video'}
-            </Text>
+      <View style={{ zIndex: 2 }}>
+        {segmentBars > 1 ? (
+          <View style={styles.cardSegmentsRow}>
+            {Array.from({ length: segmentBars }).map((_, idx) => (
+              <View
+                key={idx}
+                style={[
+                  styles.cardSegmentDot,
+                  {
+                    backgroundColor: seen ? 'rgba(255,255,255,0.5)' : '#FFFFFF',
+                  },
+                ]}
+              />
+            ))}
           </View>
         ) : null}
+
+        <View style={styles.topRow}>
+          <View
+            style={[
+              styles.avatarRing,
+              {
+                borderColor: seen ? palette.paperMuted : palette.indigo,
+              },
+            ]}
+          >
+            {story.authorAvatar ? (
+              <Image source={{ uri: story.authorAvatar }} style={styles.avatarImg} />
+            ) : (
+              <View style={[styles.avatarFallback, { backgroundColor: palette.indigo }]}>
+                <Text style={{ color: palette.onPrimary, fontSize: 12, fontWeight: '900' }}>
+                  {initial}
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {totalCount > 1 ? (
+            <View style={styles.videoBadge}>
+              <Ionicons name="albums-outline" size={10} color="#FFFFFF" />
+              <Text style={{ color: '#FFFFFF', fontSize: 9.5, fontWeight: '800' }}>
+                {totalCount} tin
+              </Text>
+            </View>
+          ) : isVideo ? (
+            <View style={styles.videoBadge}>
+              <Ionicons name="play" size={10} color="#FFFFFF" />
+              <Text style={{ color: '#FFFFFF', fontSize: 9.5, fontWeight: '800' }}>
+                {story.durationSec ? `${story.durationSec}s` : 'Video'}
+              </Text>
+            </View>
+          ) : null}
+        </View>
       </View>
 
-      {/* Bottom Author Name & Optional Short Caption */}
       <View style={styles.bottomMeta}>
         {thumb && story.text ? (
           <Text style={styles.microCaption} numberOfLines={1}>
@@ -165,7 +202,7 @@ export const StoryCard916 = memo(function StoryCard916({
           </Text>
         ) : null}
         <Text style={styles.authorLabel} numberOfLines={1}>
-          {story.authorName}
+          {label}
         </Text>
       </View>
     </Pressable>
@@ -206,7 +243,6 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: '#3B82F6',
     borderWidth: 3,
     alignItems: 'center',
     justifyContent: 'center',
@@ -239,11 +275,23 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     textAlign: 'center',
   },
+  cardSegmentsRow: {
+    flexDirection: 'row',
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingTop: 6,
+  },
+  cardSegmentDot: {
+    flex: 1,
+    height: 2.5,
+    borderRadius: 2,
+  },
   topRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
-    padding: 8,
+    paddingHorizontal: 8,
+    paddingTop: 6,
     zIndex: 2,
   },
   avatarRing: {
@@ -265,7 +313,6 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     borderRadius: 15,
-    backgroundColor: '#4F46E5',
     alignItems: 'center',
     justifyContent: 'center',
   },

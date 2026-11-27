@@ -8,6 +8,103 @@ export interface PickedStoryMedia {
   durationSec?: number;
 }
 
+const VIDEO_IDB_PREFIX = 'idb-video://';
+const MEDIA_IDB_NAME = 'papyrus_story_media_v1';
+const MEDIA_IDB_STORE = 'videos';
+let mediaDbPromise: Promise<IDBDatabase | null> | null = null;
+const liveBlobUrlCache = new Map<string, string>();
+
+function openMediaIdb(): Promise<IDBDatabase | null> {
+  if (Platform.OS !== 'web' || typeof indexedDB === 'undefined') {
+    return Promise.resolve(null);
+  }
+  if (mediaDbPromise) return mediaDbPromise;
+  mediaDbPromise = new Promise((resolve) => {
+    try {
+      const req = indexedDB.open(MEDIA_IDB_NAME, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(MEDIA_IDB_STORE)) {
+          db.createObjectStore(MEDIA_IDB_STORE);
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+  return mediaDbPromise;
+}
+
+async function saveVideoBlobToIdb(file: Blob): Promise<string | null> {
+  const db = await openMediaIdb();
+  if (!db) return null;
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  const key = `${VIDEO_IDB_PREFIX}${id}`;
+  const ok = await new Promise<boolean>((resolve) => {
+    try {
+      const tx = db.transaction(MEDIA_IDB_STORE, 'readwrite');
+      tx.objectStore(MEDIA_IDB_STORE).put(file, key);
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => resolve(false);
+    } catch {
+      resolve(false);
+    }
+  });
+  if (!ok) return null;
+  if (typeof URL !== 'undefined') {
+    liveBlobUrlCache.set(key, URL.createObjectURL(file));
+  }
+  return key;
+}
+
+/**
+ * Resolves `idb-video://...`, `https://...`, `data:video/...`, or in-session `blob:...`
+ * into a live browser-playable URL for `<video>` on iOS Safari & Desktop Web.
+ */
+export async function resolvePlayableVideoUri(rawUri?: string | null): Promise<string | null> {
+  if (!rawUri) return null;
+  if (Platform.OS !== 'web') return rawUri;
+
+  if (rawUri.startsWith(VIDEO_IDB_PREFIX)) {
+    const cached = liveBlobUrlCache.get(rawUri);
+    if (cached) return cached;
+    const db = await openMediaIdb();
+    if (!db) return null;
+    const blob = await new Promise<Blob | null>((resolve) => {
+      try {
+        const tx = db.transaction(MEDIA_IDB_STORE, 'readonly');
+        const req = tx.objectStore(MEDIA_IDB_STORE).get(rawUri);
+        req.onsuccess = () => resolve(req.result instanceof Blob ? req.result : null);
+        req.onerror = () => resolve(null);
+      } catch {
+        resolve(null);
+      }
+    });
+    if (!blob || typeof URL === 'undefined') return null;
+    const objectUrl = URL.createObjectURL(blob);
+    liveBlobUrlCache.set(rawUri, objectUrl);
+    return objectUrl;
+  }
+
+  if (rawUri.startsWith('data:video/')) {
+    const cached = liveBlobUrlCache.get(rawUri.slice(0, 96));
+    if (cached) return cached;
+    try {
+      const res = await fetch(rawUri);
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      liveBlobUrlCache.set(rawUri.slice(0, 96), objectUrl);
+      return objectUrl;
+    } catch {
+      return rawUri;
+    }
+  }
+
+  return rawUri;
+}
+
 function readWebFileAsDataUrl(accept: string): Promise<{ dataUrl: string; file: File } | null> {
   if (typeof document === 'undefined') return Promise.resolve(null);
   return new Promise((resolve) => {
@@ -97,11 +194,12 @@ function cropAndCompressDataUrl(
 }
 
 /**
- * Extracts a crisp first-frame JPEG thumbnail from a video URL/DataURI on Web.
+ * Extracts ONLY a crisp JPEG cover image from a video URL/DataURI on Web
+ * while keeping 100% of the original video duration untouched!
  */
-function captureFirstVideoFrameWeb(videoSrc: string): Promise<{ thumbnailUri: string; durationSec: number }> {
+function captureFirstVideoFrameWeb(videoSrc: string): Promise<{ thumbnailUri: string; durationSec?: number }> {
   if (typeof document === 'undefined') {
-    return Promise.resolve({ thumbnailUri: '', durationSec: 10 });
+    return Promise.resolve({ thumbnailUri: '' });
   }
   return new Promise((resolve) => {
     const video = document.createElement('video');
@@ -113,7 +211,7 @@ function captureFirstVideoFrameWeb(videoSrc: string): Promise<{ thumbnailUri: st
     }
 
     let done = false;
-    const finish = (thumb: string, dur: number) => {
+    const finish = (thumb: string, dur?: number) => {
       if (done) return;
       done = true;
       try {
@@ -123,13 +221,20 @@ function captureFirstVideoFrameWeb(videoSrc: string): Promise<{ thumbnailUri: st
       } catch {
         // Ignore
       }
-      resolve({ thumbnailUri: thumb, durationSec: dur || 10 });
+      const validDur = dur && Number.isFinite(dur) && dur > 0 ? Math.ceil(dur) : undefined;
+      resolve({ thumbnailUri: thumb, durationSec: validDur });
     };
 
-    const timer = setTimeout(() => finish('', 10), 6000);
+    const timer = setTimeout(() => {
+      const validDur =
+        Number.isFinite(video.duration) && video.duration > 0 ? Math.ceil(video.duration) : undefined;
+      finish('', validDur);
+    }, 7000);
 
     const drawFrame = () => {
       clearTimeout(timer);
+      const realDur =
+        Number.isFinite(video.duration) && video.duration > 0 ? Math.ceil(video.duration) : undefined;
       try {
         const vw = video.videoWidth || 540;
         const vh = video.videoHeight || 960;
@@ -143,18 +248,18 @@ function captureFirstVideoFrameWeb(videoSrc: string): Promise<{ thumbnailUri: st
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.drawImage(video, 0, 0, cw, ch);
-          const thumb = canvas.toDataURL('image/jpeg', 0.82);
-          finish(thumb, Math.round(video.duration || 10));
+          const thumb = canvas.toDataURL('image/jpeg', 0.84);
+          finish(thumb, realDur);
           return;
         }
       } catch {
         // Fallback
       }
-      finish('', Math.round(video.duration || 10));
+      finish('', realDur);
     };
 
     video.onloadeddata = () => {
-      if (video.duration > 0.25) {
+      if (Number.isFinite(video.duration) && video.duration > 0.25) {
         video.currentTime = 0.15;
       } else {
         drawFrame();
@@ -163,23 +268,46 @@ function captureFirstVideoFrameWeb(videoSrc: string): Promise<{ thumbnailUri: st
     video.onseeked = drawFrame;
     video.onerror = () => {
       clearTimeout(timer);
-      finish('', 10);
+      finish('');
     };
     video.src = videoSrc;
   });
+}
+
+export async function compressCoverImageFileWeb(file: File): Promise<string> {
+  if (typeof document === 'undefined' || typeof URL === 'undefined') {
+    throw new Error('Trình duyệt không hỗ trợ xử lý tệp ảnh.');
+  }
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    return await cropAndCompressDataUrl(objectUrl, 780, 260, 0.74);
+  } catch {
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () =>
+        typeof reader.result === 'string'
+          ? resolve(reader.result)
+          : reject(new Error('Không đọc được ảnh bìa.'));
+      reader.onerror = () => reject(new Error('Không đọc được ảnh bìa.'));
+      reader.readAsDataURL(file);
+    });
+    return await cropAndCompressDataUrl(dataUrl, 780, 260, 0.74).catch(() => dataUrl);
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
 }
 
 export async function pickCoverImageDataUrl(): Promise<string | null> {
   if (Platform.OS === 'web') {
     const picked = await readWebFileAsDataUrl('image/*');
     if (!picked) return null;
-    return await cropAndCompressDataUrl(picked.dataUrl, 860, 290, 0.8);
+    return await compressCoverImageFileWeb(picked.file);
   }
   const result = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: ['images'],
     allowsEditing: true,
     aspect: [16, 6],
-    quality: 0.82,
+    quality: 0.8,
     base64: true,
   });
   if (result.canceled || !result.assets?.[0]) return null;
@@ -207,27 +335,93 @@ export async function pickAvatarImageDataUrl(): Promise<string | null> {
 
 export async function pickStoryMedia(kind: 'image' | 'video'): Promise<PickedStoryMedia | null> {
   if (Platform.OS === 'web') {
-    const picked = await readWebFileAsDataUrl(kind === 'video' ? 'video/*' : 'image/*');
-    if (!picked) return null;
-    if (kind === 'image' || picked.file.type.startsWith('image/')) {
-      const portraitUri = await cropAndCompressDataUrl(picked.dataUrl, 540, 960, 0.84);
-      return { mediaType: 'image', uri: portraitUri, thumbnailUri: portraitUri };
+    if (kind === 'video' && typeof document !== 'undefined') {
+      // Pick raw Video File directly without truncating or re-encoding — only extract JPEG poster!
+      return new Promise((resolve) => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'video/*';
+        input.style.position = 'fixed';
+        input.style.left = '-9999px';
+        input.style.opacity = '0';
+        document.body.appendChild(input);
+        const cleanup = () => {
+          setTimeout(() => {
+            try {
+              document.body.removeChild(input);
+            } catch {
+              // Ignore
+            }
+          }, 300);
+        };
+        input.onchange = async () => {
+          const file = input.files?.[0];
+          cleanup();
+          if (!file) {
+            resolve(null);
+            return;
+          }
+          const objectUrl = URL.createObjectURL(file);
+          const { thumbnailUri, durationSec } = await captureFirstVideoFrameWeb(objectUrl);
+          // Persist full-length video Blob in IndexedDB so it plays reliably across reloads on iOS Safari & Chrome
+          const idbUri = await saveVideoBlobToIdb(file);
+          if (idbUri) {
+            URL.revokeObjectURL(objectUrl);
+            resolve({
+              mediaType: 'video',
+              uri: idbUri,
+              thumbnailUri: thumbnailUri || '',
+              durationSec,
+            });
+            return;
+          }
+          if (file.size <= 1_800_000) {
+            const reader = new FileReader();
+            reader.onload = () => {
+              const fullVideoDataUrl =
+                typeof reader.result === 'string' ? reader.result : objectUrl;
+              if (fullVideoDataUrl !== objectUrl) URL.revokeObjectURL(objectUrl);
+              resolve({
+                mediaType: 'video',
+                uri: fullVideoDataUrl,
+                thumbnailUri: thumbnailUri || '',
+                durationSec,
+              });
+            };
+            reader.onerror = () =>
+              resolve({
+                mediaType: 'video',
+                uri: objectUrl,
+                thumbnailUri: thumbnailUri || '',
+                durationSec,
+              });
+            reader.readAsDataURL(file);
+          } else {
+            resolve({
+              mediaType: 'video',
+              uri: objectUrl,
+              thumbnailUri: thumbnailUri || '',
+              durationSec,
+            });
+          }
+        };
+        input.oncancel = () => {
+          cleanup();
+          resolve(null);
+        };
+        input.click();
+      });
     }
-    // Video story: use object URL or compact dataUrl (if <= 4.5MB persistable, else objectURL for session)
-    const playableUri =
-      picked.file.size <= 4_500_000 ? picked.dataUrl : URL.createObjectURL(picked.file);
-    const { thumbnailUri, durationSec } = await captureFirstVideoFrameWeb(playableUri);
-    return {
-      mediaType: 'video',
-      uri: playableUri,
-      thumbnailUri: thumbnailUri || '',
-      durationSec,
-    };
+
+    const picked = await readWebFileAsDataUrl('image/*');
+    if (!picked) return null;
+    const portraitUri = await cropAndCompressDataUrl(picked.dataUrl, 540, 960, 0.84);
+    return { mediaType: 'image', uri: portraitUri, thumbnailUri: portraitUri };
   }
 
   const result = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: kind === 'video' ? ['videos'] : ['images'],
-    quality: 0.82,
+    quality: 0.85,
   });
   if (result.canceled || !result.assets?.[0]) return null;
   const asset = result.assets[0];
@@ -236,6 +430,6 @@ export async function pickStoryMedia(kind: 'image' | 'video'): Promise<PickedSto
     mediaType: isVid ? 'video' : 'image',
     uri: asset.uri,
     thumbnailUri: asset.uri,
-    durationSec: asset.duration ? Math.round(asset.duration / 1000) : 10,
+    durationSec: asset.duration ? Math.ceil(asset.duration / 1000) : undefined,
   };
 }

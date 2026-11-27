@@ -26,9 +26,11 @@ export {
 } from '@/features/study/data/sessionPdf';
 export { pickRichSourceDocument } from '@/features/scan-ocr/data/documentSource';
 export {
+  compressCoverImageFileWeb,
   pickAvatarImageDataUrl,
   pickCoverImageDataUrl,
   pickStoryMedia,
+  resolvePlayableVideoUri,
   type PickedStoryMedia,
 } from '@/features/scan-ocr/data/mediaPicker';
 export { encodeImageUriToJpegBase64 } from '@/features/scan-ocr/data/ocr';
@@ -85,6 +87,7 @@ export {
 export {
   broadcastCommunityEvent,
   fetchDailyUpdatedKnowledgeFeed,
+  pickEditorialPhotoFallback,
   searchAcademicKnowledgeLive,
   subscribeCommunityRealtime,
   type CommunityRealtimeEvent,

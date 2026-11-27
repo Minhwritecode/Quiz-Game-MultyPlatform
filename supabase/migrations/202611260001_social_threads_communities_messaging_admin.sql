@@ -288,6 +288,16 @@ create table if not exists public.social_posts (
     check (lifecycle_status in ('draft', 'scheduled', 'published', 'archived', 'expired', 'removed', 'pending_approval')),
   scheduled_for timestamptz,
   expires_at timestamptz,
+  author_name_snapshot text not null default '',
+  author_avatar_snapshot text,
+  community_name_snapshot text,
+  poll_snapshot jsonb,
+  attached_quiz jsonb,
+  code_snippet text,
+  link_preview jsonb,
+  reactions_map jsonb not null default '{}'::jsonb,
+  reposted_by_ids text[] not null default '{}',
+  comments_snapshot jsonb not null default '[]'::jsonb,
   impressions_count integer not null default 0,
   views_count integer not null default 0,
   created_at timestamptz not null default now(),
@@ -690,6 +700,12 @@ create table if not exists public.chat_messages (
   shared_post_id uuid,
   shared_post_snapshot jsonb,
   poll_id uuid references public.unified_polls(id) on delete set null,
+  poll_snapshot jsonb,
+  quiz_card jsonb,
+  reply_snapshot jsonb,
+  sender_name_snapshot text not null default '',
+  sender_avatar_snapshot text,
+  reactions_map jsonb not null default '{}'::jsonb,
   attachments jsonb not null default '[]'::jsonb,
   is_edited boolean not null default false,
   is_recalled boolean not null default false,
@@ -935,3 +951,131 @@ create policy "recipients read own document gifts"
       or (recipient_community_id is not null and public.has_community_access(recipient_community_id, auth.uid()))
     )
   );
+
+-- =============================================================================
+-- 8. 24-Hour Stories & Profile Pinned Highlights (Module Stories)
+-- =============================================================================
+create table if not exists public.social_stories (
+  id uuid primary key default gen_random_uuid(),
+  author_id uuid not null references auth.users(id) on delete cascade,
+  author_name text not null default '',
+  author_avatar text,
+  text_content text not null default '',
+  subtext text not null default '',
+  gradient jsonb not null default '["#312E81","#7C3AED"]'::jsonb,
+  media_type text not null default 'text' check (media_type in ('text', 'image', 'video')),
+  image_url text,
+  video_url text,
+  thumbnail_url text,
+  duration_sec integer,
+  pinned_on_profile boolean not null default false,
+  viewed_by_ids text[] not null default '{}',
+  reactions jsonb not null default '{}'::jsonb,
+  expires_at timestamptz not null default (now() + interval '24 hours'),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists social_stories_active_idx
+  on public.social_stories (expires_at desc, created_at desc);
+
+create index if not exists social_stories_author_idx
+  on public.social_stories (author_id, created_at desc);
+
+alter table public.social_stories enable row level security;
+
+drop policy if exists "read active 24h or pinned or own stories" on public.social_stories;
+create policy "read active 24h or pinned or own stories"
+  on public.social_stories for select
+  using (
+    expires_at > now()
+    or pinned_on_profile = true
+    or (auth.uid() is not null and auth.uid() = author_id)
+  );
+
+drop policy if exists "authors insert own stories" on public.social_stories;
+create policy "authors insert own stories"
+  on public.social_stories for insert to authenticated
+  with check (auth.uid() = author_id);
+
+drop policy if exists "authors update own stories" on public.social_stories;
+create policy "authors update own stories"
+  on public.social_stories for update to authenticated
+  using (auth.uid() = author_id)
+  with check (auth.uid() = author_id);
+
+drop policy if exists "authors delete own stories" on public.social_stories;
+create policy "authors delete own stories"
+  on public.social_stories for delete to authenticated
+  using (auth.uid() = author_id);
+
+-- Allow authenticated viewers to sync engagement (reactions, comments, poll votes, reposts) on accessible posts
+create or replace function public.sync_social_post_engagement(
+  p_post_id uuid,
+  p_reactions_map jsonb default null,
+  p_comments_snapshot jsonb default null,
+  p_poll_snapshot jsonb default null,
+  p_reposted_by_ids text[] default null
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid := auth.uid();
+  target_post public.social_posts%rowtype;
+begin
+  if uid is null then
+    return false;
+  end if;
+  select * into target_post from public.social_posts where id = p_post_id for update;
+  if target_post.id is null or not public.can_view_social_post(target_post, uid) then
+    return false;
+  end if;
+
+  update public.social_posts
+  set
+    reactions_map = coalesce(p_reactions_map, reactions_map),
+    comments_snapshot = coalesce(p_comments_snapshot, comments_snapshot),
+    poll_snapshot = coalesce(p_poll_snapshot, poll_snapshot),
+    reposted_by_ids = coalesce(p_reposted_by_ids, reposted_by_ids),
+    updated_at = now()
+  where id = p_post_id;
+
+  return true;
+end;
+$$;
+
+grant execute on function public.sync_social_post_engagement(uuid, jsonb, jsonb, jsonb, text[]) to authenticated;
+
+-- Seed 3 clean official empty topic communities (zero fake bot users, member_count = 0)
+insert into public.social_communities (slug, name, description, visibility, topics, rules, member_count)
+values
+  (
+    'ky-thuat-phan-mem-ai',
+    'Kỹ thuật Phần mềm & AI',
+    'Thảo luận kiến trúc hệ thống, thuật toán, lập trình đa nền tảng và trí tuệ nhân tạo.',
+    'public',
+    array['CNTT', 'AI', 'ThuậtToán', 'HệĐiềuHành'],
+    '["1. Chia sẻ câu hỏi hoặc kiến thức rõ ràng, tôn trọng thành viên.", "2. Gắn nhãn ẩn nội dung khi đăng lời giải đề thi mới."]'::jsonb,
+    0
+  ),
+  (
+    'khoa-hoc-tu-nhien-stem',
+    'Khoa học Tự nhiên (Toán · Lý · Hóa · Sinh)',
+    'Trao đổi bài tập đại cương, công thức trọng tâm và phương pháp nghiên cứu khoa học.',
+    'public',
+    array['ToánLýHóa', 'KhoaHọc', 'ÔnThi'],
+    '["1. Trình bày từng bước giải rõ ràng.", "2. Không đăng nội dung rác."]'::jsonb,
+    0
+  ),
+  (
+    'lich-su-van-hoc',
+    'Lịch sử & Văn học',
+    'Không gian trao đổi tư liệu lịch sử Việt Nam, lịch sử thế giới và tác phẩm văn học.',
+    'public',
+    array['VănSử', 'NghiênCứu', 'ÔnThi'],
+    '["1. Dẫn nguồn tài liệu tham khảo rõ ràng.", "2. Thảo luận văn minh."]'::jsonb,
+    0
+  )
+on conflict (slug) do nothing;

@@ -36,17 +36,27 @@ export default function HostRoomScreen() {
   const setAutoAdvanceDelaySec = useMultiplayerStore((s) => s.setAutoAdvanceDelaySec);
 
   const handleKickPlayer = (playerId: string, nickname: string) => {
+    const doKick = () => {
+      if (roomCode) {
+        const updated = roomApi.kickPlayer(roomCode, playerId);
+        if (updated) {
+          setRoom(updated);
+          return;
+        }
+      }
+      setRoom((prev) =>
+        prev ? { ...prev, players: prev.players.filter((p) => p.playerId !== playerId) } : prev
+      );
+    };
+    if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
+      if (window.confirm(`Mời "${nickname}" rời khỏi phòng đấu?`)) {
+        doKick();
+      }
+      return;
+    }
     Alert.alert('Mời rời phòng', `Bạn muốn mời "${nickname}" ra khỏi phòng đấu?`, [
       { text: 'Hủy', style: 'cancel' },
-      {
-        text: 'Mời ra',
-        style: 'destructive',
-        onPress: () => {
-          setRoom((prev) =>
-            prev ? { ...prev, players: prev.players.filter((p) => p.playerId !== playerId) } : prev
-          );
-        },
-      },
+      { text: 'Mời ra', style: 'destructive', onPress: doKick },
     ]);
   };
 
@@ -55,6 +65,10 @@ export default function HostRoomScreen() {
     try {
       const data = await roomApi.get(roomCode);
       setRoom(data);
+      if (data.maxPlayers) setMaxPlayers(data.maxPlayers);
+      if (data.timeLimit) setTimePerQuestion(data.timeLimit);
+      if (data.readTimeSec !== undefined) setReadTimeSec(data.readTimeSec);
+      if (typeof data.reactionsEnabled === 'boolean') setReactionsEnabled(data.reactionsEnabled);
     } catch {
       // Ignore
     } finally {
@@ -67,6 +81,10 @@ export default function HostRoomScreen() {
     void roomApi.get(roomCode).then((data) => {
       if (mounted && data) {
         setRoom(data);
+        if (data.maxPlayers) setMaxPlayers(data.maxPlayers);
+        if (data.timeLimit) setTimePerQuestion(data.timeLimit);
+        if (data.readTimeSec !== undefined) setReadTimeSec(data.readTimeSec);
+        if (typeof data.reactionsEnabled === 'boolean') setReactionsEnabled(data.reactionsEnabled);
         setIsLoading(false);
       }
     });
@@ -109,6 +127,12 @@ export default function HostRoomScreen() {
 
   const handleStart = () => {
     if (!roomCode) return;
+    roomApi.updateConfig(roomCode, {
+      maxPlayers,
+      secondsPerQuestion: timePerQuestion,
+      readTimeSec,
+      reactionsEnabled,
+    });
     gameApi.startQuiz(roomCode);
     router.push({
       pathname: '/multiplayer/question/[roomCode]',
@@ -179,15 +203,51 @@ export default function HostRoomScreen() {
                   <Badge tone="neutral">{timePerQuestion}s / câu</Badge>
                 </View>
 
+                {/* Synced Study Set Summary Banner */}
+                {room?.quizId ? (
+                  <View
+                    style={{
+                      width: '100%',
+                      paddingHorizontal: 14,
+                      paddingVertical: 10,
+                      borderRadius: radii.md,
+                      backgroundColor: palette.indigoTint,
+                      borderWidth: 1,
+                      borderColor: palette.indigoBorder,
+                      marginBottom: spacing.md,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 10,
+                    }}
+                  >
+                    <Ionicons name="book-outline" size={20} color={palette.indigo} />
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text
+                        style={[typography.body, { color: palette.ink, fontWeight: '800' }]}
+                        numberOfLines={2}
+                      >
+                        {room.quizId.title}
+                      </Text>
+                      <Text style={{ fontSize: 12, color: palette.indigo, fontWeight: '700', marginTop: 2 }}>
+                        {room.quizId.description} · {room.quizId.questions?.length || 0} câu hỏi đã đồng bộ
+                      </Text>
+                    </View>
+                  </View>
+                ) : null}
+
                 {room?.status === 'waiting' && (
                   <View style={[styles.configBox, { backgroundColor: palette.paper, borderColor: palette.paperMuted }]}>
                     <View style={styles.configRow}>
                       <Text style={[typography.caption, { color: palette.ink, fontWeight: '700', flex: 1 }]}>
-                        👥 Tối đa (2–10)
+                        Số người tối đa (2–10)
                       </Text>
                       <View style={styles.stepperWrap}>
                         <Pressable
-                          onPress={() => setMaxPlayers((n) => Math.max(2, n - 1))}
+                          onPress={() => {
+                            const next = Math.max(2, maxPlayers - 1);
+                            setMaxPlayers(next);
+                            if (roomCode) roomApi.updateConfig(roomCode, { maxPlayers: next });
+                          }}
                           disabled={maxPlayers <= 2}
                           style={[styles.stepBtn, { backgroundColor: palette.paperMuted, opacity: maxPlayers <= 2 ? 0.4 : 1 }]}
                         >
@@ -197,7 +257,11 @@ export default function HostRoomScreen() {
                           {maxPlayers}
                         </Text>
                         <Pressable
-                          onPress={() => setMaxPlayers((n) => Math.min(10, n + 1))}
+                          onPress={() => {
+                            const next = Math.min(10, maxPlayers + 1);
+                            setMaxPlayers(next);
+                            if (roomCode) roomApi.updateConfig(roomCode, { maxPlayers: next });
+                          }}
                           disabled={maxPlayers >= 10}
                           style={[styles.stepBtn, { backgroundColor: palette.paperMuted, opacity: maxPlayers >= 10 ? 0.4 : 1 }]}
                         >
@@ -206,12 +270,15 @@ export default function HostRoomScreen() {
                       </View>
                     </View>
                     <View style={styles.configRow}>
-                      <Text style={[typography.caption, { color: palette.ink, fontWeight: '700' }]}>⏱ Thời gian/câu</Text>
+                      <Text style={[typography.caption, { color: palette.ink, fontWeight: '700' }]}>Thời gian mỗi câu</Text>
                       <View style={styles.timeChips}>
                         {[15, 20, 30, 45].map((sec) => (
                           <Pressable
                             key={sec}
-                            onPress={() => setTimePerQuestion(sec)}
+                            onPress={() => {
+                              setTimePerQuestion(sec);
+                              if (roomCode) roomApi.updateConfig(roomCode, { secondsPerQuestion: sec });
+                            }}
                             style={[
                               styles.timeChip,
                               {
@@ -227,12 +294,15 @@ export default function HostRoomScreen() {
                       </View>
                     </View>
                     <View style={styles.configRow}>
-                      <Text style={[typography.caption, { color: palette.ink, fontWeight: '700' }]}>👀 Thời gian đọc đề</Text>
+                      <Text style={[typography.caption, { color: palette.ink, fontWeight: '700' }]}>Thời gian đọc đề</Text>
                       <View style={styles.timeChips}>
                         {([0, 3, 5, 10] as const).map((sec) => (
                           <Pressable
                             key={sec}
-                            onPress={() => setReadTimeSec(sec)}
+                            onPress={() => {
+                              setReadTimeSec(sec);
+                              if (roomCode) roomApi.updateConfig(roomCode, { readTimeSec: sec });
+                            }}
                             style={[
                               styles.timeChip,
                               {
@@ -249,10 +319,14 @@ export default function HostRoomScreen() {
                     </View>
                     <View style={styles.configRow}>
                       <Text style={[typography.caption, { color: palette.ink, fontWeight: '700', flex: 1 }]}>
-                        🎉 Biểu cảm trực tiếp (Reactions)
+                        Biểu cảm trực tiếp
                       </Text>
                       <Pressable
-                        onPress={() => setReactionsEnabled((v) => !v)}
+                        onPress={() => {
+                          const next = !reactionsEnabled;
+                          setReactionsEnabled(next);
+                          if (roomCode) roomApi.updateConfig(roomCode, { reactionsEnabled: next });
+                        }}
                         style={[
                           styles.timeChip,
                           { backgroundColor: reactionsEnabled ? palette.mint : palette.paperMuted },
@@ -265,7 +339,7 @@ export default function HostRoomScreen() {
                     </View>
                     <View style={styles.configRow}>
                       <Text style={[typography.caption, { color: palette.ink, fontWeight: '700', flex: 1 }]}>
-                        ⏩ Tự động qua câu (Auto-advance)
+                        Tự động qua câu
                       </Text>
                       <View style={styles.timeChips}>
                         <Pressable
@@ -331,7 +405,7 @@ export default function HostRoomScreen() {
                 {room?.status === 'waiting' && (
                   <View style={styles.flexBtn}>
                     <Button icon="rocket-outline" variant="reward" onPress={handleStart}>
-                      🚀 Bắt đầu Quiz
+                      Bắt đầu Quiz
                     </Button>
                   </View>
                 )}
@@ -340,12 +414,12 @@ export default function HostRoomScreen() {
                   <>
                     <View style={styles.flexBtn}>
                       <Button icon="pause-outline" variant="secondary" onPress={handlePause}>
-                        ⏸ Tạm dừng
+                        Tạm dừng
                       </Button>
                     </View>
                     <View style={styles.flexBtn}>
                       <Button icon="stop-outline" variant="ghost" onPress={handleEnd}>
-                        🛑 Kết thúc
+                        Kết thúc
                       </Button>
                     </View>
                   </>
@@ -355,12 +429,12 @@ export default function HostRoomScreen() {
                   <>
                     <View style={styles.flexBtn}>
                       <Button icon="play-outline" variant="reward" onPress={handleResume}>
-                        ▶ Tiếp tục
+                        Tiếp tục
                       </Button>
                     </View>
                     <View style={styles.flexBtn}>
                       <Button icon="stop-outline" variant="ghost" onPress={handleEnd}>
-                        🛑 Kết thúc
+                        Kết thúc
                       </Button>
                     </View>
                   </>

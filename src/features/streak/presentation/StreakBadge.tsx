@@ -3,7 +3,7 @@ import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useStreakStore } from '../state/useStreakStore';
-import { getLocalDateString } from '../domain/models';
+import { getLocalDateString, reconcileStreakWithHistory } from '../domain/models';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { Button, Card, usePalette } from '@/shared/ui';
 import { sfx } from '@/core/audio/sfx';
@@ -15,8 +15,9 @@ export function StreakBadge() {
   const palette = usePalette();
   const [modalVisible, setModalVisible] = useState(false);
 
-  const currentStreak = useStreakStore((state) => state.currentStreak);
-  const longestStreak = useStreakStore((state) => state.longestStreak);
+  const rawCurrentStreak = useStreakStore((state) => state.currentStreak);
+  const rawLongestStreak = useStreakStore((state) => state.longestStreak);
+  const lastActiveDate = useStreakStore((state) => state.lastActiveDate);
   const todayCompleted = useStreakStore((state) => state.todayCompleted);
   const status = useStreakStore((state) => state.status);
   const streakFreezeCount = useStreakStore((state) => state.streakFreezeCount);
@@ -26,8 +27,26 @@ export function StreakBadge() {
   const checkInToday = useStreakStore((state) => state.checkInToday);
   const recoverStreakWithQuest = useStreakStore((state) => state.recoverStreakWithQuest);
 
+  const reconciled = useMemo(
+    () =>
+      reconcileStreakWithHistory(historyDates, getLocalDateString(), {
+        allowFrozenGap: status === 'frozen',
+        fallbackLastActiveDate: lastActiveDate,
+        fallbackCurrentStreak: rawCurrentStreak,
+      }),
+    [historyDates, lastActiveDate, rawCurrentStreak, status]
+  );
+
+  const currentStreak =
+    status === 'broken'
+      ? 0
+      : reconciled.normalizedDates.length > 0 && status !== 'frozen'
+      ? reconciled.consecutiveDays
+      : rawCurrentStreak;
+  const longestStreak = Math.max(rawLongestStreak, currentStreak, reconciled.longestInHistory);
+
   const last7Days = useMemo(() => {
-    const set = new Set(historyDates ?? []);
+    const set = new Set(reconciled.normalizedDates);
     const out: Array<{ key: string; label: string; done: boolean; isToday: boolean }> = [];
     const now = new Date();
     for (let i = 6; i >= 0; i--) {
@@ -42,7 +61,7 @@ export function StreakBadge() {
       });
     }
     return out;
-  }, [historyDates]);
+  }, [reconciled.normalizedDates]);
 
   const getPillData = () => {
     if (status === 'broken' && recoveryQuestAvailable) {

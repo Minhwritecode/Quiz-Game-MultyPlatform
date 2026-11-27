@@ -85,7 +85,7 @@ export function VideoCoverEditorModal({
       <View style={styles.backdrop}>
         <Card style={[styles.card, { backgroundColor: palette.paper }]}>
           <View style={styles.header}>
-            <Text style={[typography.title, { color: palette.ink }]}>🎬 Chỉnh Sửa Ảnh Bìa Video (Video Cover)</Text>
+            <Text style={[typography.title, { color: palette.ink }]}>Chọn ảnh bìa video</Text>
             <Pressable onPress={onClose} hitSlop={8}>
               <Ionicons name="close" size={22} color={palette.inkMuted} />
             </Pressable>

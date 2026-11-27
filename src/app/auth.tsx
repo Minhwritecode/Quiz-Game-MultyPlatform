@@ -411,11 +411,12 @@ export default function AuthScreen() {
       <AuthCosmicBackdrop mode={mode} reduceMotion={reduceMotion} />
 
       <ScrollView
+        style={styles.scrollViewport}
         contentContainerStyle={[
           styles.centeredScroll,
           {
-            paddingTop: Math.max(spacing.lg, insets.top + 12),
-            paddingBottom: Math.max(spacing.xl, insets.bottom + 16),
+            paddingTop: Math.max(spacing.md, insets.top + 10),
+            paddingBottom: Math.max(spacing.md, insets.bottom + 12),
           },
         ]}
         keyboardShouldPersistTaps="handled"
@@ -794,19 +795,33 @@ export default function AuthScreen() {
               </>
             )}
 
-            {/* Clean Guest Mode Footer inside Modal */}
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => {
-                enterGuestMode();
-                router.replace('/');
-              }}
-              style={styles.guestFooterBtn}
-            >
-              <Text style={{ color: '#94A3B8', fontSize: 12.5, fontWeight: '700' }}>
-                {language === 'vi' ? 'Trải nghiệm nhanh với tư cách Khách →' : 'Continue as Guest →'}
-              </Text>
-            </Pressable>
+            {/* Clean Guest Mode & Admin Portal Footer inside Modal */}
+            <View style={styles.footerActionsRow}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  enterGuestMode();
+                  router.replace('/');
+                }}
+                style={styles.guestFooterBtn}
+              >
+                <Text style={{ color: '#CBD5E1', fontSize: 12.5, fontWeight: '700' }}>
+                  {language === 'vi' ? 'Trải nghiệm với tư cách Khách →' : 'Continue as Guest →'}
+                </Text>
+              </Pressable>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={language === 'vi' ? 'Cổng Quản trị viên' : 'Admin Portal'}
+                onPress={() => router.push('/admin')}
+                style={styles.adminFooterBtn}
+              >
+                <Ionicons name="shield-checkmark-outline" size={14} color="#FBBF24" />
+                <Text style={{ color: '#FDE68A', fontSize: 12, fontWeight: '800' }}>
+                  {language === 'vi' ? 'Quản trị viên' : 'Admin'}
+                </Text>
+              </Pressable>
+            </View>
           </View>
         </Animated.View>
       </ScrollView>
@@ -817,23 +832,35 @@ export default function AuthScreen() {
 const styles = StyleSheet.create({
   screenRoot: {
     flex: 1,
+    width: '100%',
     backgroundColor: '#050818',
+    ...(Platform.OS === 'web'
+      ? ({ minHeight: '100dvh' } as unknown as ViewStyle)
+      : null),
+  },
+  scrollViewport: {
+    flex: 1,
+    width: '100%',
   },
   centeredScroll: {
     flexGrow: 1,
+    minHeight: '100%',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: spacing.lg,
   },
   modalOuter: {
     width: '100%',
-    maxWidth: 432,
+    maxWidth: 428,
+    marginTop: 'auto',
+    marginBottom: 'auto',
+    alignSelf: 'center',
   },
   modalCard: {
     backgroundColor: 'rgba(13, 19, 46, 0.88)',
     borderWidth: 1.5,
-    padding: spacing.xl,
-    gap: 14,
+    padding: spacing.lg,
+    gap: 12,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -972,9 +999,26 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 10,
   },
-  guestFooterBtn: {
-    alignSelf: 'center',
+  footerActionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
     paddingTop: 4,
+  },
+  guestFooterBtn: {
     paddingVertical: 6,
+  },
+  adminFooterBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: radii.pill,
+    backgroundColor: 'rgba(245, 158, 11, 0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(251, 191, 36, 0.36)',
   },
 });

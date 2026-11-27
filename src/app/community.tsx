@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image,
   Linking,
@@ -23,10 +23,16 @@ import { extractCompleteSentences } from '@/features/scan-ocr/domain/ocrCleaner'
 import { seedQuestionSets } from '@/composition/preferences';
 import {
   fetchDailyUpdatedKnowledgeFeed,
+  pickEditorialPhotoFallback,
   searchAcademicKnowledgeLive,
 } from '@/composition/platform';
 import { askPapyAiFeedAssistant } from '@/composition/social';
-import type { DailyKnowledgeArticle, ScholarStory } from '@/features/community/domain/models';
+import {
+  groupStoriesByAuthor,
+  isStoryActive24h,
+  type DailyKnowledgeArticle,
+  type ScholarStory,
+} from '@/features/community/domain/models';
 import { useCommunityStore } from '@/features/community/state/useCommunityStore';
 import { CreateStoryCard916, StoryCard916 } from '@/features/community/presentation/StoryCard916';
 import {
@@ -55,6 +61,25 @@ type DiscoverSubTab = 'documents_and_posts' | 'users';
 
 const AREA_CLUSTERS = ['ALL', 'TP. Hồ Chí Minh', 'Hà Nội', 'Đà Nẵng', 'Cần Thơ', 'Quốc tế'];
 
+const QUICK_SEARCH_TOPICS = [
+  'Trí tuệ nhân tạo',
+  'Google Gemini',
+  'Bán dẫn & Lượng tử',
+  'Kỹ thuật Phần mềm',
+  'Khoa học Vũ trụ',
+  'Lịch sử Việt Nam',
+];
+
+function buildSourceDocFromArticle(art: DailyKnowledgeArticle) {
+  const body = `${art.title}\n\nNguồn: ${art.source} (${art.category})\nLiên kết: ${art.url}\n\n${art.summary}`;
+  return {
+    id: `src-${art.id}-${Date.now()}`,
+    title: art.title,
+    text: body,
+    createdAt: new Date().toISOString(),
+  };
+}
+
 export default function CommunityScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{
@@ -66,29 +91,41 @@ export default function CommunityScreen() {
   }>();
   const palette = usePalette();
   const { width } = useWindowDimensions();
-  const isWide = width >= 880;
   const isCompactHeader = width < 600;
   const refreshTick = useRouteRefreshStore((s) => s.refreshTick);
-  const scrollRef = useRef<ComponentRef<typeof ScrollView> | null>(null);
-  const latestScrollYRef = useRef(0);
+  const searchSeqRef = useRef(0);
+  const searchAbortRef = useRef<AbortController | null>(null);
 
   const user = useAuthStore((s) => s.user);
   const viewerId = user?.id ?? 'guest';
-  const viewerName = user?.displayName?.trim() || 'Thành viên Papyrus';
+  const isGuest = !user || viewerId === 'guest';
+  const viewerName = user?.displayName?.trim() || 'Khách';
   const viewerAvatar = user?.avatarUrl ?? null;
 
   const addBonusXp = usePapyrusStore((s) => s.addBonusXp);
+  const saveSourceDocument = usePapyrusStore((s) => s.saveSourceDocument);
   const storeSets = usePapyrusStore((s) => s.questionSets);
   const allSets = useMemo(
     () => (storeSets.length > 0 ? storeSets : seedQuestionSets),
     [storeSets]
   );
 
-  // Stories (Facebook 9:16 photo/video stories)
+  // 24h Stories (grouped into 1 single box per user)
   const stories = useCommunityStore((s) => s.stories);
   const addStory = useCommunityStore((s) => s.addStory);
   const markStoryViewed = useCommunityStore((s) => s.markStoryViewed);
   const reactToStory = useCommunityStore((s) => s.reactToStory);
+  const [storyNowMs, setStoryNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => setStoryNowMs(Date.now()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const groupedActiveStories = useMemo(() => {
+    const activeOnly = stories.filter((s) => isStoryActive24h(s, storyNowMs));
+    return groupStoriesByAuthor(activeOnly);
+  }, [stories, storyNowMs]);
 
   // Production Social Media & Threads Store
   const profilesById = useSocialStore((s) => s.profilesById);
@@ -157,7 +194,6 @@ export default function CommunityScreen() {
     [mySlice?.algo]
   );
 
-  // Redirect legacy inline messenger deep links straight to Dedicated Messaging Center (`/messages`)
   useEffect(() => {
     if (params.tab === 'messenger' || params.dmUserId) {
       router.replace({
@@ -170,7 +206,6 @@ export default function CommunityScreen() {
     }
   }, [params.dmName, params.dmUserId, params.tab, router]);
 
-  // Sync profile, cloud directory & scheduled/ghost sweeps
   useEffect(() => {
     if (user?.id) {
       ensureUserProfile({
@@ -184,21 +219,6 @@ export default function CommunityScreen() {
     void syncCloudDirectory();
   }, [ensureUserProfile, refreshTick, runScheduledAndGhostSweep, syncCloudDirectory, user]);
 
-  // Restore saved scroll offset ONCE on mount and flush once on unmount (avoids scroll-loop jank!)
-  useEffect(() => {
-    const savedOffset = useSocialStore.getState().feedScrollOffset;
-    let restoreTimer: ReturnType<typeof setTimeout> | undefined;
-    if (savedOffset > 40) {
-      restoreTimer = setTimeout(() => {
-        scrollRef.current?.scrollTo({ y: savedOffset, animated: false });
-      }, 60);
-    }
-    return () => {
-      if (restoreTimer) clearTimeout(restoreTimer);
-      useSocialStore.getState().setFeedScrollOffset(latestScrollYRef.current);
-    };
-  }, []);
-
   const [hubSection, setHubSection] = useState<HubSection>(() =>
     params.communityId
       ? 'communities'
@@ -210,7 +230,6 @@ export default function CommunityScreen() {
     params.tab === 'friends' ? 'users' : 'documents_and_posts'
   );
 
-  // Feed Modes, Topic Filter, Nearby Location Consent & Pagination
   const [feedMode, setFeedMode] = useState<FeedModeType>('for_you');
   const [selectedCustomFeedId, setSelectedCustomFeedId] = useState<string | null>(null);
   const [selectedTopic, setSelectedTopic] = useState<string>(params.topic || 'ALL');
@@ -218,14 +237,12 @@ export default function CommunityScreen() {
   const [selectedArea, setSelectedArea] = useState<string>('ALL');
   const [pageSize, setPageSize] = useState(8);
 
-  // PapyAI Feed Assistant
   const [aiAlgoOpen, setAiAlgoOpen] = useState(false);
   const [aiFeedPrompt, setAiFeedPrompt] = useState('');
   const [aiAssistantBusy, setAiAssistantBusy] = useState(false);
   const [statusToast, setStatusToast] = useState<string | null>(null);
 
-  // Modals: Story, Composer, Quote, Your Algo, Bookmarks Drawer, Scheduled/Archived
-  const [activeStory, setActiveStory] = useState<ScholarStory | null>(null);
+  const [activeStoryGroup, setActiveStoryGroup] = useState<ScholarStory[] | null>(null);
   const [storyComposerOpen, setStoryComposerOpen] = useState(false);
   const [storyDraft, setStoryDraft] = useState<{
     text?: string;
@@ -236,11 +253,16 @@ export default function CommunityScreen() {
   const [composerOpen, setComposerOpen] = useState(false);
   const [quotedPost, setQuotedPost] = useState<SocialPostItem | null>(null);
   const [composerCommunityId, setComposerCommunityId] = useState<string | null>(null);
+  const [composerPrefill, setComposerPrefill] = useState<{
+    text: string;
+    topics?: string;
+    communityId?: string | null;
+  } | null>(null);
 
   const [algoModalOpen, setAlgoModalOpen] = useState(false);
   const [newMutedKeyword, setNewMutedKeyword] = useState('');
   const [newCustomFeedName, setNewCustomFeedName] = useState('');
-  const [newCustomFeedTopics, setNewCustomFeedTopics] = useState('CNTT, AI, ÔnThi');
+  const [newCustomFeedTopics, setNewCustomFeedTopics] = useState('');
 
   const [bookmarksDrawerOpen, setBookmarksDrawerOpen] = useState(false);
   const [bookmarkTab, setBookmarkTab] = useState<'bookmarks' | 'favourites' | 'scheduled'>(
@@ -248,7 +270,6 @@ export default function CommunityScreen() {
   );
   const [newColName, setNewColName] = useState('');
 
-  // Communities Module State
   const [selectedCommunityId, setSelectedCommunityId] = useState<string | null>(
     params.communityId || null
   );
@@ -259,31 +280,62 @@ export default function CommunityScreen() {
   const [commName, setCommName] = useState('');
   const [commDesc, setCommDesc] = useState('');
   const [commVisibility, setCommVisibility] = useState<'public' | 'private' | 'hidden'>('public');
-  const [commTopics, setCommTopics] = useState('CNTT, ÔnThi');
+  const [commTopics, setCommTopics] = useState('');
   const [commPostApproval, setCommPostApproval] = useState(false);
 
   const [createEventOpen, setCreateEventOpen] = useState(false);
   const [eventTitle, setEventTitle] = useState('');
   const [eventDesc, setEventDesc] = useState('');
-  const [eventLocation, setEventLocation] = useState('Phòng Live Thảo Luận · Papyrus');
+  const [eventLocation, setEventLocation] = useState('Phòng thảo luận trực tuyến');
 
-  // Academic & Post Search State (Separate from User Profile Search!)
+  // Realtime Search Engine State
   const [docSearchQuery, setDocSearchQuery] = useState('');
   const [searchingDocs, setSearchingDocs] = useState(false);
+  const [hasCompletedSearch, setHasCompletedSearch] = useState(false);
   const [liveWikiResults, setLiveWikiResults] = useState<DailyKnowledgeArticle[]>([]);
   const [dailyFeed, setDailyFeed] = useState<DailyKnowledgeArticle[]>([]);
   const [loadingDaily, setLoadingDaily] = useState(true);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string>(() =>
+    new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+  );
+  const [brokenThumbs, setBrokenThumbs] = useState<Record<string, boolean>>({});
 
-  const notifyToast = (text: string) => {
+  const notifyToast = useCallback((text: string) => {
     setStatusToast(text);
     setTimeout(() => setStatusToast(null), 3000);
-  };
+  }, []);
+
+  const requireSignedIn = useCallback(
+    (reason = 'tương tác hoặc đăng nội dung') => {
+      if (!isGuest) return true;
+      notifyToast(`Vui lòng đăng nhập để ${reason}.`);
+      return false;
+    },
+    [isGuest, notifyToast]
+  );
+
+  const reloadDailyTrending = useCallback(async () => {
+    setLoadingDaily(true);
+    try {
+      const items = await fetchDailyUpdatedKnowledgeFeed(true);
+      setDailyFeed(items);
+      setLastSyncedAt(
+        new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+      );
+    } finally {
+      setLoadingDaily(false);
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
     void fetchDailyUpdatedKnowledgeFeed()
       .then((items) => {
-        if (active) setDailyFeed(items);
+        if (!active) return;
+        setDailyFeed(items);
+        setLastSyncedAt(
+          new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+        );
       })
       .finally(() => {
         if (active) setLoadingDaily(false);
@@ -293,17 +345,57 @@ export default function CommunityScreen() {
     };
   }, [refreshTick]);
 
+  const executeLiveSearch = useCallback(async (rawQuery: string) => {
+    const clean = rawQuery.trim();
+    searchAbortRef.current?.abort();
+    if (clean.length < 2) {
+      searchSeqRef.current += 1;
+      setSearchingDocs(false);
+      setHasCompletedSearch(false);
+      setLiveWikiResults([]);
+      return;
+    }
+    const seq = ++searchSeqRef.current;
+    const ctrl = new AbortController();
+    searchAbortRef.current = ctrl;
+    setSearchingDocs(true);
+    try {
+      const res = await searchAcademicKnowledgeLive(clean, ctrl.signal);
+      if (seq !== searchSeqRef.current || ctrl.signal.aborted) return;
+      setLiveWikiResults(res);
+      setHasCompletedSearch(true);
+      setLastSyncedAt(
+        new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+      );
+    } finally {
+      if (seq === searchSeqRef.current) {
+        setSearchingDocs(false);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     const clean = docSearchQuery.trim();
-    if (clean.length < 2) return;
+    if (clean.length < 2) {
+      return;
+    }
     const t = setTimeout(() => {
-      setSearchingDocs(true);
-      void searchAcademicKnowledgeLive(clean)
-        .then((res) => setLiveWikiResults(res))
-        .finally(() => setSearchingDocs(false));
-    }, 420);
+      void executeLiveSearch(clean);
+    }, 240);
     return () => clearTimeout(t);
-  }, [docSearchQuery]);
+  }, [docSearchQuery, executeLiveSearch]);
+
+  const handleResetSearchEngine = () => {
+    searchAbortRef.current?.abort();
+    searchSeqRef.current += 1;
+    setDocSearchQuery('');
+    setSearchingDocs(false);
+    setHasCompletedSearch(false);
+    setLiveWikiResults([]);
+    setBrokenThumbs({});
+    void reloadDailyTrending();
+    notifyToast('Đã đặt lại công cụ tra cứu và làm mới nguồn tin thời gian thực.');
+  };
 
   const graph = useMemo(
     () => ({ follows, friendRequests, relations, communities }),
@@ -312,9 +404,11 @@ export default function CommunityScreen() {
 
   const unreadMessagesTotal = useMemo(
     () =>
-      conversations.reduce((acc, c) => acc + (c.unreadByUserIds[viewerId] ?? 0), 0) +
-      conversations.filter((c) => c.requestState === 'pending').length,
-    [conversations, viewerId]
+      isGuest
+        ? 0
+        : conversations.reduce((acc, c) => acc + (c.unreadByUserIds[viewerId] ?? 0), 0) +
+          conversations.filter((c) => c.requestState === 'pending').length,
+    [conversations, isGuest, viewerId]
   );
 
   const activeCustomFeed = useMemo(
@@ -355,7 +449,6 @@ export default function CommunityScreen() {
       .slice(0, 8);
   }, [socialPosts]);
 
-  // Document/Post/Hashtag Search Results (Vietnamese diacritic-insensitive!)
   const matchedSocialPosts = useMemo(() => {
     const q = docSearchQuery.trim();
     if (q.length < 2) return [];
@@ -435,65 +528,83 @@ export default function CommunityScreen() {
           .filter((c) => !c.isSuspended && c.visibility !== 'hidden')
           .map((c) => ({ id: c.id, name: c.name }))}
         onToggleFollow={(targetId) => {
+          if (!requireSignedIn('theo dõi thành viên')) return;
           const out = toggleFollowUser(viewerId, targetId);
           notifyToast(
             out === 'requested'
-              ? 'Đã gửi yêu cầu theo dõi tài khoản riêng tư!'
+              ? 'Đã gửi yêu cầu theo dõi.'
               : out === 'followed'
-              ? 'Đã theo dõi!'
+              ? 'Đã theo dõi.'
               : 'Đã bỏ theo dõi.'
           );
         }}
         onReactPost={(pid, reaction) => {
+          if (!requireSignedIn('thả cảm xúc')) return;
           togglePostEmojiReaction(pid, reaction, viewerId);
         }}
         onTogglePureRepost={(pid) => {
+          if (!requireSignedIn('đăng lại bài viết')) return;
           const added = togglePureRepost(pid, viewerId);
-          notifyToast(added ? '🔁 Đã đăng lại (Repost) lên trang cá nhân!' : 'Đã hoàn tác Đăng lại.');
+          notifyToast(added ? 'Đã đăng lại lên trang cá nhân.' : 'Đã hoàn tác đăng lại.');
         }}
         onOpenQuoteComposer={(target) => {
+          if (!requireSignedIn('trích dẫn bài viết')) return;
           setQuotedPost(target);
+          setComposerPrefill(null);
           setComposerCommunityId(null);
           setComposerOpen(true);
         }}
         onToggleBookmark={(pid, colId) => {
           const saved = toggleSaveBookmark(viewerId, pid, colId);
-          notifyToast(saved ? '🔖 Đã lưu vào Bộ sưu tập cá nhân!' : 'Đã bỏ lưu bài viết.');
+          notifyToast(saved ? 'Đã lưu bài viết.' : 'Đã bỏ lưu bài viết.');
         }}
         onToggleFavourite={(pid) => {
           const fav = toggleFavouritePost(viewerId, pid);
-          notifyToast(fav ? '⭐ Đã thêm vào Yêu thích để ưu tiên tương tự!' : 'Đã gỡ khỏi Yêu thích.');
+          notifyToast(fav ? 'Đã thêm vào Yêu thích.' : 'Đã gỡ khỏi Yêu thích.');
         }}
         onTogglePin={(pid, scope) => {
+          if (!requireSignedIn('ghim bài viết')) return;
           togglePinPost(pid, scope);
-          notifyToast('📌 Đã cập nhật trạng thái Ghim bài viết!');
+          notifyToast('Đã cập nhật trạng thái ghim.');
         }}
         onEditPost={(pid, nextParts, nextLongForm) => {
+          if (!requireSignedIn('chỉnh sửa bài viết')) return;
           editSocialPost(pid, viewerId, nextParts, nextLongForm);
-          notifyToast('✏️ Đã lưu chỉnh sửa & ghi nhận Lịch sử phiên bản!');
+          notifyToast('Đã lưu chỉnh sửa.');
         }}
         onDeleteOrArchive={(pid, mode) => {
+          if (!requireSignedIn('quản lý bài viết')) return;
           deleteOrArchivePost(pid, viewerId, mode);
-          notifyToast(
-            mode === 'archive' ? '🗄️ Đã lưu trữ bài viết riêng tư.' : '🗑️ Đã xóa bài viết.'
-          );
+          notifyToast(mode === 'archive' ? 'Đã lưu trữ bài viết.' : 'Đã xóa bài viết.');
         }}
         onSummarizeAi={(pid) => summarizePostWithAi(pid)}
-        onVotePoll={(pid, optId) => voteUnifiedPoll('post', pid, optId, viewerId)}
-        onAddPollOption={(pid, text) =>
-          addUnifiedPollOption('post', pid, text, { id: viewerId, name: viewerName })
-        }
-        onToggleClosePoll={(pid) => toggleCloseUnifiedPoll('post', pid, viewerId)}
-        onVoteDebate={(pid, side) => voteDebateSide(pid, side, viewerId)}
-        onAddDebateArgument={(pid, side, content) =>
+        onVotePoll={(pid, optId) => {
+          if (!requireSignedIn('bình chọn khảo sát')) return;
+          voteUnifiedPoll('post', pid, optId, viewerId);
+        }}
+        onAddPollOption={(pid, text) => {
+          if (!requireSignedIn('thêm lựa chọn khảo sát')) return;
+          addUnifiedPollOption('post', pid, text, { id: viewerId, name: viewerName });
+        }}
+        onToggleClosePoll={(pid) => {
+          if (!requireSignedIn('đóng khảo sát')) return;
+          toggleCloseUnifiedPoll('post', pid, viewerId);
+        }}
+        onVoteDebate={(pid, side) => {
+          if (!requireSignedIn('bình chọn tranh biện')) return;
+          voteDebateSide(pid, side, viewerId);
+        }}
+        onAddDebateArgument={(pid, side, content) => {
+          if (!requireSignedIn('gửi lập luận')) return;
           addDebateArgument(
             pid,
             side,
             { id: viewerId, name: viewerName, avatar: viewerAvatar },
             content
-          )
-        }
+          );
+        }}
         onAddReply={(input) => {
+          if (!requireSignedIn('bình luận')) return;
           addThreadedReply({
             ...input,
             authorId: viewerId,
@@ -505,11 +616,13 @@ export default function CommunityScreen() {
         onEditOrDeleteComment={(pid, cid, newContent) =>
           editOrDeleteComment(pid, cid, viewerId, newContent)
         }
-        onReactComment={(pid, cid, reaction) =>
-          toggleCommentReaction(pid, cid, reaction, viewerId)
-        }
+        onReactComment={(pid, cid, reaction) => {
+          if (!requireSignedIn('thả cảm xúc')) return;
+          toggleCommentReaction(pid, cid, reaction, viewerId);
+        }}
         onPinComment={(pid, cid) => togglePinComment(pid, cid)}
         onShareToTarget={(targetPost, dest, note) => {
+          if (!requireSignedIn('chia sẻ bài viết')) return;
           sharePostToDestination(
             targetPost,
             { id: viewerId, name: viewerName, avatar: viewerAvatar },
@@ -518,8 +631,8 @@ export default function CommunityScreen() {
           );
           notifyToast(
             dest.type === 'conversation'
-              ? '💬 Đã chia sẻ Thẻ bài viết nhúng vào Tin nhắn!'
-              : '🏛️ Đã chia sẻ Thẻ bài viết vào Cộng đồng!'
+              ? 'Đã gửi bài viết vào cuộc trò chuyện.'
+              : 'Đã chia sẻ bài viết vào nhóm.'
           );
         }}
         onAlgoFeedback={(action, p) => {
@@ -530,7 +643,7 @@ export default function CommunityScreen() {
                 new Set([...myAlgo.prioritizedAccountIds, realAuthor])
               ),
             });
-            notifyToast('✨ PapyAI sẽ ưu tiên hiển thị chủ đề & tác giả này nhiều hơn!');
+            notifyToast('Sẽ ưu tiên hiển thị nội dung tương tự.');
           } else if (action === 'less') {
             updateYourAlgo(viewerId, {
               showLessAccountIds: Array.from(new Set([...myAlgo.showLessAccountIds, realAuthor])),
@@ -540,23 +653,23 @@ export default function CommunityScreen() {
             updateYourAlgo(viewerId, {
               notInterestedPostIds: Array.from(new Set([...myAlgo.notInterestedPostIds, p.id])),
             });
-            notifyToast('Đã ẩn bài viết khỏi Bảng tin của bạn.');
+            notifyToast('Đã ẩn bài viết khỏi bảng tin.');
           } else if (action === 'hide_topic') {
             updateYourAlgo(viewerId, {
               hiddenTopics: Array.from(new Set([...myAlgo.hiddenTopics, ...p.topics])),
             });
-            notifyToast('Đã thêm chủ đề vào danh sách ẩn trên Your Algo.');
+            notifyToast('Đã ẩn chủ đề này trên bảng tin.');
           }
         }}
         onBlockOrMuteAuthor={(authorId, kind) => {
+          if (!requireSignedIn('chặn hoặc tắt tiếng tài khoản')) return;
           toggleUserRelation(viewerId, authorId, kind);
           notifyToast(
-            kind === 'block'
-              ? '🚫 Đã chặn tài khoản này trên toàn hệ thống.'
-              : '🔇 Đã tắt tiếng bài viết từ tài khoản này.'
+            kind === 'block' ? 'Đã chặn tài khoản này.' : 'Đã tắt tiếng bài viết từ tài khoản này.'
           );
         }}
         onReportTarget={(targetType, targetId, preview, ownerId) => {
+          if (!requireSignedIn('báo cáo nội dung')) return;
           submitModerationReport({
             reporterId: viewerId,
             reporterName: viewerName,
@@ -564,26 +677,33 @@ export default function CommunityScreen() {
             targetId,
             targetPreview: preview,
             targetOwnerId: ownerId,
-            reason: 'Báo cáo nội dung từ Bảng tin Cộng đồng',
+            reason: 'Báo cáo nội dung từ Cộng đồng',
             details: 'Người dùng yêu cầu đội ngũ kiểm duyệt xem xét.',
           });
-          notifyToast('🛡️ Đã gửi báo cáo tới Hàng đợi Kiểm duyệt (Trust & Safety).');
+          notifyToast('Đã gửi báo cáo tới bộ phận kiểm duyệt.');
         }}
       />
     );
   };
 
   return (
-    <Screen scroll={false} bottomNav>
-      <View style={[styles.container, isWide && { maxWidth: 960, alignSelf: 'center', width: '100%' }]}>
+    <Screen
+      bottomNav
+      maxWidth={960}
+      scrollResetKey={`${hubSection}:${discoverSubTab}:${selectedCommunityId ?? ''}`}
+      onPullRefresh={reloadDailyTrending}
+    >
+      <View style={styles.container}>
         <TopBar
           title={isCompactHeader ? 'Cộng đồng' : 'Mạng Xã Hội & Cộng Đồng'}
-          subtitle={isCompactHeader ? 'Threads · Nhóm · PapyAI' : 'Threads · Nhóm Học Tập · Tin 24h · PapyAI'}
+          subtitle={
+            isCompactHeader ? 'Bảng tin · Nhóm · Tra cứu' : 'Bảng tin · Nhóm học tập · Tin 24h · Tra cứu'
+          }
           right={
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Mở Trung tâm Tin nhắn"
+                accessibilityLabel="Mở Tin nhắn"
                 onPress={() => router.push('/messages')}
                 style={[
                   styles.msgShortcutBtn,
@@ -591,12 +711,12 @@ export default function CommunityScreen() {
                   { backgroundColor: palette.paperRaised, borderColor: palette.indigoBorder },
                 ]}
               >
-                <Ionicons name="chatbubble-ellipses" size={16} color={palette.indigo} />
-                {!isCompactHeader && (
+                <Ionicons name="chatbubble-ellipses-outline" size={16} color={palette.indigo} />
+                {!isCompactHeader ? (
                   <Text style={{ fontSize: 12, fontWeight: '800', color: palette.ink }}>
                     Tin nhắn
                   </Text>
-                )}
+                ) : null}
                 {unreadMessagesTotal > 0 ? (
                   <View style={[styles.msgBadge, { backgroundColor: palette.danger }]}>
                     <Text style={{ color: palette.onPrimary, fontSize: 10, fontWeight: '900' }}>
@@ -608,9 +728,11 @@ export default function CommunityScreen() {
 
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Đăng chuỗi bài viết mới"
+                accessibilityLabel="Đăng bài viết mới"
                 onPress={() => {
+                  if (!requireSignedIn('đăng bài viết mới')) return;
                   setQuotedPost(null);
+                  setComposerPrefill(null);
                   setComposerCommunityId(selectedCommunity?.id ?? null);
                   setComposerOpen(true);
                 }}
@@ -627,20 +749,31 @@ export default function CommunityScreen() {
 
         {statusToast ? (
           <View style={[styles.toastBar, { backgroundColor: palette.indigo }]}>
-            <Ionicons name="sparkles" size={15} color={palette.goldTint} />
-            <Text style={{ color: palette.onPrimary, fontSize: 12.5, fontWeight: '800', flexShrink: 1 }}>
+            <Ionicons name="information-circle-outline" size={16} color={palette.onPrimary} />
+            <Text
+              style={{
+                color: palette.onPrimary,
+                fontSize: 12.5,
+                fontWeight: '700',
+                flexShrink: 1,
+              }}
+            >
               {statusToast}
             </Text>
           </View>
         ) : null}
 
-        {/* Primary Module Switcher (Concise Labels + Icons, zero ellipsis on 375px) */}
+        {/* Primary Module Switcher */}
         <View style={styles.hubTabsRow}>
           {(
             [
-              { id: 'feeds', label: 'Bảng tin', icon: 'chatbubbles-outline' as const },
-              { id: 'communities', label: `Nhóm (${communities.length})`, icon: 'people-outline' as const },
-              { id: 'discover', label: 'Khám phá', icon: 'compass-outline' as const },
+              { id: 'feeds', label: 'Bảng tin', icon: 'newspaper-outline' as const },
+              {
+                id: 'communities',
+                label: `Nhóm (${communities.length})`,
+                icon: 'people-outline' as const,
+              },
+              { id: 'discover', label: 'Tra cứu & Bạn bè', icon: 'search-outline' as const },
             ] as const
           ).map((sec) => {
             const active = hubSection === sec.id;
@@ -678,25 +811,17 @@ export default function CommunityScreen() {
           })}
         </View>
 
-        <ScrollView
-          ref={scrollRef}
-          style={{ flex: 1 }}
-          contentContainerStyle={{ paddingTop: spacing.xs, paddingBottom: spacing.xl, gap: spacing.md }}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          scrollEventThrottle={64}
-          onScroll={(e) => {
-            if (hubSection === 'feeds') {
-              latestScrollYRef.current = e.nativeEvent.contentOffset.y;
-            }
+        <View
+          style={{
+            paddingTop: spacing.xs,
+            gap: spacing.md,
           }}
         >
           {/* ===================================================================== */}
-          {/* MODULE 1: META THREADS + FACEBOOK STORIES + YOUR ALGO FEED            */}
+          {/* MODULE 1: THREADS FEED + 24H SINGLE-BOX GROUPED STORIES               */}
           {/* ===================================================================== */}
           {hubSection === 'feeds' ? (
             <View style={{ gap: spacing.md }}>
-              {/* 9:16 Facebook Stories Strip */}
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -706,180 +831,75 @@ export default function CommunityScreen() {
                   displayName={viewerName}
                   avatarUrl={viewerAvatar}
                   onPress={() => {
+                    if (!requireSignedIn('đăng tin 24 giờ')) return;
                     setStoryDraft(null);
                     setStoryComposerOpen(true);
                   }}
                 />
-                {stories.map((st) => (
+                {groupedActiveStories.map((grp) => (
                   <StoryCard916
-                    key={st.id}
-                    story={st}
-                    seen={st.viewedByIds.includes(viewerId)}
+                    key={grp.authorId}
+                    story={grp.coverStory}
+                    totalCount={grp.stories.length}
+                    seen={grp.stories.every((s) => s.viewedByIds.includes(viewerId))}
                     onPress={() => {
-                      markStoryViewed(st.id, viewerId);
-                      setActiveStory(st);
+                      setActiveStoryGroup(grp.stories);
                     }}
                   />
                 ))}
               </ScrollView>
 
-              {/* Quick Composer Prompt Card (Resumes Draft if Saved!) */}
+              {/* Clean Quick Composer Card */}
               <Pressable
                 onPress={() => {
+                  if (!requireSignedIn('đăng bài viết mới')) return;
                   setQuotedPost(null);
+                  setComposerPrefill(null);
                   setComposerCommunityId(null);
                   setComposerOpen(true);
                 }}
                 style={[
                   styles.quickComposeCard,
-                  { backgroundColor: palette.paper, borderColor: palette.paperMuted },
+                  { backgroundColor: palette.paperRaised, borderColor: palette.paperMuted },
                 ]}
               >
                 <View style={[styles.avatarCircle, { backgroundColor: palette.indigo }]}>
                   {viewerAvatar ? (
                     <Image source={{ uri: viewerAvatar }} style={styles.avatarImg} />
                   ) : (
-                    <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 14 }}>
+                    <Text style={{ color: palette.onPrimary, fontWeight: '800', fontSize: 14 }}>
                       {(viewerName[0] || 'P').toUpperCase()}
                     </Text>
                   )}
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={{ fontSize: 13.5, fontWeight: '800', color: palette.ink }}>
-                    {viewerName}
+                    {isGuest ? 'Đăng nhập để chia sẻ bài viết' : viewerName}
                   </Text>
                   <Text style={{ fontSize: 12.5, color: palette.inkMuted }} numberOfLines={1}>
-                    {mySlice?.draft
-                      ? `📝 Tiếp tục bản nháp đã lưu tự động: "${mySlice.draft.threadParts[0] || 'Đang soạn...'}"`
-                      : 'Bắt đầu một chuỗi Thread, đặt câu hỏi, tạo Poll hoặc đăng Ghost 24h...'}
+                    {!isGuest && mySlice?.draft
+                      ? `Tiếp tục bản nháp: "${mySlice.draft.threadParts[0] || 'Đang soạn...'}"`
+                      : 'Bạn đang nghĩ gì? Chia sẻ câu hỏi, kiến thức hoặc hình ảnh...'}
                   </Text>
                 </View>
-                <Badge tone="primary">+ Chuỗi</Badge>
+                <Badge tone="primary">Đăng bài</Badge>
               </Pressable>
 
-              {/* Compact 1-Row PapyAI & Feed Controls (expands prompt only when tapped so posts appear higher) */}
-              <View style={{ gap: 8 }}>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.algoCompactBar}
-                >
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityState={{ expanded: aiAlgoOpen }}
-                    onPress={() => setAiAlgoOpen((v) => !v)}
-                    style={[
-                      styles.utilChip,
-                      {
-                        backgroundColor: aiAlgoOpen ? palette.indigo : palette.indigoTint,
-                        borderColor: palette.indigoBorder,
-                        borderWidth: 1,
-                      },
-                    ]}
-                  >
-                    <Ionicons
-                      name="sparkles"
-                      size={13}
-                      color={aiAlgoOpen ? palette.onPrimary : palette.indigo}
-                    />
-                    <Text
-                      style={{
-                        fontSize: 11.5,
-                        fontWeight: '800',
-                        color: aiAlgoOpen ? palette.onPrimary : palette.indigoDeep,
-                      }}
-                    >
-                      Trợ lý PapyAI
-                    </Text>
-                    <Ionicons
-                      name={aiAlgoOpen ? 'chevron-up' : 'chevron-down'}
-                      size={12}
-                      color={aiAlgoOpen ? palette.onPrimary : palette.indigo}
-                    />
-                  </Pressable>
-
-                  <Pressable
-                    accessibilityRole="button"
-                    onPress={() => setAlgoModalOpen(true)}
-                    style={[
-                      styles.utilChip,
-                      {
-                        backgroundColor: palette.paperRaised,
-                        borderColor: palette.paperMuted,
-                        borderWidth: 1,
-                      },
-                    ]}
-                  >
-                    <Ionicons name="options-outline" size={14} color={palette.indigo} />
-                    <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.ink }}>
-                      Thuật toán
-                    </Text>
-                  </Pressable>
-
-                  <Pressable
-                    accessibilityRole="button"
-                    onPress={() => setBookmarksDrawerOpen(true)}
-                    style={[
-                      styles.utilChip,
-                      {
-                        backgroundColor: palette.paperRaised,
-                        borderColor: palette.paperMuted,
-                        borderWidth: 1,
-                      },
-                    ]}
-                  >
-                    <Ionicons name="bookmarks-outline" size={14} color={palette.ink} />
-                    <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.ink }}>
-                      Đã lưu ({mySlice?.bookmarkedPostIds.length ?? 0})
-                    </Text>
-                  </Pressable>
-                </ScrollView>
-
-                {aiAlgoOpen ? (
-                  <Card style={{ padding: spacing.sm, gap: 6 }}>
-                    <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
-                      <TextInput
-                        value={aiFeedPrompt}
-                        onChangeText={setAiFeedPrompt}
-                        placeholder="Ví dụ: Ưu tiên CNTT & AI, ẩn giải trí..."
-                        placeholderTextColor={palette.inkMuted}
-                        style={[
-                          styles.aiInput,
-                          {
-                            color: palette.ink,
-                            backgroundColor: palette.paper,
-                            borderColor: palette.paperMuted,
-                          },
-                        ]}
-                      />
-                      <Button
-                        size="sm"
-                        disabled={!aiFeedPrompt.trim() || aiAssistantBusy}
-                        onPress={() => void handleAskAiFeedAssistant()}
-                      >
-                        {aiAssistantBusy ? 'Đang lọc...' : 'Áp dụng'}
-                      </Button>
-                    </View>
-                  </Card>
-                ) : null}
-              </View>
-
-              {/* Feed Mode Selector (For You, Home, Following, Friends, Trending, Knowledge, Debate, Nearby + Custom Feeds) */}
+              {/* Feed Mode Selector (Clean text labels without noisy leading emojis) */}
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ gap: 6 }}
+                contentContainerStyle={{ gap: 6, alignItems: 'center' }}
               >
                 {(
                   [
-                    { id: 'for_you', label: '✨ Dành cho bạn' },
-                    { id: 'home', label: '🏠 Trang chủ' },
-                    { id: 'following', label: '➕ Đang theo dõi' },
-                    { id: 'friends', label: '🤝 Bạn bè' },
-                    { id: 'trending', label: '🔥 Thịnh hành' },
-                    { id: 'knowledge', label: '🧠 Chế độ Tri thức' },
-                    { id: 'debate', label: '⚖️ Tranh biện' },
-                    { id: 'nearby', label: '📍 Gần bạn & Bản đồ' },
+                    { id: 'for_you', label: 'Dành cho bạn' },
+                    { id: 'following', label: 'Đang theo dõi' },
+                    { id: 'friends', label: 'Bạn bè' },
+                    { id: 'trending', label: 'Thịnh hành' },
+                    { id: 'knowledge', label: 'Học thuật' },
+                    { id: 'debate', label: 'Tranh biện' },
+                    { id: 'nearby', label: 'Khu vực' },
                   ] as const
                 ).map((m) => {
                   const active = feedMode === m.id && !selectedCustomFeedId;
@@ -893,7 +913,7 @@ export default function CommunityScreen() {
                       style={[
                         styles.modePill,
                         {
-                          backgroundColor: active ? palette.indigo : palette.paper,
+                          backgroundColor: active ? palette.indigo : palette.paperRaised,
                           borderColor: active ? palette.indigo : palette.paperMuted,
                         },
                       ]}
@@ -901,8 +921,8 @@ export default function CommunityScreen() {
                       <Text
                         style={{
                           fontSize: 12,
-                          fontWeight: '800',
-                          color: active ? '#FFFFFF' : palette.ink,
+                          fontWeight: '700',
+                          color: active ? palette.onPrimary : palette.ink,
                         }}
                       >
                         {m.label}
@@ -925,7 +945,7 @@ export default function CommunityScreen() {
                         style={[
                           styles.modePill,
                           {
-                            backgroundColor: active ? palette.gold : palette.paper,
+                            backgroundColor: active ? palette.gold : palette.paperRaised,
                             borderColor: active ? palette.goldBorder : palette.indigoBorder,
                           },
                         ]}
@@ -933,7 +953,7 @@ export default function CommunityScreen() {
                         <Text
                           style={{
                             fontSize: 12,
-                            fontWeight: '800',
+                            fontWeight: '700',
                             color: active ? palette.onGold : palette.indigo,
                           }}
                         >
@@ -942,9 +962,91 @@ export default function CommunityScreen() {
                       </Pressable>
                     );
                   })}
+
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => setAiAlgoOpen((v) => !v)}
+                  style={[
+                    styles.utilChip,
+                    {
+                      backgroundColor: aiAlgoOpen ? palette.indigoTint : palette.paperRaised,
+                      borderColor: palette.paperMuted,
+                      borderWidth: 1,
+                    },
+                  ]}
+                >
+                  <Ionicons name="sparkles-outline" size={13} color={palette.indigo} />
+                  <Text style={{ fontSize: 11.5, fontWeight: '700', color: palette.indigo }}>
+                    Lọc bằng AI
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => setAlgoModalOpen(true)}
+                  style={[
+                    styles.utilChip,
+                    {
+                      backgroundColor: palette.paperRaised,
+                      borderColor: palette.paperMuted,
+                      borderWidth: 1,
+                    },
+                  ]}
+                >
+                  <Ionicons name="options-outline" size={14} color={palette.inkMuted} />
+                  <Text style={{ fontSize: 11.5, fontWeight: '700', color: palette.ink }}>
+                    Tùy chỉnh
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => setBookmarksDrawerOpen(true)}
+                  style={[
+                    styles.utilChip,
+                    {
+                      backgroundColor: palette.paperRaised,
+                      borderColor: palette.paperMuted,
+                      borderWidth: 1,
+                    },
+                  ]}
+                >
+                  <Ionicons name="bookmark-outline" size={14} color={palette.inkMuted} />
+                  <Text style={{ fontSize: 11.5, fontWeight: '700', color: palette.ink }}>
+                    Đã lưu ({mySlice?.bookmarkedPostIds.length ?? 0})
+                  </Text>
+                </Pressable>
               </ScrollView>
 
-              {/* Nearby Feed & Privacy-First Location Cluster Panel (Section 7.6) */}
+              {aiAlgoOpen ? (
+                <Card style={{ padding: spacing.sm, gap: 6 }}>
+                  <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+                    <TextInput
+                      value={aiFeedPrompt}
+                      onChangeText={setAiFeedPrompt}
+                      placeholder="Nhập chủ đề muốn ưu tiên hoặc ẩn..."
+                      placeholderTextColor={palette.inkMuted}
+                      style={[
+                        styles.aiInput,
+                        {
+                          color: palette.ink,
+                          backgroundColor: palette.paper,
+                          borderColor: palette.paperMuted,
+                        },
+                      ]}
+                    />
+                    <Button
+                      size="sm"
+                      disabled={!aiFeedPrompt.trim() || aiAssistantBusy}
+                      onPress={() => void handleAskAiFeedAssistant()}
+                    >
+                      {aiAssistantBusy ? 'Đang lọc...' : 'Áp dụng'}
+                    </Button>
+                  </View>
+                </Card>
+              ) : null}
+
+              {/* Nearby Location Cluster Panel */}
               {feedMode === 'nearby' ? (
                 <Card style={{ gap: 8, borderColor: palette.indigoBorder }}>
                   <View
@@ -958,10 +1060,10 @@ export default function CommunityScreen() {
                   >
                     <View style={{ flex: 1, minWidth: 200 }}>
                       <Text style={{ fontSize: 13.5, fontWeight: '800', color: palette.ink }}>
-                        🗺️ Bản Đồ & Cụm Thảo Luận Theo Khu Vực (Quyền riêng tư tuyệt đối)
+                        Thảo luận theo khu vực
                       </Text>
-                      <Text style={{ fontSize: 11.5, color: palette.inkMuted }}>
-                        Chỉ hiển thị khu vực gần đúng theo tỉnh/thành phố khi bạn chủ động bật — không bao giờ chia sẻ tọa độ GPS chính xác.
+                      <Text style={{ fontSize: 12, color: palette.inkMuted }}>
+                        Hiển thị bài viết theo tỉnh hoặc thành phố khi bạn bật, không chia sẻ vị trí chính xác.
                       </Text>
                     </View>
                     <Button
@@ -969,7 +1071,7 @@ export default function CommunityScreen() {
                       variant={locationConsent ? 'secondary' : 'primary'}
                       onPress={() => setLocationConsent((v) => !v)}
                     >
-                      {locationConsent ? 'Tắt vị trí khu vực' : 'Bật khám phá khu vực'}
+                      {locationConsent ? 'Tắt khu vực' : 'Chọn khu vực'}
                     </Button>
                   </View>
 
@@ -996,11 +1098,11 @@ export default function CommunityScreen() {
                           <Text
                             style={{
                               fontSize: 11.5,
-                              fontWeight: '800',
-                              color: selectedArea === area ? '#FFF' : palette.ink,
+                              fontWeight: '700',
+                              color: selectedArea === area ? palette.onPrimary : palette.ink,
                             }}
                           >
-                            📍 {area === 'ALL' ? 'Tất cả cụm thành phố' : area}
+                            {area === 'ALL' ? 'Tất cả khu vực' : area}
                           </Text>
                         </Pressable>
                       ))}
@@ -1009,71 +1111,84 @@ export default function CommunityScreen() {
                 </Card>
               ) : null}
 
-              {/* Trending Topic Filter Chips */}
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ gap: 6 }}
-              >
-                <Pressable
-                  onPress={() => setSelectedTopic('ALL')}
-                  style={[
-                    styles.topicChip,
-                    {
-                      backgroundColor:
-                        selectedTopic === 'ALL' ? palette.indigoTint : palette.paper,
-                      borderColor: selectedTopic === 'ALL' ? palette.indigo : palette.paperMuted,
-                    },
-                  ]}
+              {/* Trending Hashtag Chips (only rendered when real posts have tags) */}
+              {trendingHashtags.length > 0 ? (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ gap: 6 }}
                 >
-                  <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.ink }}>
-                    Tất cả chủ đề
-                  </Text>
-                </Pressable>
-                {trendingHashtags.map(([tag, score]) => (
                   <Pressable
-                    key={tag}
-                    onPress={() => setSelectedTopic(selectedTopic === tag ? 'ALL' : tag)}
+                    onPress={() => setSelectedTopic('ALL')}
                     style={[
                       styles.topicChip,
                       {
                         backgroundColor:
-                          selectedTopic === tag ? palette.indigoTint : palette.paper,
-                        borderColor: selectedTopic === tag ? palette.indigo : palette.paperMuted,
+                          selectedTopic === 'ALL' ? palette.indigoTint : palette.paperRaised,
+                        borderColor:
+                          selectedTopic === 'ALL' ? palette.indigo : palette.paperMuted,
                       },
                     ]}
                   >
-                    <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.indigo }}>
-                      #{tag} ({score})
+                    <Text style={{ fontSize: 11.5, fontWeight: '700', color: palette.ink }}>
+                      Tất cả
                     </Text>
                   </Pressable>
-                ))}
-              </ScrollView>
+                  {trendingHashtags.map(([tag, score]) => (
+                    <Pressable
+                      key={tag}
+                      onPress={() => setSelectedTopic(selectedTopic === tag ? 'ALL' : tag)}
+                      style={[
+                        styles.topicChip,
+                        {
+                          backgroundColor:
+                            selectedTopic === tag ? palette.indigoTint : palette.paperRaised,
+                          borderColor:
+                            selectedTopic === tag ? palette.indigo : palette.paperMuted,
+                        },
+                      ]}
+                    >
+                      <Text style={{ fontSize: 11.5, fontWeight: '700', color: palette.indigo }}>
+                        #{tag} ({score})
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              ) : null}
 
-              {/* Ranked Threads Stream */}
+              {/* Feed Stream */}
               {paginatedFeedItems.length === 0 ? (
                 <Card style={{ alignItems: 'center', gap: 10, paddingVertical: spacing.xl }}>
-                  <Ionicons name="sparkles-outline" size={30} color={palette.indigo} />
+                  <Ionicons name="chatbubbles-outline" size={28} color={palette.indigo} />
                   <Text style={[typography.title, { color: palette.ink, textAlign: 'center' }]}>
-                    Chưa có bài viết khớp bộ lọc hiện tại
+                    Chưa có bài viết nào trong mục này
                   </Text>
                   <Text
                     style={[typography.caption, { color: palette.inkMuted, textAlign: 'center' }]}
                   >
-                    Hãy thử chuyển sang Bảng tin Dành cho bạn, đặt lại Your Algo hoặc đăng chuỗi Thread đầu tiên!
+                    Hãy là người đầu tiên chia sẻ kiến thức hoặc đặt câu hỏi thảo luận cùng cộng đồng.
                   </Text>
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    {feedMode !== 'for_you' || selectedTopic !== 'ALL' || selectedCustomFeedId ? (
+                      <Button
+                        variant="secondary"
+                        onPress={() => {
+                          setFeedMode('for_you');
+                          setSelectedTopic('ALL');
+                          setSelectedCustomFeedId(null);
+                        }}
+                      >
+                        Xem tất cả bài viết
+                      </Button>
+                    ) : null}
                     <Button
-                      variant="secondary"
                       onPress={() => {
-                        setFeedMode('for_you');
-                        setSelectedTopic('ALL');
-                        setSelectedCustomFeedId(null);
+                        if (!requireSignedIn('đăng bài viết mới')) return;
+                        setComposerOpen(true);
                       }}
                     >
-                      Về Dành cho bạn
+                      Đăng bài mới
                     </Button>
-                    <Button onPress={() => setComposerOpen(true)}>+ Đăng Thread mới</Button>
                   </View>
                 </Card>
               ) : (
@@ -1086,7 +1201,7 @@ export default function CommunityScreen() {
                       onPress={() => setPageSize((prev) => prev + 8)}
                       fullWidth
                     >
-                      Xem thêm bài viết ({rankedFeedItems.length - pageSize} bài còn lại)
+                      Xem thêm ({rankedFeedItems.length - pageSize} bài viết)
                     </Button>
                   ) : null}
                 </>
@@ -1095,7 +1210,7 @@ export default function CommunityScreen() {
           ) : null}
 
           {/* ===================================================================== */}
-          {/* MODULE 2: COMMUNITIES / GROUPS + RBAC + EVENTS + REPUTATION           */}
+          {/* MODULE 2: COMMUNITIES / GROUPS                                        */}
           {/* ===================================================================== */}
           {hubSection === 'communities' ? (
             <View style={{ gap: spacing.md }}>
@@ -1113,20 +1228,31 @@ export default function CommunityScreen() {
                     >
                       <View style={{ flex: 1, minWidth: 200 }}>
                         <Text style={[typography.title, { color: palette.ink }]}>
-                          🏛️ Nhóm & Cộng Đồng Chuyên Môn
+                          Nhóm học tập & chuyên môn
                         </Text>
                         <Text style={[typography.caption, { color: palette.inkMuted }]}>
-                          Tham gia nhóm Công khai / Riêng tư, bình chọn Poll Zalo, dự sự kiện Live và tích lũy Huy hiệu Uy tín.
+                          Tham gia thảo luận theo chuyên ngành, chia sẻ tài liệu và tạo lịch ôn tập nhóm.
                         </Text>
                       </View>
-                      <Button icon="add-circle-outline" onPress={() => setCreateCommOpen(true)}>
-                        Tạo Cộng đồng mới
+                      <Button
+                        icon="add-circle-outline"
+                        onPress={() => {
+                          if (!requireSignedIn('tạo nhóm mới')) return;
+                          setCreateCommOpen(true);
+                        }}
+                      >
+                        Tạo nhóm
                       </Button>
                     </View>
                   </Card>
 
                   {communities
-                    .filter((c) => !c.isSuspended && (c.visibility !== 'hidden' || c.members.some((m) => m.userId === viewerId)))
+                    .filter(
+                      (c) =>
+                        !c.isSuspended &&
+                        (c.visibility !== 'hidden' ||
+                          c.members.some((m) => m.userId === viewerId))
+                    )
                     .map((comm) => {
                       const myEntry = comm.members.find((m) => m.userId === viewerId);
                       return (
@@ -1135,10 +1261,10 @@ export default function CommunityScreen() {
                             <View
                               style={[
                                 styles.commIconBox,
-                                { backgroundColor: comm.accentColor || palette.indigo },
+                                { backgroundColor: palette.indigoTint },
                               ]}
                             >
-                              <Text style={{ fontSize: 22 }}>{comm.avatarEmoji}</Text>
+                              <Ionicons name="people" size={22} color={palette.indigo} />
                             </View>
                             <View style={{ flex: 1, minWidth: 0 }}>
                               <View
@@ -1150,7 +1276,7 @@ export default function CommunityScreen() {
                                 }}
                               >
                                 <Text
-                                  style={{ fontSize: 15, fontWeight: '900', color: palette.ink }}
+                                  style={{ fontSize: 15, fontWeight: '800', color: palette.ink }}
                                 >
                                   {comm.name}
                                 </Text>
@@ -1158,14 +1284,16 @@ export default function CommunityScreen() {
                                   tone={comm.visibility === 'public' ? 'success' : 'primary'}
                                 >
                                   {comm.visibility === 'public'
-                                    ? '🌍 Công khai'
+                                    ? 'Công khai'
                                     : comm.visibility === 'private'
-                                    ? '🔒 Riêng tư'
-                                    : '🕵️ Ẩn'}
+                                    ? 'Riêng tư'
+                                    : 'Nhóm ẩn'}
                                 </Badge>
                               </View>
-                              <Text style={{ fontSize: 12, color: palette.inkMuted, marginTop: 2 }}>
-                                👥 {comm.members.length} thành viên · 📅 {comm.events.length} sự kiện
+                              <Text
+                                style={{ fontSize: 12, color: palette.inkMuted, marginTop: 2 }}
+                              >
+                                {comm.members.length} thành viên · {comm.events.length} sự kiện
                               </Text>
                             </View>
                           </View>
@@ -1182,12 +1310,13 @@ export default function CommunityScreen() {
                                 setCommunitySubTab('feed');
                               }}
                             >
-                              Mở Cộng đồng
+                              Vào nhóm
                             </Button>
                             <Button
                               size="sm"
                               variant="secondary"
                               onPress={() => {
+                                if (!requireSignedIn('tham gia nhóm')) return;
                                 const state = joinOrLeaveCommunity(comm.id, {
                                   id: viewerId,
                                   name: viewerName,
@@ -1195,20 +1324,20 @@ export default function CommunityScreen() {
                                 });
                                 notifyToast(
                                   state === 'pending'
-                                    ? '⏳ Đã gửi yêu cầu tham gia nhóm riêng tư!'
-                                    : state === 'member'
-                                    ? `🎉 Đã tham gia «${comm.name}»!`
+                                    ? 'Đã gửi yêu cầu tham gia nhóm.'
+                                    : state === 'joined'
+                                    ? `Đã tham gia ${comm.name}.`
                                     : 'Đã rời khỏi nhóm.'
                                 );
                               }}
                             >
                               {myEntry
                                 ? myEntry.role === 'pending'
-                                  ? '⏳ Đang chờ duyệt (Hủy)'
-                                  : `✓ Đã tham gia (${myEntry.role})`
+                                  ? 'Đang chờ duyệt (Hủy)'
+                                  : 'Đã tham gia'
                                 : comm.requireMemberApproval
-                                ? 'Gửi yêu cầu tham gia'
-                                : '+ Tham gia ngay'}
+                                ? 'Gửi yêu cầu'
+                                : 'Tham gia'}
                             </Button>
                           </View>
                         </Card>
@@ -1217,7 +1346,6 @@ export default function CommunityScreen() {
                 </>
               ) : (
                 <>
-                  {/* Active Community Detail View */}
                   <Card style={{ gap: 10 }}>
                     <View
                       style={{
@@ -1233,7 +1361,7 @@ export default function CommunityScreen() {
                       >
                         <Ionicons name="arrow-back" size={18} color={palette.indigo} />
                         <Text style={{ fontSize: 12.5, fontWeight: '800', color: palette.indigo }}>
-                          Tất cả Cộng đồng
+                          Danh sách nhóm
                         </Text>
                       </Pressable>
 
@@ -1241,7 +1369,9 @@ export default function CommunityScreen() {
                         size="sm"
                         icon="create-outline"
                         onPress={() => {
+                          if (!requireSignedIn('đăng bài vào nhóm')) return;
                           setQuotedPost(null);
+                          setComposerPrefill(null);
                           setComposerCommunityId(selectedCommunity.id);
                           setComposerOpen(true);
                         }}
@@ -1252,12 +1382,9 @@ export default function CommunityScreen() {
 
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                       <View
-                        style={[
-                          styles.commIconBox,
-                          { backgroundColor: selectedCommunity.accentColor },
-                        ]}
+                        style={[styles.commIconBox, { backgroundColor: palette.indigoTint }]}
                       >
-                        <Text style={{ fontSize: 24 }}>{selectedCommunity.avatarEmoji}</Text>
+                        <Ionicons name="people" size={22} color={palette.indigo} />
                       </View>
                       <View style={{ flex: 1, minWidth: 0 }}>
                         <Text style={[typography.title, { color: palette.ink }]}>
@@ -1269,20 +1396,6 @@ export default function CommunityScreen() {
                       </View>
                     </View>
 
-                    {selectedCommunity.announcements[0] ? (
-                      <View
-                        style={[
-                          styles.announceBox,
-                          { backgroundColor: palette.indigoTint, borderColor: palette.indigoBorder },
-                        ]}
-                      >
-                        <Text style={{ fontSize: 12, fontWeight: '700', color: palette.ink }}>
-                          {selectedCommunity.announcements[0]}
-                        </Text>
-                      </View>
-                    ) : null}
-
-                    {/* Community Sub-Tabs */}
                     <ScrollView
                       horizontal
                       showsHorizontalScrollIndicator={false}
@@ -1290,16 +1403,16 @@ export default function CommunityScreen() {
                     >
                       {(
                         [
-                          { id: 'feed', label: '📝 Thảo luận & Ghim' },
+                          { id: 'feed', label: 'Thảo luận' },
                           {
                             id: 'events',
-                            label: `📅 Sự kiện (${selectedCommunity.events.length})`,
+                            label: `Sự kiện (${selectedCommunity.events.length})`,
                           },
                           {
                             id: 'members',
-                            label: `🏆 Thành viên & Uy tín (${selectedCommunity.members.length})`,
+                            label: `Thành viên (${selectedCommunity.members.length})`,
                           },
-                          { id: 'moderation', label: '🛡️ Duyệt bài & Nội quy' },
+                          { id: 'moderation', label: 'Nội quy & Duyệt bài' },
                         ] as const
                       ).map((st) => (
                         <Pressable
@@ -1318,8 +1431,9 @@ export default function CommunityScreen() {
                           <Text
                             style={{
                               fontSize: 12,
-                              fontWeight: '800',
-                              color: communitySubTab === st.id ? '#FFF' : palette.ink,
+                              fontWeight: '700',
+                              color:
+                                communitySubTab === st.id ? palette.onPrimary : palette.ink,
                             }}
                           >
                             {st.label}
@@ -1343,43 +1457,47 @@ export default function CommunityScreen() {
                             : 1
                           : Date.parse(b.createdAt) - Date.parse(a.createdAt)
                       )
-                      .map((p) => renderPostCard(p, `Cộng đồng · ${selectedCommunity.name}`))
+                      .map((p) => renderPostCard(p, selectedCommunity.name))
                   ) : null}
 
                   {communitySubTab === 'events' ? (
                     <View style={{ gap: 10 }}>
                       <Button
                         icon="calendar-outline"
-                        onPress={() => setCreateEventOpen(true)}
+                        onPress={() => {
+                          if (!requireSignedIn('tạo sự kiện nhóm')) return;
+                          setCreateEventOpen(true);
+                        }}
                       >
-                        + Tạo Sự Kiện / Lịch Học Trực Tiếp Mới
+                        Tạo sự kiện mới
                       </Button>
                       {selectedCommunity.events.map((ev) => {
                         const rsvped = ev.rsvpUserIds.includes(viewerId);
                         return (
                           <Card key={ev.id} style={{ gap: 8 }}>
                             <Badge tone="primary">
-                              📅 {new Date(ev.startsAt).toLocaleString('vi-VN')}
+                              {new Date(ev.startsAt).toLocaleString('vi-VN')}
                             </Badge>
-                            <Text style={{ fontSize: 15, fontWeight: '900', color: palette.ink }}>
+                            <Text style={{ fontSize: 15, fontWeight: '800', color: palette.ink }}>
                               {ev.title}
                             </Text>
                             <Text style={{ fontSize: 12.5, color: palette.inkMuted }}>
                               {ev.description}
                             </Text>
-                            <Text style={{ fontSize: 12, fontWeight: '700', color: palette.indigo }}>
-                              📍 {ev.locationLabel} · 👥 {ev.rsvpUserIds.length} người đăng ký tham dự
+                            <Text
+                              style={{ fontSize: 12, fontWeight: '700', color: palette.indigo }}
+                            >
+                              {ev.locationLabel} · {ev.rsvpUserIds.length} người tham dự
                             </Text>
                             <Button
                               size="sm"
                               variant={rsvped ? 'secondary' : 'primary'}
-                              onPress={() =>
-                                toggleEventRsvp(selectedCommunity.id, ev.id, viewerId)
-                              }
+                              onPress={() => {
+                                if (!requireSignedIn('đăng ký sự kiện')) return;
+                                toggleEventRsvp(selectedCommunity.id, ev.id, viewerId);
+                              }}
                             >
-                              {rsvped
-                                ? '✓ Đã đăng ký tham dự & Nhắc lịch (Hủy)'
-                                : '🔔 Đăng ký tham dự (RSVP + Nhắc lịch)'}
+                              {rsvped ? 'Đã đăng ký (Hủy)' : 'Đăng ký tham dự'}
                             </Button>
                           </Card>
                         );
@@ -1390,94 +1508,108 @@ export default function CommunityScreen() {
                   {communitySubTab === 'members' ? (
                     <Card style={{ gap: 10 }}>
                       <Text style={[typography.title, { color: palette.ink }]}>
-                        🏆 Bảng Xếp Hạng Uy Tín & Phân Quyền RBAC
+                        Thành viên trong nhóm ({selectedCommunity.members.length})
                       </Text>
-                      <Text style={{ fontSize: 11.5, color: palette.inkMuted }}>
-                        Điểm uy tín tính theo đóng góp chất lượng (bình luận hữu ích, bài viết được đánh giá cao, chống spam).
-                      </Text>
-                      {[...selectedCommunity.members]
-                        .sort((a, b) => b.reputationPoints - a.reputationPoints)
-                        .map((mem, idx) => {
-                          const canManageRoles =
-                            user?.role === 'admin' ||
-                            selectedCommunity.members.some(
-                              (m) =>
-                                m.userId === viewerId &&
-                                (m.role === 'owner' || m.role === 'admin')
-                            );
-                          return (
-                            <View
-                              key={mem.userId}
-                              style={[
-                                styles.memberRow,
-                                { borderColor: palette.paperMuted, backgroundColor: palette.paperRaised },
-                              ]}
-                            >
-                              <Pressable
-                                onPress={() =>
-                                  router.push({
-                                    pathname: '/user/[userId]',
-                                    params: { userId: mem.userId },
-                                  })
-                                }
-                                style={{ flex: 1, minWidth: 0 }}
+                      {selectedCommunity.members.length === 0 ? (
+                        <Text style={{ fontSize: 12.5, color: palette.inkMuted }}>
+                          Chưa có thành viên nào tham gia nhóm này.
+                        </Text>
+                      ) : (
+                        [...selectedCommunity.members]
+                          .sort((a, b) => b.reputationPoints - a.reputationPoints)
+                          .map((mem, idx) => {
+                            const canManageRoles =
+                              user?.role === 'admin' ||
+                              selectedCommunity.members.some(
+                                (m) =>
+                                  m.userId === viewerId &&
+                                  (m.role === 'owner' || m.role === 'admin')
+                              );
+                            return (
+                              <View
+                                key={mem.userId}
+                                style={[
+                                  styles.memberRow,
+                                  {
+                                    borderColor: palette.paperMuted,
+                                    backgroundColor: palette.paperRaised,
+                                  },
+                                ]}
                               >
-                                <Text style={{ fontSize: 13.5, fontWeight: '800', color: palette.ink }}>
-                                  #{idx + 1} · {mem.displayName}
-                                </Text>
-                                <Text style={{ fontSize: 11.5, color: palette.inkMuted }}>
-                                  Vai trò: {mem.role.toUpperCase()} · ⭐ {mem.reputationPoints} điểm uy tín
-                                  {mem.badges.length > 0 ? ` · 🏅 ${mem.badges.join(', ')}` : ''}
-                                </Text>
-                              </Pressable>
+                                <Pressable
+                                  onPress={() =>
+                                    router.push({
+                                      pathname: '/user/[userId]',
+                                      params: { userId: mem.userId },
+                                    })
+                                  }
+                                  style={{ flex: 1, minWidth: 0 }}
+                                >
+                                  <Text
+                                    style={{
+                                      fontSize: 13.5,
+                                      fontWeight: '800',
+                                      color: palette.ink,
+                                    }}
+                                  >
+                                    {idx + 1}. {mem.displayName}
+                                  </Text>
+                                  <Text style={{ fontSize: 11.5, color: palette.inkMuted }}>
+                                    Vai trò: {mem.role} · {mem.reputationPoints} điểm đóng góp
+                                  </Text>
+                                </Pressable>
 
-                              {canManageRoles && mem.role !== 'owner' ? (
-                                <View style={{ flexDirection: 'row', gap: 4 }}>
-                                  {(['member', 'moderator', 'admin'] as CommunityRole[]).map(
-                                    (r) => (
-                                      <Pressable
-                                        key={r}
-                                        onPress={() => {
-                                          updateCommunityMemberRole(
-                                            selectedCommunity.id,
-                                            viewerName,
-                                            mem.userId,
-                                            r
-                                          );
-                                          notifyToast(`Đã cập nhật quyền ${mem.displayName} → ${r}`);
-                                        }}
-                                        style={[
-                                          styles.roleBtn,
-                                          {
-                                            backgroundColor:
-                                              mem.role === r ? palette.indigo : palette.paper,
-                                          },
-                                        ]}
-                                      >
-                                        <Text
-                                          style={{
-                                            fontSize: 10.5,
-                                            fontWeight: '800',
-                                            color: mem.role === r ? '#FFF' : palette.ink,
+                                {canManageRoles && mem.role !== 'owner' ? (
+                                  <View style={{ flexDirection: 'row', gap: 4 }}>
+                                    {(['member', 'moderator', 'admin'] as CommunityRole[]).map(
+                                      (r) => (
+                                        <Pressable
+                                          key={r}
+                                          onPress={() => {
+                                            updateCommunityMemberRole(
+                                              selectedCommunity.id,
+                                              viewerName,
+                                              mem.userId,
+                                              r
+                                            );
+                                            notifyToast(
+                                              `Đã cập nhật vai trò ${mem.displayName} → ${r}`
+                                            );
                                           }}
+                                          style={[
+                                            styles.roleBtn,
+                                            {
+                                              backgroundColor:
+                                                mem.role === r ? palette.indigo : palette.paper,
+                                            },
+                                          ]}
                                         >
-                                          {r}
-                                        </Text>
-                                      </Pressable>
-                                    )
-                                  )}
-                                </View>
-                              ) : null}
-                            </View>
-                          );
-                        })}
+                                          <Text
+                                            style={{
+                                              fontSize: 10.5,
+                                              fontWeight: '700',
+                                              color:
+                                                mem.role === r ? palette.onPrimary : palette.ink,
+                                            }}
+                                          >
+                                            {r}
+                                          </Text>
+                                        </Pressable>
+                                      )
+                                    )}
+                                  </View>
+                                ) : null}
+                              </View>
+                            );
+                          })
+                      )}
                     </Card>
                   ) : null}
 
                   {communitySubTab === 'moderation' ? (
                     <Card style={{ gap: 10 }}>
                       <Text style={[typography.title, { color: palette.ink }]}>
-                        📜 Nội Quy Cộng Đồng
+                        Nội quy nhóm
                       </Text>
                       {selectedCommunity.rules.map((rule, i) => (
                         <Text key={i} style={{ fontSize: 12.5, color: palette.ink }}>
@@ -1486,7 +1618,7 @@ export default function CommunityScreen() {
                       ))}
 
                       <Text style={[typography.title, { color: palette.ink, marginTop: 8 }]}>
-                        ⏳ Hàng Đợi Duyệt Bài Viết
+                        Bài viết chờ duyệt
                       </Text>
                       {socialPosts
                         .filter(
@@ -1499,14 +1631,22 @@ export default function CommunityScreen() {
                             key={pending.id}
                             style={[
                               styles.memberRow,
-                              { borderColor: palette.indigoBorder, backgroundColor: palette.paperRaised },
+                              {
+                                borderColor: palette.indigoBorder,
+                                backgroundColor: palette.paperRaised,
+                              },
                             ]}
                           >
                             <View style={{ flex: 1, minWidth: 0 }}>
-                              <Text style={{ fontSize: 13, fontWeight: '800', color: palette.ink }}>
+                              <Text
+                                style={{ fontSize: 13, fontWeight: '800', color: palette.ink }}
+                              >
                                 {pending.authorName}
                               </Text>
-                              <Text style={{ fontSize: 12, color: palette.inkMuted }} numberOfLines={2}>
+                              <Text
+                                style={{ fontSize: 12, color: palette.inkMuted }}
+                                numberOfLines={2}
+                              >
                                 {pending.threadParts[0]}
                               </Text>
                             </View>
@@ -1514,7 +1654,7 @@ export default function CommunityScreen() {
                               size="sm"
                               onPress={() => {
                                 approvePendingPost(pending.id, true);
-                                notifyToast('Đã duyệt xuất bản bài viết vào nhóm!');
+                                notifyToast('Đã duyệt bài viết.');
                               }}
                             >
                               Duyệt
@@ -1524,7 +1664,7 @@ export default function CommunityScreen() {
                               variant="danger"
                               onPress={() => {
                                 approvePendingPost(pending.id, false);
-                                notifyToast('Đã từ chối bài viết chờ duyệt.');
+                                notifyToast('Đã từ chối bài viết.');
                               }}
                             >
                               Từ chối
@@ -1539,11 +1679,10 @@ export default function CommunityScreen() {
           ) : null}
 
           {/* ===================================================================== */}
-          {/* MODULE 3: SEPARATED ACADEMIC/POST DISCOVERY VS USER PROFILE SEARCH    */}
+          {/* MODULE 3: REAL-TIME SEARCH ENGINE + USER DISCOVERY                    */}
           {/* ===================================================================== */}
           {hubSection === 'discover' ? (
             <View style={{ gap: spacing.md }}>
-              {/* Explicit Separation per Section 7.5: Document/Post Search vs User Search */}
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 <Pressable
                   onPress={() => setDiscoverSubTab('documents_and_posts')}
@@ -1561,14 +1700,27 @@ export default function CommunityScreen() {
                     },
                   ]}
                 >
+                  <Ionicons
+                    name="globe-outline"
+                    size={15}
+                    color={
+                      discoverSubTab === 'documents_and_posts'
+                        ? palette.onPrimary
+                        : palette.indigo
+                    }
+                  />
                   <Text
                     style={{
                       fontSize: 12.5,
                       fontWeight: '800',
-                      color: discoverSubTab === 'documents_and_posts' ? '#FFF' : palette.ink,
+                      color:
+                        discoverSubTab === 'documents_and_posts'
+                          ? palette.onPrimary
+                          : palette.ink,
                     }}
+                    numberOfLines={1}
                   >
-                    📚 Tra cứu Tài liệu · Bài viết · Tin tức
+                    Tra cứu & Tin tức
                   </Text>
                 </Pressable>
 
@@ -1584,43 +1736,105 @@ export default function CommunityScreen() {
                     },
                   ]}
                 >
+                  <Ionicons
+                    name="person-add-outline"
+                    size={15}
+                    color={discoverSubTab === 'users' ? palette.onPrimary : palette.indigo}
+                  />
                   <Text
                     style={{
                       fontSize: 12.5,
                       fontWeight: '800',
-                      color: discoverSubTab === 'users' ? '#FFF' : palette.ink,
+                      color: discoverSubTab === 'users' ? palette.onPrimary : palette.ink,
                     }}
+                    numberOfLines={1}
                   >
-                    👥 Tìm Người Dùng & Bạn Bè
+                    Tìm bạn bè
                   </Text>
                 </Pressable>
               </View>
 
               {discoverSubTab === 'users' ? (
                 <FriendsDiscoveryHub
-                  onOpenDirectChat={(scholar) =>
+                  onOpenDirectChat={(scholar) => {
+                    if (!requireSignedIn('nhắn tin trực tiếp')) return;
                     router.push({
                       pathname: '/messages',
                       params: { peerId: scholar.id, peerName: scholar.name },
-                    })
-                  }
+                    });
+                  }}
                 />
               ) : (
                 <View style={{ gap: spacing.md }}>
+                  {/* Real-Time Multi-Source Search Engine Header Card */}
                   <Card style={{ gap: 10 }}>
-                    <Text style={[typography.title, { color: palette.ink }]}>
-                      🔎 Tra Cứu Học Thuật, Chuỗi Bài Viết & Hashtag (Hỗ trợ có dấu / không dấu)
-                    </Text>
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        flexWrap: 'wrap',
+                        gap: 8,
+                      }}
+                    >
+                      <View style={{ flex: 1, minWidth: 200, gap: 2 }}>
+                        <Text style={[typography.title, { color: palette.ink }]}>
+                          Tra cứu kiến thức & nguồn tin thời gian thực
+                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <View
+                            style={{
+                              width: 8,
+                              height: 8,
+                              borderRadius: 4,
+                              backgroundColor: palette.mint,
+                            }}
+                          />
+                          <Text style={{ fontSize: 11.5, color: palette.inkMuted }}>
+                            Trực tiếp · Google News · Wikipedia · OpenAlex · Hacker News ({lastSyncedAt})
+                          </Text>
+                        </View>
+                      </View>
+
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="Đặt lại công cụ tìm kiếm"
+                        onPress={handleResetSearchEngine}
+                        style={[
+                          styles.resetEngineBtn,
+                          {
+                            backgroundColor: palette.paperRaised,
+                            borderColor: palette.indigoBorder,
+                          },
+                        ]}
+                      >
+                        <Ionicons name="refresh-outline" size={14} color={palette.indigo} />
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: palette.indigo }}>
+                          Đặt lại
+                        </Text>
+                      </Pressable>
+                    </View>
+
                     <View style={{ flexDirection: 'row', gap: 8 }}>
                       <TextInput
                         value={docSearchQuery}
-                        onChangeText={setDocSearchQuery}
+                        onChangeText={(val) => {
+                          setDocSearchQuery(val);
+                          if (val.trim().length < 2) {
+                            searchAbortRef.current?.abort();
+                            searchSeqRef.current += 1;
+                            setSearchingDocs(false);
+                            setHasCompletedSearch(false);
+                            setLiveWikiResults([]);
+                          }
+                        }}
                         onSubmitEditing={() => {
                           if (docSearchQuery.trim()) {
                             recordSearchQuery(viewerId, docSearchQuery.trim());
+                            void executeLiveSearch(docSearchQuery);
                           }
                         }}
-                        placeholder="Nhập khái niệm, bài viết, #hashtag, môn học (vd: deadlock, luong tu, lich su)..."
+                        placeholder="Nhập chủ đề, khái niệm, tin tức hoặc từ khóa..."
                         placeholderTextColor={palette.inkMuted}
                         style={[
                           styles.aiInput,
@@ -1631,18 +1845,58 @@ export default function CommunityScreen() {
                           },
                         ]}
                       />
-                      {docSearchQuery.length > 0 ? (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onPress={() => setDocSearchQuery('')}
-                        >
-                          Xóa
-                        </Button>
-                      ) : null}
+                      <Button
+                        size="sm"
+                        disabled={docSearchQuery.trim().length < 2 || searchingDocs}
+                        onPress={() => {
+                          recordSearchQuery(viewerId, docSearchQuery.trim());
+                          void executeLiveSearch(docSearchQuery);
+                        }}
+                      >
+                        {searchingDocs ? 'Đang tìm...' : 'Tìm'}
+                      </Button>
                     </View>
 
-                    {/* Recent Searches */}
+                    {/* Quick Real-Time Topic Chips */}
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={{ gap: 6 }}
+                    >
+                      {QUICK_SEARCH_TOPICS.map((topic) => {
+                        const active = docSearchQuery.trim().toLowerCase() === topic.toLowerCase();
+                        return (
+                          <Pressable
+                            key={topic}
+                            onPress={() => {
+                              setDocSearchQuery(topic);
+                              recordSearchQuery(viewerId, topic);
+                              void executeLiveSearch(topic);
+                            }}
+                            style={[
+                              styles.topicChip,
+                              {
+                                backgroundColor: active
+                                  ? palette.indigo
+                                  : palette.paperRaised,
+                                borderColor: active ? palette.indigo : palette.paperMuted,
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={{
+                                fontSize: 11.5,
+                                fontWeight: '700',
+                                color: active ? palette.onPrimary : palette.ink,
+                              }}
+                            >
+                              {topic}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
+
                     {(mySlice?.recentSearchQueries.length ?? 0) > 0 ? (
                       <View
                         style={{
@@ -1652,20 +1906,25 @@ export default function CommunityScreen() {
                           gap: 6,
                         }}
                       >
-                        <Text style={{ fontSize: 11.5, color: palette.inkMuted, fontWeight: '700' }}>
-                          Tìm gần đây:
+                        <Text
+                          style={{ fontSize: 11.5, color: palette.inkMuted, fontWeight: '700' }}
+                        >
+                          Gần đây:
                         </Text>
                         {mySlice!.recentSearchQueries.map((q) => (
                           <Pressable
                             key={q}
-                            onPress={() => setDocSearchQuery(q)}
+                            onPress={() => {
+                              setDocSearchQuery(q);
+                              void executeLiveSearch(q);
+                            }}
                             style={[styles.utilChip, { backgroundColor: palette.paperRaised }]}
                           >
                             <Text style={{ fontSize: 11.5, color: palette.ink }}>{q}</Text>
                           </Pressable>
                         ))}
                         <Pressable onPress={() => clearSearchHistory(viewerId)}>
-                          <Text style={{ fontSize: 11, fontWeight: '800', color: palette.danger }}>
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: palette.danger }}>
                             Xóa lịch sử
                           </Text>
                         </Pressable>
@@ -1677,9 +1936,9 @@ export default function CommunityScreen() {
                   {matchedSocialPosts.length > 0 ? (
                     <View style={{ gap: 8 }}>
                       <Text style={[typography.title, { color: palette.ink }]}>
-                        🧵 Chuỗi bài viết liên quan ({matchedSocialPosts.length})
+                        Bài viết trong cộng đồng ({matchedSocialPosts.length})
                       </Text>
-                      {matchedSocialPosts.map((p) => renderPostCard(p, 'Kết quả tìm kiếm'))}
+                      {matchedSocialPosts.map((p) => renderPostCard(p))}
                     </View>
                   ) : null}
 
@@ -1687,7 +1946,7 @@ export default function CommunityScreen() {
                   {matchedQuestionSets.length > 0 ? (
                     <Card style={{ gap: 8 }}>
                       <Text style={[typography.title, { color: palette.ink }]}>
-                        📘 Bộ Đề Học Tập Trong Thư Viện ({matchedQuestionSets.length})
+                        Bộ đề trong thư viện ({matchedQuestionSets.length})
                       </Text>
                       {matchedQuestionSets.map((qs) => (
                         <Pressable
@@ -1697,11 +1956,16 @@ export default function CommunityScreen() {
                           }
                           style={[
                             styles.memberRow,
-                            { borderColor: palette.paperMuted, backgroundColor: palette.paperRaised },
+                            {
+                              borderColor: palette.paperMuted,
+                              backgroundColor: palette.paperRaised,
+                            },
                           ]}
                         >
                           <View style={{ flex: 1, minWidth: 0 }}>
-                            <Text style={{ fontSize: 13.5, fontWeight: '800', color: palette.ink }}>
+                            <Text
+                              style={{ fontSize: 13.5, fontWeight: '800', color: palette.ink }}
+                            >
                               {qs.title}
                             </Text>
                             <Text style={{ fontSize: 11.5, color: palette.inkMuted }}>
@@ -1714,69 +1978,195 @@ export default function CommunityScreen() {
                     </Card>
                   ) : null}
 
-                  {/* Live Academic Articles & Daily Knowledge Feed */}
+                  {/* Live Articles & Daily Knowledge Cards with Real Photo Thumbnails + Smooth Zero-Jitter Streaming */}
                   <View style={{ gap: 10 }}>
-                    <Text style={[typography.title, { color: palette.ink }]}>
-                      {docSearchQuery.trim().length >= 2
-                        ? `🌐 Tư Liệu Học Thuật Trực Tuyến (${searchingDocs ? 'Đang tìm...' : liveWikiResults.length})`
-                        : '📰 Điểm Tin Tri Thức & Xu Hướng Hôm Nay'}
-                    </Text>
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        flexWrap: 'wrap',
+                        gap: 6,
+                      }}
+                    >
+                      <Text style={[typography.title, { color: palette.ink }]}>
+                        {docSearchQuery.trim().length >= 2
+                          ? `Kết quả cho "${docSearchQuery.trim()}" (${liveWikiResults.length})`
+                          : 'Tin tức & học liệu mới nhất hôm nay'}
+                      </Text>
+                      {searchingDocs ? (
+                        <Badge tone="primary">Đang cập nhật trực tiếp…</Badge>
+                      ) : null}
+                    </View>
 
-                    {loadingDaily && docSearchQuery.trim().length < 2 ? (
+                    {loadingDaily && dailyFeed.length === 0 && liveWikiResults.length === 0 ? (
                       <PapyrusPageSkeleton />
+                    ) : docSearchQuery.trim().length >= 2 &&
+                      !searchingDocs &&
+                      hasCompletedSearch &&
+                      liveWikiResults.length === 0 ? (
+                      <Card style={{ alignItems: 'center', gap: 8, paddingVertical: spacing.lg }}>
+                        <Ionicons name="search-outline" size={26} color={palette.indigo} />
+                        <Text style={[typography.title, { color: palette.ink, textAlign: 'center' }]}>
+                          Chưa tìm thấy bài báo khớp từ khóa &ldquo;{docSearchQuery.trim()}&rdquo;
+                        </Text>
+                        <Text style={[typography.caption, { color: palette.inkMuted, textAlign: 'center' }]}>
+                          Thử rút gọn từ khóa hoặc bấm Đặt lại để xem tin tức mới nhất hôm nay.
+                        </Text>
+                      </Card>
                     ) : (
-                      (docSearchQuery.trim().length >= 2 ? liveWikiResults : dailyFeed).map(
-                        (art) => (
-                          <Card key={art.id} style={{ gap: 8 }}>
-                            <View
-                              style={{
-                                flexDirection: 'row',
-                                justifyContent: 'space-between',
-                                alignItems: 'center',
+                      (docSearchQuery.trim().length >= 2
+                        ? liveWikiResults.length > 0
+                          ? liveWikiResults
+                          : dailyFeed
+                        : dailyFeed
+                      ).map((art) => {
+                        const fallbackPhoto = pickEditorialPhotoFallback(
+                          art.id,
+                          art.title,
+                          art.category,
+                          docSearchQuery
+                        );
+                        const resolvedThumb =
+                          !brokenThumbs[art.id] &&
+                          art.thumbnailUrl &&
+                          !art.thumbnailUrl.startsWith('data:image/svg+xml')
+                            ? art.thumbnailUrl
+                            : fallbackPhoto;
+                        return (
+                          <Card key={art.id} style={{ gap: 10 }}>
+                            <Image
+                              source={{ uri: resolvedThumb }}
+                              onError={() => {
+                                if (!brokenThumbs[art.id]) {
+                                  setBrokenThumbs((prev) => ({ ...prev, [art.id]: true }));
+                                }
                               }}
-                            >
-                              <Badge tone="primary">{art.category}</Badge>
-                              <Text style={{ fontSize: 11, color: palette.inkMuted }}>
-                                {art.source}
-                              </Text>
-                            </View>
-                            <Text style={{ fontSize: 15, fontWeight: '900', color: palette.ink }}>
-                              {art.title}
-                            </Text>
-                            <Text style={{ fontSize: 13, lineHeight: 20, color: palette.ink }}>
-                              {art.summary}
-                            </Text>
-                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                onPress={() => {
-                                  const cleanSentence = extractCompleteSentences(
-                                    `${art.title}: ${art.summary}`,
-                                    210
-                                  );
-                                  setStoryDraft({
-                                    text: cleanSentence,
-                                    subtext: `#${art.category.replace(/\s+/g, '')} · ${art.source}`,
-                                    imageUri: art.thumbnailUrl || null,
-                                  });
-                                  setStoryComposerOpen(true);
+                              style={[
+                                styles.newsThumb,
+                                { backgroundColor: palette.paperMuted },
+                              ]}
+                              resizeMode="cover"
+                            />
+
+                              <View
+                                style={{
+                                  flexDirection: 'row',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                  flexWrap: 'wrap',
+                                  gap: 6,
                                 }}
                               >
-                                ✨ Chia sẻ lên Story 24h
-                              </Button>
-                              {art.url ? (
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                  <Badge tone="primary">{art.source}</Badge>
+                                  <Text
+                                    style={{
+                                      fontSize: 11.5,
+                                      fontWeight: '700',
+                                      color: palette.indigo,
+                                    }}
+                                  >
+                                    {art.category}
+                                  </Text>
+                                </View>
+                                <Text style={{ fontSize: 11, color: palette.inkMuted }}>
+                                  {art.publishedLabel}
+                                </Text>
+                              </View>
+
+                              <Text
+                                style={{
+                                  fontSize: 15.5,
+                                  lineHeight: 22,
+                                  fontWeight: '800',
+                                  color: palette.ink,
+                                }}
+                              >
+                                {art.title}
+                              </Text>
+                              <Text
+                                style={{ fontSize: 13.5, lineHeight: 20, color: palette.ink }}
+                              >
+                                {art.summary}
+                              </Text>
+
+                              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                                <Button
+                                  size="sm"
+                                  icon="sparkles-outline"
+                                  onPress={() => {
+                                    saveSourceDocument(buildSourceDocFromArticle(art));
+                                    router.push('/create/generate');
+                                  }}
+                                >
+                                  Tạo đề AI
+                                </Button>
+
                                 <Button
                                   size="sm"
                                   variant="secondary"
-                                  onPress={() => void Linking.openURL(art.url)}
+                                  icon="document-text-outline"
+                                  onPress={() => {
+                                    saveSourceDocument(buildSourceDocFromArticle(art));
+                                    notifyToast(
+                                      `Đã lưu "${art.title.slice(0, 36)}..." làm tài liệu nguồn.`
+                                    );
+                                  }}
                                 >
-                                  Đọc nguồn gốc ↗
+                                  Lưu tài liệu
                                 </Button>
-                              ) : null}
-                            </View>
-                          </Card>
-                        )
+
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  onPress={() => {
+                                    if (!requireSignedIn('đăng tin 24 giờ')) return;
+                                    const cleanSentence = extractCompleteSentences(
+                                      `${art.title}: ${art.summary}`,
+                                      210
+                                    );
+                                    setStoryDraft({
+                                      text: cleanSentence,
+                                      subtext: `${art.category} · ${art.source}`,
+                                      imageUri: art.thumbnailUrl || null,
+                                    });
+                                    setStoryComposerOpen(true);
+                                  }}
+                                >
+                                  Đăng tin 24h
+                                </Button>
+
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  onPress={() => {
+                                    if (!requireSignedIn('chia sẻ bài viết')) return;
+                                    setQuotedPost(null);
+                                    setComposerPrefill({
+                                      text: `${art.title}\n\n${art.summary}\n\nNguồn: ${art.url}`,
+                                      topics: art.category,
+                                      communityId: null,
+                                    });
+                                    setComposerOpen(true);
+                                  }}
+                                >
+                                  Đăng bài
+                                </Button>
+
+                                {art.url ? (
+                                  <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    onPress={() => void Linking.openURL(art.url)}
+                                  >
+                                    Đọc nguồn ↗
+                                  </Button>
+                                ) : null}
+                              </View>
+                            </Card>
+                          );
+                        }
                       )
                     )}
                   </View>
@@ -1784,18 +2174,20 @@ export default function CommunityScreen() {
               )}
             </View>
           ) : null}
-        </ScrollView>
+        </View>
       </View>
 
       {/* ===================================================================== */}
-      {/* MODALS: STORIES, ADVANCED THREAD COMPOSER, YOUR ALGO, BOOKMARKS, ETC. */}
+      {/* MODALS                                                                */}
       {/* ===================================================================== */}
       <StoryViewerModal
-        story={activeStory}
+        stories={activeStoryGroup}
         viewerId={viewerId}
-        onClose={() => setActiveStory(null)}
+        onClose={() => setActiveStoryGroup(null)}
+        onMarkViewed={(sid) => markStoryViewed(sid, viewerId)}
         onReact={(sid, emo) => reactToStory(sid, emo, viewerId)}
-        onDirectMessage={(author) =>
+        onDirectMessage={(author) => {
+          if (!requireSignedIn('nhắn tin trực tiếp')) return;
           router.push({
             pathname: '/messages',
             params: {
@@ -1803,8 +2195,8 @@ export default function CommunityScreen() {
               peerName: author.name,
               ...(author.replyText ? { initialText: author.replyText } : {}),
             },
-          })
-        }
+          });
+        }}
       />
 
       <StoryComposerModal
@@ -1812,7 +2204,8 @@ export default function CommunityScreen() {
         initialDraft={storyDraft}
         onClose={() => setStoryComposerOpen(false)}
         onPublish={(data) => {
-          addStory({
+          if (!requireSignedIn('đăng tin 24 giờ')) return;
+          const created = addStory({
             authorId: viewerId,
             authorName: viewerName,
             authorAvatar: viewerAvatar,
@@ -1827,9 +2220,11 @@ export default function CommunityScreen() {
             thumbnailUri: data.thumbnailUri ?? data.imageUri,
             durationSec: data.durationSec,
             isHighlight: data.isHighlight,
+            pinnedOnProfile: data.pinnedOnProfile,
           });
+          if (!created) return;
           addBonusXp(20);
-          notifyToast('✨ Đã đăng Tin Story 24h thành công!');
+          notifyToast('Đã đăng tin 24 giờ.');
         }}
       />
 
@@ -1839,15 +2234,20 @@ export default function CommunityScreen() {
         viewerName={viewerName}
         savedDraft={mySlice?.draft ?? null}
         quotedPost={quotedPost}
+        initialPrefill={composerPrefill}
         communities={communities}
         knownUsers={Object.values(profilesById)}
         questionSets={allSets}
-        onSaveDraft={(draft) => saveComposerDraft(viewerId, draft)}
+        onSaveDraft={(draft) => {
+          if (!isGuest) saveComposerDraft(viewerId, draft);
+        }}
         onClose={() => {
           setComposerOpen(false);
           setQuotedPost(null);
+          setComposerPrefill(null);
         }}
         onPublish={(payload) => {
+          if (!requireSignedIn('đăng bài viết')) return;
           const created = createSocialPost({
             authorId: viewerId,
             authorName: viewerName,
@@ -1875,21 +2275,23 @@ export default function CommunityScreen() {
             scheduledFor: payload.scheduledFor,
             ghostHours: payload.postKind === 'ghost' ? 24 : undefined,
           });
+          if (!created) return;
           addBonusXp(15);
           setQuotedPost(null);
+          setComposerPrefill(null);
           notifyToast(
             created.lifecycleStatus === 'scheduled'
-              ? '⏰ Đã lên lịch xuất bản bài viết tự động!'
+              ? 'Đã lên lịch đăng bài tự động.'
               : created.lifecycleStatus === 'pending_approval'
-              ? '⏳ Bài viết đã vào hàng đợi Quản trị viên nhóm duyệt!'
+              ? 'Bài viết đã gửi chờ quản trị viên nhóm duyệt.'
               : created.postKind === 'ghost'
-              ? '👻 Đã đăng Ghost Post (tự động hết hạn sau 24 giờ)!'
-              : '🚀 Đã xuất bản chuỗi Thread thành công!'
+              ? 'Đã đăng bài tự hủy sau 24 giờ.'
+              : 'Đã đăng bài viết mới.'
           );
         }}
       />
 
-      {/* Your Algo & Custom Feeds Controller Modal (Section 7.2 & 7.3) */}
+      {/* Feed Preferences & Custom Feeds Modal */}
       {algoModalOpen ? (
         <Modal
           visible
@@ -1901,7 +2303,7 @@ export default function CommunityScreen() {
             <Card style={[styles.sheetCard, { backgroundColor: palette.paper }]}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                 <Text style={[typography.title, { color: palette.ink }]}>
-                  ⚙️ Điều Khiển Thuật Toán (Your Algo) & Custom Feeds
+                  Tùy chỉnh bảng tin
                 </Text>
                 <Pressable onPress={() => setAlgoModalOpen(false)}>
                   <Ionicons name="close" size={22} color={palette.inkMuted} />
@@ -1920,20 +2322,20 @@ export default function CommunityScreen() {
                     size={20}
                     color={palette.indigo}
                   />
-                  <Text style={{ fontSize: 13, fontWeight: '800', color: palette.ink, flex: 1 }}>
-                    🧠 Luôn bật Chế độ Tri thức (Ưu tiên bài học thuật, code, quiz & phân tích sâu)
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: palette.ink, flex: 1 }}>
+                    Ưu tiên bài viết học thuật, mã nguồn và bộ đề ôn tập
                   </Text>
                 </Pressable>
 
                 <View style={{ gap: 6 }}>
                   <Text style={{ fontSize: 12, fontWeight: '800', color: palette.ink }}>
-                    🔇 Từ khóa tắt tiếng (Muted Keywords):
+                    Từ khóa muốn ẩn
                   </Text>
                   <View style={{ flexDirection: 'row', gap: 6 }}>
                     <TextInput
                       value={newMutedKeyword}
                       onChangeText={setNewMutedKeyword}
-                      placeholder="Nhập từ khóa muốn ẩn khỏi Bảng tin..."
+                      placeholder="Nhập từ khóa cần ẩn..."
                       placeholderTextColor={palette.inkMuted}
                       style={[
                         styles.aiInput,
@@ -1980,12 +2382,12 @@ export default function CommunityScreen() {
 
                 <View style={{ gap: 6 }}>
                   <Text style={{ fontSize: 12, fontWeight: '800', color: palette.ink }}>
-                    📌 Tạo Bảng Tin Tùy Chỉnh (Custom Feed):
+                    Tạo bảng tin theo chủ đề riêng
                   </Text>
                   <TextInput
                     value={newCustomFeedName}
                     onChangeText={setNewCustomFeedName}
-                    placeholder="Tên Custom Feed (vd: Ôn Thi AI & Toán Rời Rạc)..."
+                    placeholder="Tên bảng tin..."
                     placeholderTextColor={palette.inkMuted}
                     style={[
                       styles.aiInput,
@@ -1999,7 +2401,7 @@ export default function CommunityScreen() {
                   <TextInput
                     value={newCustomFeedTopics}
                     onChangeText={setNewCustomFeedTopics}
-                    placeholder="Chủ đề cách nhau bởi dấu phẩy (vd: CNTT, AI, ToánLýHóa)..."
+                    placeholder="Các chủ đề cách nhau bằng dấu phẩy..."
                     placeholderTextColor={palette.inkMuted}
                     style={[
                       styles.aiInput,
@@ -2026,10 +2428,11 @@ export default function CommunityScreen() {
                         isPublic: true,
                       });
                       setNewCustomFeedName('');
-                      notifyToast('📌 Đã ghim Custom Feed mới lên thanh Bảng tin!');
+                      setNewCustomFeedTopics('');
+                      notifyToast('Đã thêm bảng tin tùy chỉnh.');
                     }}
                   >
-                    + Lưu & Ghim Custom Feed
+                    Lưu bảng tin
                   </Button>
 
                   {(mySlice?.customFeeds ?? []).map((cf) => (
@@ -2040,7 +2443,9 @@ export default function CommunityScreen() {
                         { borderColor: palette.paperMuted, backgroundColor: palette.paperRaised },
                       ]}
                     >
-                      <Text style={{ fontSize: 12.5, fontWeight: '800', color: palette.ink, flex: 1 }}>
+                      <Text
+                        style={{ fontSize: 12.5, fontWeight: '800', color: palette.ink, flex: 1 }}
+                      >
                         {cf.name} ({cf.topics.join(', ')})
                       </Text>
                       <Pressable onPress={() => deleteCustomFeed(viewerId, cf.id)}>
@@ -2056,7 +2461,7 @@ export default function CommunityScreen() {
                   variant="secondary"
                   onPress={() => {
                     resetYourAlgo(viewerId);
-                    notifyToast('Đã khôi phục mặc định cho Your Algo!');
+                    notifyToast('Đã khôi phục mặc định.');
                   }}
                 >
                   Đặt lại mặc định
@@ -2068,7 +2473,7 @@ export default function CommunityScreen() {
         </Modal>
       ) : null}
 
-      {/* Saved Bookmarks, Smart Collections, Favourites & Scheduled/Archived Drawer */}
+      {/* Saved Bookmarks, Favourites & Scheduled/Archived Drawer */}
       {bookmarksDrawerOpen ? (
         <Modal
           visible
@@ -2080,25 +2485,25 @@ export default function CommunityScreen() {
             <Card style={[styles.sheetCard, { backgroundColor: palette.paper }]}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                 <Text style={[typography.title, { color: palette.ink }]}>
-                  🔖 Kho Lưu Trữ Cá Nhân (Riêng tư)
+                  Kho lưu trữ cá nhân
                 </Text>
                 <Pressable onPress={() => setBookmarksDrawerOpen(false)}>
                   <Ionicons name="close" size={22} color={palette.inkMuted} />
                 </Pressable>
               </View>
 
-              <View style={{ flexDirection: 'row', gap: 6 }}>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                 {(
                   [
                     {
                       id: 'bookmarks',
-                      label: `🔖 Bookmark (${mySlice?.bookmarkedPostIds.length ?? 0})`,
+                      label: `Đã lưu (${mySlice?.bookmarkedPostIds.length ?? 0})`,
                     },
                     {
                       id: 'favourites',
-                      label: `⭐ Yêu thích (${mySlice?.favouritePostIds.length ?? 0})`,
+                      label: `Yêu thích (${mySlice?.favouritePostIds.length ?? 0})`,
                     },
-                    { id: 'scheduled', label: '⏰ Hẹn giờ & Lưu trữ' },
+                    { id: 'scheduled', label: 'Hẹn giờ & Lưu trữ' },
                   ] as const
                 ).map((t) => (
                   <Pressable
@@ -2116,8 +2521,8 @@ export default function CommunityScreen() {
                     <Text
                       style={{
                         fontSize: 11.5,
-                        fontWeight: '800',
-                        color: bookmarkTab === t.id ? '#FFF' : palette.ink,
+                        fontWeight: '700',
+                        color: bookmarkTab === t.id ? palette.onPrimary : palette.ink,
                       }}
                     >
                       {t.label}
@@ -2131,7 +2536,7 @@ export default function CommunityScreen() {
                   <TextInput
                     value={newColName}
                     onChangeText={setNewColName}
-                    placeholder="Tạo thư mục sưu tập mới (vd: Giải Tích 2)..."
+                    placeholder="Tên thư mục sưu tập mới..."
                     placeholderTextColor={palette.inkMuted}
                     style={[
                       styles.aiInput,
@@ -2150,7 +2555,7 @@ export default function CommunityScreen() {
                       setNewColName('');
                     }}
                   >
-                    + Thư mục
+                    Thêm
                   </Button>
                 </View>
               ) : null}
@@ -2175,7 +2580,10 @@ export default function CommunityScreen() {
                           <Text style={{ fontSize: 13, fontWeight: '800', color: palette.ink }}>
                             {p.authorName}
                           </Text>
-                          <Text style={{ fontSize: 12, color: palette.inkMuted }} numberOfLines={2}>
+                          <Text
+                            style={{ fontSize: 12, color: palette.inkMuted }}
+                            numberOfLines={2}
+                          >
                             {p.threadParts[0]}
                           </Text>
                         </View>
@@ -2200,9 +2608,12 @@ export default function CommunityScreen() {
                       >
                         <View style={{ flex: 1, minWidth: 0 }}>
                           <Text style={{ fontSize: 13, fontWeight: '800', color: palette.ink }}>
-                            ⭐ {p.authorName}
+                            {p.authorName}
                           </Text>
-                          <Text style={{ fontSize: 12, color: palette.inkMuted }} numberOfLines={2}>
+                          <Text
+                            style={{ fontSize: 12, color: palette.inkMuted }}
+                            numberOfLines={2}
+                          >
                             {p.threadParts[0]}
                           </Text>
                         </View>
@@ -2228,8 +2639,8 @@ export default function CommunityScreen() {
                         <View style={{ flex: 1, minWidth: 0 }}>
                           <Badge tone="primary">
                             {p.lifecycleStatus === 'scheduled'
-                              ? `⏰ Hẹn giờ: ${p.scheduledFor}`
-                              : '🗄️ Đã lưu trữ'}
+                              ? `Hẹn giờ: ${p.scheduledFor}`
+                              : 'Đã lưu trữ'}
                           </Badge>
                           <Text
                             style={{ fontSize: 12.5, color: palette.ink, marginTop: 4 }}
@@ -2242,7 +2653,7 @@ export default function CommunityScreen() {
                           size="sm"
                           onPress={() => {
                             deleteOrArchivePost(p.id, viewerId, 'restore');
-                            notifyToast('Đã khôi phục bài viết lên Bảng tin!');
+                            notifyToast('Đã khôi phục bài viết lên bảng tin.');
                           }}
                         >
                           Đăng ngay
@@ -2265,13 +2676,11 @@ export default function CommunityScreen() {
         >
           <View style={styles.modalBackdrop}>
             <Card style={[styles.sheetCard, { backgroundColor: palette.paper }]}>
-              <Text style={[typography.title, { color: palette.ink }]}>
-                🏛️ Tạo Nhóm / Cộng Đồng Mới
-              </Text>
+              <Text style={[typography.title, { color: palette.ink }]}>Tạo nhóm mới</Text>
               <TextInput
                 value={commName}
                 onChangeText={setCommName}
-                placeholder="Tên Cộng đồng..."
+                placeholder="Tên nhóm..."
                 placeholderTextColor={palette.inkMuted}
                 style={[
                   styles.aiInput,
@@ -2285,7 +2694,7 @@ export default function CommunityScreen() {
               <TextInput
                 value={commDesc}
                 onChangeText={setCommDesc}
-                placeholder="Mô tả mục tiêu & chủ đề thảo luận..."
+                placeholder="Mô tả chủ đề thảo luận..."
                 placeholderTextColor={palette.inkMuted}
                 multiline
                 style={[
@@ -2301,7 +2710,7 @@ export default function CommunityScreen() {
               <TextInput
                 value={commTopics}
                 onChangeText={setCommTopics}
-                placeholder="Chủ đề (vd: CNTT, AI, ÔnThi)..."
+                placeholder="Các chủ đề (cách nhau bằng dấu phẩy)..."
                 placeholderTextColor={palette.inkMuted}
                 style={[
                   styles.aiInput,
@@ -2315,9 +2724,9 @@ export default function CommunityScreen() {
               <View style={{ flexDirection: 'row', gap: 6 }}>
                 {(
                   [
-                    { id: 'public', label: '🌍 Công khai' },
-                    { id: 'private', label: '🔒 Riêng tư' },
-                    { id: 'hidden', label: '🕵️ Nhóm Ẩn' },
+                    { id: 'public', label: 'Công khai' },
+                    { id: 'private', label: 'Riêng tư' },
+                    { id: 'hidden', label: 'Nhóm ẩn' },
                   ] as const
                 ).map((v) => (
                   <Pressable
@@ -2336,8 +2745,8 @@ export default function CommunityScreen() {
                     <Text
                       style={{
                         fontSize: 11.5,
-                        fontWeight: '800',
-                        color: commVisibility === v.id ? '#FFF' : palette.ink,
+                        fontWeight: '700',
+                        color: commVisibility === v.id ? palette.onPrimary : palette.ink,
                       }}
                     >
                       {v.label}
@@ -2356,7 +2765,7 @@ export default function CommunityScreen() {
                   color={palette.indigo}
                 />
                 <Text style={{ fontSize: 12.5, fontWeight: '700', color: palette.ink }}>
-                  Yêu cầu Quản trị viên duyệt bài trước khi hiển thị
+                  Duyệt bài viết trước khi hiển thị
                 </Text>
               </Pressable>
 
@@ -2367,30 +2776,32 @@ export default function CommunityScreen() {
                 <Button
                   disabled={!commName.trim()}
                   onPress={() => {
+                    if (!requireSignedIn('tạo nhóm mới')) return;
                     const created = createCommunity({
                       ownerId: viewerId,
                       ownerName: viewerName,
                       name: commName.trim(),
-                      description: commDesc.trim() || 'Cộng đồng thảo luận học tập trên Papyrus.',
+                      description: commDesc.trim() || 'Nhóm thảo luận học tập trên Papyrus.',
                       visibility: commVisibility,
                       topics: commTopics
                         .split(',')
                         .map((t) => t.trim())
                         .filter(Boolean),
                       rules: [
-                        '1. Tôn trọng các thành viên và dẫn nguồn tài liệu rõ ràng.',
-                        '2. Không spam quảng cáo ngoài chủ đề học thuật.',
+                        '1. Tôn trọng các thành viên và dẫn nguồn rõ ràng.',
+                        '2. Không đăng nội dung rác.',
                       ],
                       requirePostApproval: commPostApproval,
                     });
+                    if (!created) return;
                     setCommName('');
                     setCommDesc('');
                     setCreateCommOpen(false);
                     setSelectedCommunityId(created.id);
-                    notifyToast(`🎉 Đã tạo Cộng đồng «${created.name}»!`);
+                    notifyToast(`Đã tạo nhóm ${created.name}.`);
                   }}
                 >
-                  Tạo Cộng đồng
+                  Tạo nhóm
                 </Button>
               </View>
             </Card>
@@ -2408,13 +2819,11 @@ export default function CommunityScreen() {
         >
           <View style={styles.modalBackdrop}>
             <Card style={[styles.sheetCard, { backgroundColor: palette.paper }]}>
-              <Text style={[typography.title, { color: palette.ink }]}>
-                📅 Tạo Sự Kiện Cộng Đồng
-              </Text>
+              <Text style={[typography.title, { color: palette.ink }]}>Tạo sự kiện nhóm</Text>
               <TextInput
                 value={eventTitle}
                 onChangeText={setEventTitle}
-                placeholder="Tên sự kiện (vd: Live Giải Đề Cuối Kỳ)..."
+                placeholder="Tên sự kiện..."
                 placeholderTextColor={palette.inkMuted}
                 style={[
                   styles.aiInput,
@@ -2442,7 +2851,7 @@ export default function CommunityScreen() {
               <TextInput
                 value={eventLocation}
                 onChangeText={setEventLocation}
-                placeholder="Địa điểm / Phòng Live..."
+                placeholder="Địa điểm hoặc liên kết phòng học..."
                 placeholderTextColor={palette.inkMuted}
                 style={[
                   styles.aiInput,
@@ -2460,7 +2869,8 @@ export default function CommunityScreen() {
                 <Button
                   disabled={!eventTitle.trim()}
                   onPress={() => {
-                    createCommunityEvent({
+                    if (!requireSignedIn('tạo sự kiện')) return;
+                    const ev = createCommunityEvent({
                       communityId: selectedCommunity.id,
                       creatorId: viewerId,
                       creatorName: viewerName,
@@ -2469,10 +2879,11 @@ export default function CommunityScreen() {
                       locationLabel: eventLocation.trim(),
                       startsAt: new Date(Date.now() + 86_400_000).toISOString(),
                     });
+                    if (!ev) return;
                     setEventTitle('');
                     setEventDesc('');
                     setCreateEventOpen(false);
-                    notifyToast('📅 Đã tạo sự kiện mới cho Cộng đồng!');
+                    notifyToast('Đã tạo sự kiện mới.');
                   }}
                 >
                   Đăng sự kiện
@@ -2539,11 +2950,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  algoCompactBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
   quickComposeCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2566,7 +2972,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingVertical: 6,
     borderRadius: radii.pill,
   },
   aiInput: {
@@ -2576,7 +2982,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: radii.sm,
     paddingHorizontal: 12,
-    fontSize: 12.5,
+    fontSize: 13,
   },
   modePill: {
     paddingHorizontal: 12,
@@ -2590,17 +2996,26 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     borderWidth: 1,
   },
+  resetEngineBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+  },
+  newsThumb: {
+    width: '100%',
+    height: 178,
+    borderRadius: radii.md,
+  },
   commIconBox: {
-    width: 48,
-    height: 48,
+    width: 46,
+    height: 46,
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  announceBox: {
-    padding: 10,
-    borderRadius: radii.sm,
-    borderWidth: 1,
   },
   memberRow: {
     flexDirection: 'row',
@@ -2617,7 +3032,7 @@ const styles = StyleSheet.create({
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(2, 6, 23, 0.75)',
+    backgroundColor: 'rgba(2, 6, 23, 0.72)',
     alignItems: 'center',
     justifyContent: 'center',
     padding: spacing.md,

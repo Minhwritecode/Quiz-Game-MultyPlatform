@@ -18,7 +18,63 @@ export interface ScholarStory {
   viewedByIds: string[];
   reactions: Record<string, string[]>;
   isHighlight?: boolean;
+  pinnedOnProfile?: boolean;
+  expiresAt?: string;
   createdAt: string;
+}
+
+export const STORY_TTL_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Strict 24-hour story status check: returns true ONLY if story is < 24h old.
+ */
+export function isStoryActive24h(story: ScholarStory, nowMs = Date.now()): boolean {
+  if (story.expiresAt) {
+    const exp = Date.parse(story.expiresAt);
+    if (Number.isFinite(exp)) return exp > nowMs;
+  }
+  const created = Date.parse(story.createdAt);
+  if (!Number.isFinite(created)) return false;
+  return nowMs - created < STORY_TTL_MS;
+}
+
+export interface GroupedStoryBox {
+  authorId: string;
+  authorName: string;
+  authorAvatar: string | null;
+  stories: ScholarStory[];
+  coverStory: ScholarStory;
+}
+
+/**
+ * Groups multiple stories of each user into ONE single Story Box (tap left/right inside box to flip).
+ */
+export function groupStoriesByAuthor(stories: ScholarStory[]): GroupedStoryBox[] {
+  const byAuthor = new Map<string, ScholarStory[]>();
+  for (const st of stories) {
+    const bucket = byAuthor.get(st.authorId);
+    if (bucket) bucket.push(st);
+    else byAuthor.set(st.authorId, [st]);
+  }
+  const groups: GroupedStoryBox[] = [];
+  for (const [authorId, list] of byAuthor.entries()) {
+    // Chronological order (oldest -> newest) inside box so tapping right flips forward naturally;
+    // cover preview displays the latest story posted in the box!
+    const chronological = [...list]
+      .reverse()
+      .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+    const latest = chronological[chronological.length - 1]!;
+    groups.push({
+      authorId,
+      authorName: latest.authorName,
+      authorAvatar: latest.authorAvatar,
+      stories: chronological,
+      coverStory: latest,
+    });
+  }
+  return groups.sort(
+    (a, b) => Date.parse(b.coverStory.createdAt) - Date.parse(a.coverStory.createdAt)
+  );
 }
 
 export interface ThreadComment {
@@ -273,42 +329,42 @@ export const STORY_GRADIENTS: Array<{ id: string; label: string; colors: [string
 export const DEFAULT_STUDY_GROUPS: StudyGroupChannel[] = [
   {
     id: 'grp-it-algo',
-    name: '💻 Hội Anh Em CNTT & Thuật Toán',
+    name: 'Hội CNTT & Thuật Toán',
     subtitle: 'Cấu trúc dữ liệu, OOP, Hệ điều hành, Mạng & AI',
     topic: 'CNTT',
     icon: 'code-slash',
     accentColor: '#6366F1',
-    memberCount: 148,
-    pinnedMessageId: 'msg-pin-it',
+    memberCount: 0,
+    pinnedMessageId: null,
   },
   {
     id: 'grp-stem-lab',
-    name: '🔬 CLB Khoa Học Tự Nhiên (Lý · Hóa · Sinh)',
-    subtitle: 'Giải nhanh bài tập Đại cương, Cơ lượng tử & Di truyền học',
+    name: 'Khoa Học Tự Nhiên (Lý · Hóa · Sinh)',
+    subtitle: 'Bài tập đại cương, Cơ lượng tử & Di truyền học',
     topic: 'KHTN',
     icon: 'flask',
     accentColor: '#10B981',
-    memberCount: 112,
-    pinnedMessageId: 'msg-pin-stem',
+    memberCount: 0,
+    pinnedMessageId: null,
   },
   {
     id: 'grp-hist-lit',
-    name: '🏛️ Diễn Đàn Sử Học & Văn Chương Đại Học',
-    subtitle: 'Lịch sử Việt Nam, Thế giới & Văn học Trung - Cận - Hiện đại',
+    name: 'Sử Học & Văn Chương',
+    subtitle: 'Lịch sử Việt Nam, Thế giới & Văn học',
     topic: 'Sử - Văn',
     icon: 'book',
     accentColor: '#F59E0B',
-    memberCount: 96,
+    memberCount: 0,
     pinnedMessageId: null,
   },
   {
     id: 'grp-arena-lobby',
-    name: '⚔️ Sảnh Ghép Đội Kahoot & Đấu Trường 3D',
-    subtitle: 'Chia sẻ mã PIN phòng đấu trực tiếp & hẹn kèo 1v1 ELO',
+    name: 'Sảnh Đấu Trực Tuyến',
+    subtitle: 'Chia sẻ mã PIN phòng đấu & hẹn kèo 1v1 ELO',
     topic: 'Thi Đấu',
     icon: 'flash',
     accentColor: '#EC4899',
-    memberCount: 204,
+    memberCount: 0,
     pinnedMessageId: null,
   },
 ];

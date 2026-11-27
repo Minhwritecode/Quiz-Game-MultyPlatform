@@ -1,4 +1,4 @@
-import { createElement, memo, useState } from 'react';
+import { createElement, memo, useRef, useState, type ComponentRef } from 'react';
 import {
   Image,
   Linking,
@@ -170,6 +170,8 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
   const [longFormExpanded, setLongFormExpanded] = useState(false);
   const [summarizingAi, setSummarizingAi] = useState(false);
   const [activeSlideIdx, setActiveSlideIdx] = useState(0);
+  const [carouselWidth, setCarouselWidth] = useState(0);
+  const carouselScrollRef = useRef<ComponentRef<typeof ScrollView> | null>(null);
   const [lightboxMedia, setLightboxMedia] = useState<SocialMediaItem | null>(null);
   const [playingVideoId, setPlayingVideoId] = useState<string | null>(null);
 
@@ -277,7 +279,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
           ) : null}
           {recommendationReason ? (
             <Text style={{ fontSize: 10.5, color: palette.inkMuted, flexShrink: 1 }} numberOfLines={1}>
-              ✨ {recommendationReason}
+              {recommendationReason}
             </Text>
           ) : null}
         </View>
@@ -296,7 +298,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
               <Image source={{ uri: post.authorAvatar }} style={styles.avatarImg} />
             ) : (
               <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 15 }}>
-                {post.isAnonymous ? '🕵️' : (post.authorName[0] || 'P').toUpperCase()}
+                {post.isAnonymous ? '?' : (post.authorName[0] || 'P').toUpperCase()}
               </Text>
             )}
           </View>
@@ -308,27 +310,27 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
               </Text>
               {post.authorBadges?.[0] ? <Badge tone="primary">{post.authorBadges[0]}</Badge> : null}
               {post.postKind === 'ghost' && post.expiresAt ? (
-                <Badge tone="fire">👻 Ghost · {formatGhostRemaining(post.expiresAt)}</Badge>
+                <Badge tone="fire">Tự hủy · {formatGhostRemaining(post.expiresAt)}</Badge>
               ) : null}
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 1 }}>
               <Text style={{ fontSize: 11.5, color: palette.inkMuted }}>
                 {formatRelativeTimeVi(post.createdAt)}
                 {post.editHistory.length > 0 ? ' · Đã chỉnh sửa' : ''}
-                {post.locationLabel ? ` · 📍 ${post.locationLabel}` : ''}
+                {post.locationLabel ? ` · ${post.locationLabel}` : ''}
               </Text>
               <Text style={{ fontSize: 11, color: palette.indigo }}>
                 {post.audience === 'public'
-                  ? '🌐 Công khai'
+                  ? 'Công khai'
                   : post.audience === 'friends'
-                  ? '👥 Bạn bè'
+                  ? 'Bạn bè'
                   : post.audience === 'followers'
-                  ? '👤 Người theo dõi'
+                  ? 'Người theo dõi'
                   : post.audience === 'close_friends'
-                  ? '⭐ Bạn thân'
+                  ? 'Bạn thân'
                   : post.audience === 'only_me'
-                  ? '🔒 Chỉ mình tôi'
-                  : '🏛️ Cộng đồng'}
+                  ? 'Chỉ mình tôi'
+                  : 'Trong nhóm'}
               </Text>
             </View>
           </View>
@@ -502,84 +504,174 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
 
           {/* Multi-Media Horizontal Swipeable Carousel + Video Cover Player */}
           {post.mediaItems.length > 0 && (
-            <View style={{ marginTop: 8 }}>
-              <ScrollView
-                horizontal
-                pagingEnabled={post.mediaItems.length > 1}
-                showsHorizontalScrollIndicator={false}
-                onMomentumScrollEnd={(e) => {
-                  const w = e.nativeEvent.layoutMeasurement.width || 300;
-                  setActiveSlideIdx(Math.round(e.nativeEvent.contentOffset.x / w));
-                }}
-                contentContainerStyle={{ gap: 8 }}
-              >
-                {post.mediaItems.map((m) => {
-                  const isVid = m.kind === 'video';
-                  const isPlayingThis = playingVideoId === m.id;
-                  const thumb = m.thumbnailUri || m.uri;
-                  return (
-                    <View
-                      key={m.id}
-                      style={[
-                        styles.carouselSlide,
-                        { width: post.mediaItems.length > 1 ? 285 : '100%' as unknown as number },
-                      ]}
-                    >
-                      {isVid && isPlayingThis && Platform.OS === 'web' ? (
-                        createElement('video', {
-                          src: m.uri,
-                          poster: thumb || undefined,
-                          controls: true,
-                          autoPlay: true,
-                          playsInline: true,
-                          width: 640,
-                          height: 360,
-                          style: { width: '100%', height: '100%', objectFit: 'cover' },
-                        })
-                      ) : (
-                        <Pressable
-                          onPress={() => {
-                            if (isVid) setPlayingVideoId(m.id);
-                            else setLightboxMedia(m);
-                          }}
-                          style={{ width: '100%', height: '100%' }}
-                        >
-                          <Image
-                            source={{ uri: thumb }}
+            <View
+              style={{ marginTop: 8 }}
+              onLayout={(e) => {
+                const measured = Math.floor(e.nativeEvent.layout.width);
+                if (measured > 0 && measured !== carouselWidth) {
+                  setCarouselWidth(measured);
+                }
+              }}
+            >
+              <View style={styles.carouselViewport}>
+                <ScrollView
+                  ref={carouselScrollRef}
+                  horizontal
+                  pagingEnabled={post.mediaItems.length > 1}
+                  decelerationRate="fast"
+                  snapToInterval={
+                    post.mediaItems.length > 1 && carouselWidth > 0 ? carouselWidth : undefined
+                  }
+                  snapToAlignment="start"
+                  showsHorizontalScrollIndicator={false}
+                  scrollEventThrottle={16}
+                  onScroll={(e) => {
+                    const step =
+                      carouselWidth || e.nativeEvent.layoutMeasurement.width || 1;
+                    const rawIdx = Math.round(e.nativeEvent.contentOffset.x / step);
+                    const bounded = Math.min(
+                      post.mediaItems.length - 1,
+                      Math.max(0, rawIdx)
+                    );
+                    if (bounded !== activeSlideIdx) {
+                      setActiveSlideIdx(bounded);
+                    }
+                  }}
+                >
+                  {post.mediaItems.map((m) => {
+                    const isVid = m.kind === 'video';
+                    const isPlayingThis = playingVideoId === m.id;
+                    const thumb = m.thumbnailUri || m.uri;
+                    const slideW =
+                      carouselWidth > 0 ? carouselWidth : ('100%' as unknown as number);
+                    return (
+                      <View
+                        key={m.id}
+                        style={[
+                          styles.carouselSlide,
+                          {
+                            width: slideW,
+                            backgroundColor:
+                              m.kind === 'sticker' ? palette.paper : '#0F172A',
+                          },
+                        ]}
+                      >
+                        {isVid && isPlayingThis && Platform.OS === 'web' ? (
+                          createElement('video', {
+                            src: m.uri,
+                            poster: thumb || undefined,
+                            controls: true,
+                            autoPlay: true,
+                            playsInline: true,
+                            width: 640,
+                            height: 360,
+                            style: { width: '100%', height: '100%', objectFit: 'cover' },
+                          })
+                        ) : (
+                          <Pressable
+                            onPress={() => {
+                              if (isVid) setPlayingVideoId(m.id);
+                              else setLightboxMedia(m);
+                            }}
                             style={{ width: '100%', height: '100%' }}
-                            resizeMode={m.kind === 'sticker' ? 'contain' : 'cover'}
-                          />
-                          {isVid && (
-                            <View style={styles.videoPlayOverlay}>
-                              <View style={styles.playCircle}>
-                                <Ionicons name="play" size={24} color="#FFFFFF" />
+                          >
+                            <Image
+                              source={{ uri: thumb }}
+                              style={{ width: '100%', height: '100%' }}
+                              resizeMode={m.kind === 'sticker' ? 'contain' : 'cover'}
+                            />
+                            {isVid && (
+                              <View style={styles.videoPlayOverlay}>
+                                <View style={styles.playCircle}>
+                                  <Ionicons name="play" size={24} color="#FFFFFF" />
+                                </View>
+                                <View style={styles.durationTag}>
+                                  <Text style={{ color: '#FFF', fontSize: 11, fontWeight: '800' }}>
+                                    Video{m.durationSec ? ` · ${m.durationSec}s` : ''}
+                                  </Text>
+                                </View>
                               </View>
-                              <View style={styles.durationTag}>
-                                <Text style={{ color: '#FFF', fontSize: 11, fontWeight: '800' }}>
-                                  🎬 Video{m.durationSec ? ` · ${m.durationSec}s` : ''}
-                                </Text>
-                              </View>
-                            </View>
-                          )}
-                        </Pressable>
-                      )}
+                            )}
+                          </Pressable>
+                        )}
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+
+                {post.mediaItems.length > 1 && (
+                  <>
+                    <View pointerEvents="none" style={styles.slideCountBadge}>
+                      <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '800' }}>
+                        {activeSlideIdx + 1} / {post.mediaItems.length}
+                      </Text>
                     </View>
-                  );
-                })}
-              </ScrollView>
+
+                    {activeSlideIdx > 0 && carouselWidth > 0 && (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="Ảnh trước"
+                        onPress={() => {
+                          const prev = Math.max(0, activeSlideIdx - 1);
+                          setActiveSlideIdx(prev);
+                          carouselScrollRef.current?.scrollTo({
+                            x: prev * carouselWidth,
+                            animated: true,
+                          });
+                        }}
+                        style={[styles.carouselArrowBtn, { left: 8 }]}
+                      >
+                        <Ionicons name="chevron-back" size={16} color="#FFFFFF" />
+                      </Pressable>
+                    )}
+
+                    {activeSlideIdx < post.mediaItems.length - 1 && carouselWidth > 0 && (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="Ảnh tiếp theo"
+                        onPress={() => {
+                          const next = Math.min(
+                            post.mediaItems.length - 1,
+                            activeSlideIdx + 1
+                          );
+                          setActiveSlideIdx(next);
+                          carouselScrollRef.current?.scrollTo({
+                            x: next * carouselWidth,
+                            animated: true,
+                          });
+                        }}
+                        style={[styles.carouselArrowBtn, { right: 8 }]}
+                      >
+                        <Ionicons name="chevron-forward" size={16} color="#FFFFFF" />
+                      </Pressable>
+                    )}
+                  </>
+                )}
+              </View>
 
               {post.mediaItems.length > 1 && (
                 <View style={styles.dotsRow}>
                   {post.mediaItems.map((m, idx) => (
                     <Pressable
                       key={m.id}
+                      accessibilityRole="button"
                       accessibilityLabel={`Ảnh ${idx + 1} trên ${post.mediaItems.length}`}
-                      onPress={() => setActiveSlideIdx(idx)}
+                      hitSlop={6}
+                      onPress={() => {
+                        setActiveSlideIdx(idx);
+                        if (carouselWidth > 0) {
+                          carouselScrollRef.current?.scrollTo({
+                            x: idx * carouselWidth,
+                            animated: true,
+                          });
+                        }
+                      }}
                       style={[
                         styles.dot,
                         {
                           width: activeSlideIdx === idx ? 18 : 7,
-                          backgroundColor: activeSlideIdx === idx ? palette.indigo : palette.paperMuted,
+                          backgroundColor:
+                            activeSlideIdx === idx ? palette.indigo : palette.paperMuted,
                         },
                       ]}
                     />
@@ -1175,7 +1267,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
         <Modal visible transparent animationType="fade" onRequestClose={() => setRepostSheetOpen(false)}>
           <Pressable style={styles.sheetBackdrop} onPress={() => setRepostSheetOpen(false)}>
             <Card style={[styles.sheetCard, { backgroundColor: palette.paper }]}>
-              <Text style={[typography.title, { color: palette.ink }]}>🔁 Đăng lại hoặc Trích dẫn (Threads)</Text>
+              <Text style={[typography.title, { color: palette.ink }]}>Đăng lại hoặc trích dẫn</Text>
               <Pressable
                 onPress={() => {
                   onTogglePureRepost(post.id);
@@ -1186,10 +1278,10 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                 <Ionicons name="repeat" size={20} color={hasReposted ? palette.danger : palette.mint} />
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 14, fontWeight: '800', color: palette.ink }}>
-                    {hasReposted ? 'Hoàn tác Đăng lại (Undo Repost)' : 'Đăng lại ngay (Repost)'}
+                    {hasReposted ? 'Hoàn tác đăng lại' : 'Đăng lại'}
                   </Text>
                   <Text style={{ fontSize: 11.5, color: palette.inkMuted }}>
-                    Chia sẻ trực tiếp bài gốc lên trang cá nhân mà không nhân bản dữ liệu
+                    Chia sẻ bài viết gốc lên trang cá nhân của bạn
                   </Text>
                 </View>
               </Pressable>
@@ -1204,10 +1296,10 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                 <Ionicons name="create-outline" size={20} color={palette.indigo} />
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 14, fontWeight: '800', color: palette.ink }}>
-                    Trích dẫn bài viết (Quote Post)
+                    Trích dẫn bài viết
                   </Text>
                   <Text style={{ fontSize: 11.5, color: palette.inkMuted }}>
-                    Thêm góc nhìn cá nhân kèm thẻ bài viết gốc nhúng trực tiếp
+                    Thêm bình luận cá nhân kèm bài viết gốc
                   </Text>
                 </View>
               </Pressable>
@@ -1222,7 +1314,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
           <View style={styles.sheetBackdrop}>
             <Card style={[styles.sheetCard, { backgroundColor: palette.paper }]}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={[typography.title, { color: palette.ink }]}>📤 Chia sẻ bài viết (Rich SharedPostCard)</Text>
+                <Text style={[typography.title, { color: palette.ink }]}>Chia sẻ bài viết</Text>
                 <Pressable onPress={() => setShareSheetOpen(false)}>
                   <Ionicons name="close" size={22} color={palette.inkMuted} />
                 </Pressable>
@@ -1231,13 +1323,13 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
               <TextInput
                 value={shareNote}
                 onChangeText={setShareNote}
-                placeholder="Lời nhắn đính kèm khi chia sẻ (tùy chọn)..."
+                placeholder="Lời nhắn đính kèm..."
                 placeholderTextColor={palette.inkMuted}
                 style={[styles.inlineInput, { color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paperRaised }]}
               />
 
               <Text style={{ fontSize: 12, fontWeight: '800', color: palette.indigo }}>
-                Gửi thẻ bài viết vào Phòng Chat / Tin nhắn riêng:
+                Gửi qua tin nhắn:
               </Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
                 {conversations.map((conv) => (
@@ -1260,7 +1352,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
               </ScrollView>
 
               <Text style={{ fontSize: 12, fontWeight: '800', color: palette.indigo }}>
-                Chia sẻ vào Cộng đồng:
+                Chia sẻ vào nhóm:
               </Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
                 {communities.map((cm) => (
@@ -1282,7 +1374,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
               </ScrollView>
 
               <Text style={{ fontSize: 12, fontWeight: '800', color: palette.indigo }}>
-                Lưu vào Bộ sưu tập Bookmark riêng tư:
+                Lưu vào thư mục:
               </Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
                 {collections.map((col) => (
@@ -1295,7 +1387,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                     style={[styles.destPill, { borderColor: palette.paperMuted, backgroundColor: palette.paperRaised }]}
                   >
                     <Text style={{ fontSize: 12, fontWeight: '700', color: palette.ink }}>
-                      {col.coverEmoji} {col.name}
+                      {col.name}
                     </Text>
                   </Pressable>
                 ))}
@@ -1309,19 +1401,19 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                   setShareSheetOpen(false);
                 }}
               >
-                Sao chép Liên kết trực tiếp (/post/{post.id})
+                Sao chép liên kết bài viết
               </Button>
             </Card>
           </View>
         </Modal>
       )}
 
-      {/* 3. MORE OPTIONS, YOUR ALGO, INSIGHTS, EDIT HISTORY & MODERATION MENU */}
+      {/* 3. MORE OPTIONS MENU */}
       {moreMenuOpen && (
         <Modal visible transparent animationType="fade" onRequestClose={() => setMoreMenuOpen(false)}>
           <Pressable style={styles.sheetBackdrop} onPress={() => setMoreMenuOpen(false)}>
             <Card style={[styles.sheetCard, { backgroundColor: palette.paper }]}>
-              <Text style={[typography.title, { color: palette.ink }]}>⚙️ Tùy chọn & Điều khiển Your Algo</Text>
+              <Text style={[typography.title, { color: palette.ink }]}>Tùy chọn bài viết</Text>
 
               <Pressable
                 onPress={() => {
@@ -1332,7 +1424,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
               >
                 <Ionicons name="trending-up" size={18} color={palette.mint} />
                 <Text style={{ fontSize: 13, fontWeight: '700', color: palette.ink }}>
-                  Hiển thị nhiều nội dung tương tự hơn (Show More)
+                  Ưu tiên nội dung tương tự
                 </Text>
               </Pressable>
 
@@ -1345,7 +1437,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
               >
                 <Ionicons name="trending-down" size={18} color={palette.gold} />
                 <Text style={{ fontSize: 13, fontWeight: '700', color: palette.ink }}>
-                  Giảm hiển thị chủ đề này (Show Less)
+                  Giảm hiển thị nội dung này
                 </Text>
               </Pressable>
 
@@ -1371,7 +1463,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
               >
                 <Ionicons name="analytics-outline" size={18} color={palette.indigo} />
                 <Text style={{ fontSize: 13, fontWeight: '700', color: palette.ink }}>
-                  Xem Số liệu Phân tích Bài viết (Post Insights)
+                  Số liệu bài viết
                 </Text>
               </Pressable>
 
@@ -1385,7 +1477,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                 >
                   <Ionicons name="time-outline" size={18} color={palette.indigo} />
                   <Text style={{ fontSize: 13, fontWeight: '700', color: palette.ink }}>
-                    Xem Lịch sử Chỉnh sửa ({post.editHistory.length} phiên bản)
+                    Lịch sử chỉnh sửa ({post.editHistory.length})
                   </Text>
                 </Pressable>
               )}
@@ -1401,7 +1493,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                   >
                     <Ionicons name="pin-outline" size={18} color={palette.gold} />
                     <Text style={{ fontSize: 13, fontWeight: '700', color: palette.ink }}>
-                      {post.isPinnedProfile ? 'Bỏ ghim khỏi Trang cá nhân' : 'Ghim lên đầu Trang cá nhân'}
+                      {post.isPinnedProfile ? 'Bỏ ghim khỏi trang cá nhân' : 'Ghim lên đầu trang cá nhân'}
                     </Text>
                   </Pressable>
                   <Pressable
@@ -1423,7 +1515,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                     style={[styles.menuItemRow, { borderColor: palette.paperMuted }]}
                   >
                     <Ionicons name="archive-outline" size={18} color={palette.inkMuted} />
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: palette.ink }}>Lưu trữ riêng tư (Archive)</Text>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: palette.ink }}>Lưu trữ bài viết</Text>
                   </Pressable>
                   <Pressable
                     onPress={() => {
@@ -1449,7 +1541,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                       >
                         <Ionicons name="volume-mute-outline" size={18} color={palette.inkMuted} />
                         <Text style={{ fontSize: 13, fontWeight: '700', color: palette.ink }}>
-                          Tạm ẩn bài từ {post.authorName} (Mute)
+                          Tạm ẩn bài từ {post.authorName}
                         </Text>
                       </Pressable>
                       <Pressable
@@ -1461,7 +1553,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                       >
                         <Ionicons name="ban-outline" size={18} color={palette.danger} />
                         <Text style={{ fontSize: 13, fontWeight: '800', color: palette.danger }}>
-                          Chặn {post.authorName} (Block)
+                          Chặn {post.authorName}
                         </Text>
                       </Pressable>
                     </>
@@ -1480,7 +1572,7 @@ export const MetaThreadsPostCard = memo(function MetaThreadsPostCard({
                   >
                     <Ionicons name="flag-outline" size={18} color={palette.danger} />
                     <Text style={{ fontSize: 13, fontWeight: '800', color: palette.danger }}>
-                      Báo cáo vi phạm (Report Post)
+                      Báo cáo bài viết
                     </Text>
                   </Pressable>
                 </>
@@ -1708,12 +1800,37 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     borderWidth: 1,
   },
-  carouselSlide: {
-    height: 210,
+  carouselViewport: {
+    width: '100%',
     borderRadius: radii.md,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  carouselSlide: {
+    height: 260,
     overflow: 'hidden',
     backgroundColor: '#0F172A',
     position: 'relative',
+  },
+  slideCountBadge: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    backgroundColor: 'rgba(2, 6, 23, 0.72)',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: radii.pill,
+  },
+  carouselArrowBtn: {
+    position: 'absolute',
+    top: '50%',
+    marginTop: -15,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(2, 6, 23, 0.62)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   videoPlayOverlay: {
     position: 'absolute',

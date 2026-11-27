@@ -4,13 +4,23 @@ import { preferenceStorage } from '@/composition/preferences';
 import {
   broadcastCommunityEvent,
   fetchRealProfilesDirectory,
+  fetchSocialHydrationSnapshot,
+  generateClientUuid,
   generatePapyAiPostSummary,
+  persistChatMessageToSupabase,
+  persistCommunityMembershipToSupabase,
+  persistCommunityToSupabase,
+  persistConversationToSupabase,
+  persistFollowEdgeToSupabase,
+  persistFriendRequestToSupabase,
   persistModerationCaseToSupabase,
   persistSocialPostToSupabase,
+  syncPostEngagementToSupabase,
   syncUnifiedProfileToSupabase,
   triggerServerPostLifecycleSweep,
   uploadAdminDocumentToSupabase,
 } from '@/composition/social';
+import { useCommunityStore } from '@/features/community/state/useCommunityStore';
 import type {
   AdminAuditLogItem,
   AdminManagedDocument,
@@ -40,6 +50,18 @@ import type {
   YourAlgoConfig,
 } from '../domain/models';
 import { areUsersFriends } from '../domain/rankingAndPermissions';
+
+const LEGACY_FAKE_USER_IDS = new Set([
+  'scholar-khanh',
+  'scholar-minhquan',
+  'scholar-haianh',
+  'scholar-baonam',
+]);
+const LEGACY_FAKE_POST_IDS = new Set(['spost-1', 'spost-2', 'spost-3', 'post-seed-1', 'post-seed-2']);
+const LEGACY_FAKE_CONV_IDS = new Set(['conv-grp-software', 'conv-live-exam-room']);
+const LEGACY_FAKE_MSG_IDS = new Set(['cmsg-1', 'cmsg-2', 'cmsg-3', 'msg-pin-it', 'msg-it-2', 'msg-pin-stem']);
+const LEGACY_FAKE_FREQ_IDS = new Set(['freq-seed-1']);
+const LEGACY_FAKE_DOC_IDS = new Set(['adoc-1']);
 
 const DEFAULT_ALGO: YourAlgoConfig = {
   boostedTopics: [],
@@ -113,19 +135,7 @@ function emptyScopedSlice(ownerId: string): ScopedUserSlice {
         createdAt: '2026-11-25T00:00:00.000Z',
       },
     ],
-    customFeeds: [
-      {
-        id: `cf-tech-${ownerId}`,
-        ownerId,
-        name: '⚡ Kỹ thuật Phần mềm & AI',
-        topics: ['CNTT', 'AI', 'HệĐiềuHành', 'ThuậtToán'],
-        accountIds: [],
-        communityIds: ['comm-software-ai'],
-        isPinned: true,
-        isPublic: true,
-        order: 0,
-      },
-    ],
+    customFeeds: [],
     algo: { ...DEFAULT_ALGO },
     dismissedRecommendationIds: [],
     recentSearchQueries: [],
@@ -133,635 +143,84 @@ function emptyScopedSlice(ownerId: string): ScopedUserSlice {
   };
 }
 
-const SEED_PROFILES: Record<string, SocialUserProfile> = {
-  'scholar-khanh': {
-    id: 'scholar-khanh',
-    displayName: 'Khánh Linh',
-    avatarUrl: null,
-    coverUrl: null,
-    bio: 'Kỹ sư Phần mềm & Hệ phân tán · Đam mê giải thích thuật toán dễ hiểu trong 60 giây.',
-    university: 'ĐH Bách Khoa',
-    major: 'Khoa học Máy tính',
-    interests: ['CNTT', 'AI', 'HệĐiềuHành', 'ThuậtToán'],
-    locationArea: 'TP. Hồ Chí Minh',
-    websiteUrl: '',
-    badges: ['Top Contributor', 'Community Champion'],
-    reputationScore: 640,
-    role: 'moderator',
-    accountStatus: 'active',
-    privacy: {
-      isPrivateAccount: false,
-      allowMessagesFrom: 'everyone',
-      allowMentionsFrom: 'everyone',
-      showOnlineStatus: true,
-      showJoinedCommunities: true,
-      showPersonalInfo: 'public',
-      discoverableInRecommendations: true,
-    },
-    followersCount: 184,
-    followingCount: 42,
-    friendsCount: 29,
-    profileViewsCount: 510,
-    isOnline: true,
-    lastSeenAt: new Date().toISOString(),
-  },
-  'scholar-minhquan': {
-    id: 'scholar-minhquan',
-    displayName: 'Minh Quân',
-    avatarUrl: null,
-    coverUrl: null,
-    bio: 'Nghiên cứu Trí tuệ Nhân tạo, Cloud Native & An toàn mạng.',
-    university: 'ĐH Công Nghệ',
-    major: 'Trí tuệ Nhân tạo',
-    interests: ['AI', 'CNTT', 'Cloud', 'ÔnThi'],
-    locationArea: 'Hà Nội',
-    websiteUrl: '',
-    badges: ['Helpful Member', 'Top Contributor'],
-    reputationScore: 790,
-    role: 'user',
-    accountStatus: 'active',
-    privacy: {
-      isPrivateAccount: false,
-      allowMessagesFrom: 'everyone',
-      allowMentionsFrom: 'everyone',
-      showOnlineStatus: true,
-      showJoinedCommunities: true,
-      showPersonalInfo: 'public',
-      discoverableInRecommendations: true,
-    },
-    followersCount: 246,
-    followingCount: 58,
-    friendsCount: 34,
-    profileViewsCount: 680,
-    isOnline: true,
-    lastSeenAt: new Date().toISOString(),
-  },
-  'scholar-haianh': {
-    id: 'scholar-haianh',
-    displayName: 'Hải Anh',
-    avatarUrl: null,
-    coverUrl: null,
-    bio: 'Yêu Lịch sử Thế giới, Văn chương Hiện đại & phương pháp học Spaced Repetition.',
-    university: 'ĐH Khoa học Xã hội & Nhân văn',
-    major: 'Lịch sử & Văn học',
-    interests: ['VănSử', 'ÔnThi', 'NgoạiNgữ'],
-    locationArea: 'Đà Nẵng',
-    websiteUrl: '',
-    badges: ['Event Participant'],
-    reputationScore: 420,
-    role: 'user',
-    accountStatus: 'active',
-    privacy: {
-      isPrivateAccount: false,
-      allowMessagesFrom: 'everyone',
-      allowMentionsFrom: 'everyone',
-      showOnlineStatus: true,
-      showJoinedCommunities: true,
-      showPersonalInfo: 'public',
-      discoverableInRecommendations: true,
-    },
-    followersCount: 118,
-    followingCount: 39,
-    friendsCount: 19,
-    profileViewsCount: 320,
-    isOnline: false,
-    lastSeenAt: '2026-11-25T20:00:00.000Z',
-  },
-  'scholar-baonam': {
-    id: 'scholar-baonam',
-    displayName: 'Khánh Linh', // Same displayName edge-case (Section 4.1 & 20: disambiguated by bio, major & location!)
-    avatarUrl: null,
-    coverUrl: null,
-    bio: 'Sinh viên Vật lý Lượng tử & Hóa Sinh phân tử · Thích giải đề Olympiad.',
-    university: 'ĐH Khoa học Tự nhiên',
-    major: 'Vật lý Lượng tử',
-    interests: ['ToánLýHóa', 'KhoaHọc', 'ÔnThi'],
-    locationArea: 'TP. Hồ Chí Minh',
-    websiteUrl: '',
-    badges: ['Helpful Member'],
-    reputationScore: 365,
-    role: 'user',
-    accountStatus: 'active',
-    privacy: {
-      isPrivateAccount: true,
-      allowMessagesFrom: 'friends_and_followers',
-      allowMentionsFrom: 'followers',
-      showOnlineStatus: true,
-      showJoinedCommunities: true,
-      showPersonalInfo: 'friends',
-      discoverableInRecommendations: true,
-    },
-    followersCount: 74,
-    followingCount: 25,
-    friendsCount: 14,
-    profileViewsCount: 190,
-    isOnline: true,
-    lastSeenAt: new Date().toISOString(),
-  },
-};
-
-const SEED_COMMUNITIES: SocialCommunityGroup[] = [
+/**
+ * Clean official topic communities with ZERO fake bot members.
+ */
+const STARTER_COMMUNITIES: SocialCommunityGroup[] = [
   {
     id: 'comm-software-ai',
     slug: 'ky-thuat-phan-mem-ai',
-    name: 'Kỹ thuật Phần mềm, Cloud & AI',
-    description: 'Cộng đồng thảo luận chuyên sâu về Kiến trúc Hệ thống, Thuật toán, React Native, Backend & Trí tuệ Nhân tạo.',
+    name: 'Kỹ thuật Phần mềm & AI',
+    description:
+      'Thảo luận kiến trúc hệ thống, thuật toán, lập trình đa nền tảng và trí tuệ nhân tạo.',
     avatarEmoji: '💻',
     accentColor: '#6366F1',
     coverUrl: null,
     visibility: 'public',
     topics: ['CNTT', 'AI', 'ThuậtToán', 'HệĐiềuHành'],
     rules: [
-      '1. Chia sẻ nội dung có giá trị học thuật, code rõ ràng hoặc câu hỏi cụ thể.',
-      '2. Tôn trọng các góc nhìn kỹ thuật trong chế độ Tranh biện (Debate Mode).',
-      '3. Sử dụng nhãn Spoiler khi đăng lời giải đề thi mới.',
+      '1. Chia sẻ câu hỏi hoặc kiến thức rõ ràng, tôn trọng thành viên.',
+      '2. Gắn nhãn ẩn nội dung khi đăng lời giải đề thi mới.',
     ],
     requirePostApproval: false,
     requireMemberApproval: false,
     allowAnonymousPosts: true,
     isSuspended: false,
-    ownerId: 'scholar-khanh',
-    members: [
-      {
-        userId: 'scholar-khanh',
-        displayName: 'Khánh Linh',
-        avatarUrl: null,
-        role: 'owner',
-        reputationPoints: 640,
-        helpfulCount: 28,
-        badges: ['Community Champion', 'Top Contributor'],
-        joinedAt: '2026-10-01T00:00:00.000Z',
-      },
-      {
-        userId: 'scholar-minhquan',
-        displayName: 'Minh Quân',
-        avatarUrl: null,
-        role: 'moderator',
-        reputationPoints: 520,
-        helpfulCount: 22,
-        badges: ['Top Contributor', 'Helpful Member'],
-        joinedAt: '2026-10-03T00:00:00.000Z',
-      },
-    ],
-    pinnedPostIds: ['spost-1'],
-    announcements: ['📌 Tối thứ Sáu 20:30: Phiên Live Review Kiến trúc Microservices vs Modular Monolith!'],
-    events: [
-      {
-        id: 'evt-arch-live',
-        communityId: 'comm-software-ai',
-        creatorId: 'scholar-khanh',
-        creatorName: 'Khánh Linh',
-        title: 'Live Workshop: Tối ưu PostgreSQL, RLS & Realtime cho 100k CCU',
-        description: 'Phân tích thực chiến chống N+1 query, cursor pagination và thiết kế bảng hiệu năng cao.',
-        locationLabel: 'Phòng Thảo Luận Trực Tiếp · Papyrus',
-        startsAt: new Date(Date.now() + 86_400_000).toISOString(),
-        status: 'scheduled',
-        rsvpUserIds: ['scholar-khanh', 'scholar-minhquan'],
-        reminderUserIds: ['scholar-khanh'],
-      },
-    ],
+    ownerId: '',
+    members: [],
+    pinnedPostIds: [],
+    announcements: [],
+    events: [],
     activityLogs: [],
-    createdAt: '2026-10-01T00:00:00.000Z',
+    createdAt: '2026-11-01T00:00:00.000Z',
   },
   {
     id: 'comm-stem-olympiad',
     slug: 'khoa-hoc-tu-nhien-stem',
-    name: 'CLB Khoa Học Tự Nhiên (Toán · Lý · Hóa · Sinh)',
-    description: 'Giải đáp bài tập đại cương, chia sẻ sổ tay công thức & thảo luận nghiên cứu khoa học.',
+    name: 'Khoa học Tự nhiên (Toán · Lý · Hóa · Sinh)',
+    description:
+      'Trao đổi bài tập đại cương, công thức trọng tâm và phương pháp nghiên cứu khoa học.',
     avatarEmoji: '🔬',
     accentColor: '#10B981',
     coverUrl: null,
     visibility: 'public',
     topics: ['ToánLýHóa', 'KhoaHọc', 'ÔnThi'],
-    rules: [
-      '1. Trình bày từng bước biến đổi rõ ràng khi giải bài tập.',
-      '2. Không spam bình luận ngắn không mang nội dung.',
-    ],
+    rules: ['1. Trình bày từng bước giải rõ ràng.', '2. Không đăng nội dung rác.'],
     requirePostApproval: false,
     requireMemberApproval: false,
     allowAnonymousPosts: true,
     isSuspended: false,
-    ownerId: 'scholar-baonam',
-    members: [
-      {
-        userId: 'scholar-baonam',
-        displayName: 'Khánh Linh',
-        avatarUrl: null,
-        role: 'owner',
-        reputationPoints: 365,
-        helpfulCount: 14,
-        badges: ['Helpful Member'],
-        joinedAt: '2026-10-10T00:00:00.000Z',
-      },
-    ],
-    pinnedPostIds: [],
-    announcements: ['🧪 Đã cập nhật bộ tài liệu Nhiệt động lực học & Di truyền phân tử!'],
-    events: [],
-    activityLogs: [],
-    createdAt: '2026-10-10T00:00:00.000Z',
-  },
-  {
-    id: 'comm-humanities-private',
-    slug: 'dien-dan-su-van-chuyen-sau',
-    name: 'Diễn Đàn Nghiên Cứu Sử Học & Văn Chương (Riêng tư)',
-    description: 'Nhóm chuyên sâu dành cho thành viên đã duyệt để thảo luận tư liệu lịch sử và phê bình văn học.',
-    avatarEmoji: '🏛️',
-    accentColor: '#F59E0B',
-    coverUrl: null,
-    visibility: 'private',
-    topics: ['VănSử', 'NghiênCứu'],
-    rules: ['1. Dẫn nguồn tư liệu lịch sử chính thống.', '2. Phê bình văn học văn minh, tôn trọng tác giả.'],
-    requirePostApproval: true,
-    requireMemberApproval: true,
-    allowAnonymousPosts: false,
-    isSuspended: false,
-    ownerId: 'scholar-haianh',
-    members: [
-      {
-        userId: 'scholar-haianh',
-        displayName: 'Hải Anh',
-        avatarUrl: null,
-        role: 'owner',
-        reputationPoints: 420,
-        helpfulCount: 19,
-        badges: ['Community Champion'],
-        joinedAt: '2026-10-12T00:00:00.000Z',
-      },
-    ],
+    ownerId: '',
+    members: [],
     pinnedPostIds: [],
     announcements: [],
     events: [],
     activityLogs: [],
-    createdAt: '2026-10-12T00:00:00.000Z',
-  },
-];
-
-const SEED_SOCIAL_POSTS: SocialPostItem[] = [
-  {
-    id: 'spost-1',
-    authorId: 'scholar-khanh',
-    internalAuthorId: 'scholar-khanh',
-    authorName: 'Khánh Linh',
-    authorAvatar: null,
-    authorBio: 'Kỹ sư Phần mềm & Hệ phân tán',
-    authorBadges: ['Top Contributor'],
-    communityId: 'comm-software-ai',
-    communityName: 'Kỹ thuật Phần mềm, Cloud & AI',
-    postKind: 'thread',
-    threadParts: [
-      '90% lập trình viên mới học thuộc lòng "Deadlock (Tắc nghẽn)", nhưng chỉ cần nắm đúng 4 điều kiện Coffman này là xử lý trọn vẹn mọi bài toán đồng thời trong Hệ Điều Hành & Database 👇',
-      '1/ Bốn điều kiện cần và đủ:\n• Mutual Exclusion (Loại trừ tương hỗ)\n• Hold and Wait (Giữ và chờ tài nguyên)\n• No Preemption (Không trưng dụng)\n• Circular Wait (Chờ đợi vòng tròn)',
-      '2/ Giải pháp thực chiến trong Production: Luôn khóa tài nguyên theo thứ tự định danh tăng dần (`lock(minId)` → `lock(maxId)`) để triệt tiêu hoàn toàn Circular Wait!',
-    ],
-    longFormBody:
-      'Trong PostgreSQL thực tế, khi hai transaction cùng cập nhật hai dòng theo thứ tự ngược nhau (`Tx1: row A -> row B`, `Tx2: row B -> row A`), bộ phát hiện deadlock sẽ hủy một transaction sau `deadlock_timeout`. Sắp xếp khóa theo `ORDER BY id ASC` trước khi `SELECT ... FOR UPDATE` giúp loại bỏ hoàn toàn xung đột vòng tròn.',
-    mediaItems: [],
-    attachedQuiz: {
-      setId: 'seed-uni-os-arch',
-      title: 'Hệ Điều Hành & Kiến Trúc Máy Tính',
-      questionCount: 8,
-      subject: 'Công nghệ thông tin',
-    },
-    codeSnippet:
-      'SELECT id FROM accounts WHERE id IN ($1, $2) ORDER BY id ASC FOR UPDATE;',
-    isSpoiler: false,
-    isAnonymous: false,
-    audience: 'public',
-    selectedAudienceIds: [],
-    replyPermission: 'everyone',
-    topics: ['CNTT', 'HệĐiềuHành', 'ÔnThi'],
-    hashtags: ['CNTT', 'HệĐiềuHành', 'Database'],
-    mentionedUserIds: [],
-    locationLabel: 'TP. Hồ Chí Minh',
-    reactions: {
-      love: ['scholar-minhquan', 'scholar-haianh'],
-      fire: ['scholar-minhquan'],
-      bulb: ['scholar-baonam'],
-    },
-    repostedByIds: ['scholar-minhquan'],
-    quoteCount: 1,
-    comments: [
-      {
-        id: 'scmt-1',
-        postId: 'spost-1',
-        parentCommentId: null,
-        authorId: 'scholar-minhquan',
-        authorName: 'Minh Quân',
-        authorAvatar: null,
-        content: 'Mẹo `ORDER BY id ASC FOR UPDATE` cực kỳ thực tế luôn! Mình từng sửa một lỗi deadlock thanh toán nhờ đúng nguyên tắc này.',
-        mentionedUserIds: [],
-        reactions: { love: ['scholar-khanh'], like: ['scholar-haianh'] },
-        isPinned: true,
-        isEdited: false,
-        createdAt: '2026-11-25T08:30:00.000Z',
-      },
-      {
-        id: 'scmt-2',
-        postId: 'spost-1',
-        parentCommentId: 'scmt-1',
-        authorId: 'scholar-khanh',
-        authorName: 'Khánh Linh',
-        authorAvatar: null,
-        content: 'Chuẩn luôn Minh Quân ơi, nhất là các giao dịch chuyển điểm hoặc ví điện tử có lưu lượng đồng thời cao!',
-        mentionedUserIds: ['scholar-minhquan'],
-        reactions: { fire: ['scholar-minhquan'] },
-        isPinned: false,
-        isEdited: false,
-        createdAt: '2026-11-25T08:42:00.000Z',
-      },
-    ],
-    isPinnedProfile: true,
-    isPinnedCommunity: true,
-    lifecycleStatus: 'published',
-    editHistory: [],
-    impressionsCount: 428,
-    viewsCount: 196,
-    sharesCount: 14,
-    videoWatchSec: 0,
-    createdAt: '2026-11-25T08:00:00.000Z',
-    updatedAt: '2026-11-25T08:00:00.000Z',
+    createdAt: '2026-11-01T00:00:00.000Z',
   },
   {
-    id: 'spost-2',
-    authorId: 'scholar-minhquan',
-    internalAuthorId: 'scholar-minhquan',
-    authorName: 'Minh Quân',
-    authorAvatar: null,
-    authorBio: 'Nghiên cứu Trí tuệ Nhân tạo, Cloud Native & An toàn mạng',
-    authorBadges: ['Helpful Member'],
-    communityId: 'comm-software-ai',
-    communityName: 'Kỹ thuật Phần mềm, Cloud & AI',
-    postKind: 'debate',
-    threadParts: [
-      '⚖️ Góc Tranh Biện Kỹ Thuật (Debate Mode): Với một dự án Startup EdTech từ 0 lên 100.000 người dùng, nên khởi đầu bằng **Modular Monolith** hay tách **Microservices** ngay từ ngày đầu?',
-      'Hãy bình chọn ở Poll Zalo bên dưới và gửi lập luận vào Phe A hoặc Phe B để PapyAI tổng hợp khách quan cả hai góc nhìn nhé!',
-    ],
-    mediaItems: [],
-    poll: {
-      id: 'upoll-arch-1',
-      scopeType: 'post',
-      question: 'Kiến trúc khởi đầu nào hiệu quả hơn cho đội ngũ 3–8 kỹ sư?',
-      options: [
-        {
-          id: 'uopt-1',
-          text: 'Modular Monolith (Ranh giới module sạch, dễ deploy & refactor)',
-          voterIds: ['scholar-khanh', 'scholar-haianh'],
-        },
-        {
-          id: 'uopt-2',
-          text: 'Microservices ngay từ đầu (Độc lập mở rộng từng dịch vụ)',
-          voterIds: ['scholar-baonam'],
-        },
-      ],
-      allowMultiple: false,
-      isAnonymous: false,
-      allowAddOptions: true,
-      allowChangeVote: true,
-      isClosed: false,
-      expiresAt: new Date(Date.now() + 7 * 86_400_000).toISOString(),
-      createdBy: 'scholar-minhquan',
-      createdAt: '2026-11-25T09:15:00.000Z',
-    },
-    debate: {
-      sideALabel: 'Phe Modular Monolith',
-      sideBLabel: 'Phe Microservices',
-      sideAVoterIds: ['scholar-khanh', 'scholar-haianh'],
-      sideBVoterIds: ['scholar-baonam'],
-      arguments: [
-        {
-          id: 'darg-1',
-          side: 'A',
-          authorId: 'scholar-khanh',
-          authorName: 'Khánh Linh',
-          authorAvatar: null,
-          content: 'Modular Monolith giữ trọn ACID transaction trong một PostgreSQL duy nhất, không tốn chi phí vận hành distributed tracing và network hop sớm.',
-          upvoterIds: ['scholar-minhquan', 'scholar-haianh'],
-          createdAt: '2026-11-25T09:25:00.000Z',
-        },
-        {
-          id: 'darg-2',
-          side: 'B',
-          authorId: 'scholar-baonam',
-          authorName: 'Khánh Linh',
-          authorAvatar: null,
-          content: 'Nếu có tác vụ nặng như xử lý AI/Video/OCR tốn GPU/CPU, tách riêng worker/service đó giúp API chính không bị nghẽn tài nguyên.',
-          upvoterIds: ['scholar-minhquan'],
-          createdAt: '2026-11-25T09:35:00.000Z',
-        },
-      ],
-      aiNeutralSummary:
-        'Tổng hợp đa chiều bởi PapyAI: Phe Modular Monolith nhấn mạnh tốc độ phát triển, tính toàn vẹn giao dịch ACID và chi phí vận hành thấp ở giai đoạn đầu; trong khi Phe Microservices chỉ ra lợi ích cô lập các tác vụ nặng (AI/OCR/Media) để bảo vệ độ trễ API chính.',
-    },
-    isSpoiler: false,
-    isAnonymous: false,
-    audience: 'public',
-    selectedAudienceIds: [],
-    replyPermission: 'everyone',
-    topics: ['CNTT', 'AI', 'KiếnTrúc'],
-    hashtags: ['DebateMode', 'SoftwareArchitecture', 'CNTT'],
-    mentionedUserIds: [],
-    locationLabel: 'Hà Nội',
-    reactions: {
-      bulb: ['scholar-khanh', 'scholar-haianh'],
-      fire: ['scholar-khanh'],
-    },
-    repostedByIds: [],
-    quoteCount: 0,
-    comments: [],
-    isPinnedProfile: false,
-    isPinnedCommunity: false,
-    lifecycleStatus: 'published',
-    editHistory: [],
-    impressionsCount: 315,
-    viewsCount: 154,
-    sharesCount: 9,
-    videoWatchSec: 0,
-    createdAt: '2026-11-25T09:15:00.000Z',
-    updatedAt: '2026-11-25T09:15:00.000Z',
-  },
-  {
-    id: 'spost-3',
-    authorId: 'scholar-haianh',
-    internalAuthorId: 'scholar-haianh',
-    authorName: 'Hải Anh',
-    authorAvatar: null,
-    authorBio: 'Yêu Lịch sử Thế giới & Văn chương Hiện đại',
-    postKind: 'standard',
-    threadParts: [
-      'Đáp án chi tiết và phân tích bẫy câu hỏi vận dụng cao phần Chiến tranh Lạnh trong bộ đề thi thử chiều nay — mình đặt chế độ Spoiler để các bạn chưa làm bài không bị lộ đáp án trước nhé!',
-    ],
-    mediaItems: [],
-    isSpoiler: true,
-    spoilerWarning: 'Đáp án & lời giải đề thi thử Lịch sử Thế giới (chạm để mở)',
-    isAnonymous: false,
-    audience: 'public',
-    selectedAudienceIds: [],
-    replyPermission: 'everyone',
-    topics: ['VănSử', 'ÔnThi'],
-    hashtags: ['VănSử', 'LịchSửThếGiới', 'ÔnThi'],
-    mentionedUserIds: [],
-    locationLabel: 'Đà Nẵng',
-    reactions: { clap: ['scholar-khanh'], love: ['scholar-minhquan'] },
-    repostedByIds: [],
-    quoteCount: 0,
-    comments: [],
-    isPinnedProfile: false,
-    isPinnedCommunity: false,
-    lifecycleStatus: 'published',
-    editHistory: [],
-    impressionsCount: 189,
-    viewsCount: 92,
-    sharesCount: 4,
-    videoWatchSec: 0,
-    createdAt: '2026-11-25T10:20:00.000Z',
-    updatedAt: '2026-11-25T10:20:00.000Z',
-  },
-];
-
-const SEED_CONVERSATIONS: MessagingConversation[] = [
-  {
-    id: 'conv-grp-software',
-    kind: 'group',
-    title: 'Nhóm Thảo Luận Kỹ Thuật Phần Mềm & AI',
-    subtitle: '148 thành viên · Nhóm học tập chung',
-    avatarUrl: null,
-    accentColor: '#6366F1',
-    communityId: 'comm-software-ai',
-    memberIds: ['scholar-khanh', 'scholar-minhquan', 'scholar-haianh'],
-    adminIds: ['scholar-khanh', 'scholar-minhquan'],
-    requestState: 'accepted',
-    isPinned: true,
-    isMuted: false,
-    pinnedMessageId: 'cmsg-1',
-    announcement: '📌 Tối nay 21:00 cùng giải đề Hệ điều hành & Mạng máy tính trực tiếp nhé!',
-    typingUserNames: [],
-    lastMessagePreview: 'Minh Quân đã chia sẻ một bài viết vào nhóm',
-    lastMessageAt: '2026-11-25T10:05:00.000Z',
-    unreadByUserIds: {},
-  },
-  {
-    id: 'conv-live-exam-room',
-    kind: 'live_room',
-    title: '🔴 Phòng Live Thảo Luận Ôn Thi Cuối Kỳ',
-    subtitle: 'Phòng thảo luận trực tiếp theo chủ đề',
-    avatarUrl: null,
-    accentColor: '#EC4899',
-    memberIds: ['scholar-khanh', 'scholar-minhquan', 'scholar-haianh', 'scholar-baonam'],
-    adminIds: ['scholar-khanh'],
-    requestState: 'accepted',
-    isPinned: false,
-    isMuted: false,
-    pinnedMessageId: null,
-    announcement: '🎙️ Đặt câu hỏi nhanh và bình chọn chủ đề cần giải đáp trực tiếp!',
-    typingUserNames: [],
-    lastMessagePreview: 'Hải Anh: Mọi người đang ôn môn nào trước vậy?',
-    lastMessageAt: '2026-11-25T10:15:00.000Z',
-    unreadByUserIds: {},
-  },
-];
-
-const SEED_CHAT_MESSAGES: DirectOrGroupMessage[] = [
-  {
-    id: 'cmsg-1',
-    conversationId: 'conv-grp-software',
-    senderId: 'scholar-khanh',
-    senderName: 'Khánh Linh',
-    senderAvatar: null,
-    text: '📌 Chào cả nhà! Mọi người bình chọn khung giờ học nhóm tuần này trên Poll Zalo bên dưới nhé!',
-    mediaAttachments: [],
-    poll: {
-      id: 'cpoll-1',
-      scopeType: 'chat',
-      question: 'Khung giờ nào cả nhóm rảnh nhất để ôn tập trực tuyến?',
-      options: [
-        { id: 'copt-1', text: '20:00 – 21:30 Tối Thứ Sáu', voterIds: ['scholar-khanh', 'scholar-minhquan'] },
-        { id: 'copt-2', text: '19:30 – 21:00 Tối Chủ Nhật', voterIds: ['scholar-haianh'] },
-      ],
-      allowMultiple: true,
-      isAnonymous: false,
-      allowAddOptions: true,
-      allowChangeVote: true,
-      isClosed: false,
-      createdBy: 'scholar-khanh',
-      createdAt: '2026-11-25T09:50:00.000Z',
-    },
-    reactions: { '🔥': ['scholar-minhquan'], '❤️': ['scholar-haianh'] },
-    isEdited: false,
-    isRecalled: false,
-    deliveryStatus: 'read',
-    readByIds: ['scholar-khanh', 'scholar-minhquan', 'scholar-haianh'],
-    createdAt: '2026-11-25T09:50:00.000Z',
-  },
-  {
-    id: 'cmsg-2',
-    conversationId: 'conv-grp-software',
-    senderId: 'scholar-minhquan',
-    senderName: 'Minh Quân',
-    senderAvatar: null,
-    text: 'Mình chia sẻ chuỗi bài viết tổng hợp 4 điều kiện Deadlock cực hay của Khánh Linh để anh em đọc trước giờ học nhé!',
-    mediaAttachments: [],
-    sharedPost: {
-      postId: 'spost-1',
-      authorId: 'scholar-khanh',
-      authorName: 'Khánh Linh',
-      authorAvatar: null,
-      previewText:
-        '90% lập trình viên mới học thuộc lòng "Deadlock (Tắc nghẽn)", nhưng chỉ cần nắm đúng 4 điều kiện Coffman này là xử lý trọn vẹn...',
-      mediaKind: 'quiz',
-      postKind: 'thread',
-      createdAt: '2026-11-25T08:00:00.000Z',
-    },
-    reactions: { '👍': ['scholar-khanh'] },
-    isEdited: false,
-    isRecalled: false,
-    deliveryStatus: 'read',
-    readByIds: ['scholar-khanh', 'scholar-minhquan'],
-    createdAt: '2026-11-25T10:05:00.000Z',
-  },
-  {
-    id: 'cmsg-3',
-    conversationId: 'conv-live-exam-room',
-    senderId: 'scholar-haianh',
-    senderName: 'Hải Anh',
-    senderAvatar: null,
-    text: 'Mọi người đang ôn môn nào trước vậy? Cùng bật Pomodoro 25 phút học chung nhé! 🔥',
-    mediaAttachments: [],
-    reactions: { '❤️': ['scholar-khanh'] },
-    isEdited: false,
-    isRecalled: false,
-    deliveryStatus: 'read',
-    readByIds: ['scholar-haianh', 'scholar-khanh'],
-    createdAt: '2026-11-25T10:15:00.000Z',
-  },
-];
-
-const SEED_ADMIN_DOCS: AdminManagedDocument[] = [
-  {
-    id: 'adoc-1',
-    title: 'Sổ Tay Trọng Tâm Kiến Trúc Hệ Thống, SQL & Thuật Toán Đại Học',
-    description: 'Tài liệu biên soạn chính thức tổng hợp công thức độ phức tạp Big-O, thiết kế chỉ mục PostgreSQL và mẫu câu hỏi vấn đáp.',
+    id: 'comm-humanities',
+    slug: 'lich-su-van-hoc',
+    name: 'Lịch sử & Văn học',
+    description:
+      'Không gian trao đổi tư liệu lịch sử Việt Nam, lịch sử thế giới và tác phẩm văn học.',
+    avatarEmoji: '🏛️',
+    accentColor: '#F59E0B',
     coverUrl: null,
-    category: 'Công nghệ thông tin',
-    tags: ['CNTT', 'SQL', 'ThuậtToán', 'ÔnThi'],
-    fileFormat: 'markdown',
-    fileName: 'so-tay-kien-truc-sql-thuat-toan.md',
-    richContent:
-      '# Sổ Tay Kiến Trúc Hệ Thống & Thuật Toán\n\n## 1. Độ phức tạp thuật toán thông dụng\n- Binary Search: `O(log n)`\n- Merge Sort / Heap Sort: `O(n log n)`\n- Hash Table trung bình: `O(1)`\n\n## 2. Nguyên tắc Tối ưu Cơ sở dữ liệu\n- Sử dụng Composite Index khớp thứ tự `WHERE` + `ORDER BY`.\n- Dùng Keyset Cursor Pagination `(created_at, id) < ($ts, $id)` thay cho `OFFSET` lớn.\n- Luôn bật Row Level Security (RLS) theo quyền sở hữu `auth.uid()`.',
-    status: 'published',
-    allowDownload: true,
-    expiresAt: null,
-    downloadCount: 42,
-    recipientUserIds: ['all'],
-    recipientCommunityIds: ['comm-software-ai'],
-    giftHistory: [
-      {
-        id: 'gh-1',
-        targetLabel: 'Tất cả người dùng đủ điều kiện',
-        giftedAt: '2026-11-25T07:00:00.000Z',
-      },
-    ],
-    createdAt: '2026-11-25T07:00:00.000Z',
-    updatedAt: '2026-11-25T07:00:00.000Z',
+    visibility: 'public',
+    topics: ['VănSử', 'NghiênCứu', 'ÔnThi'],
+    rules: ['1. Dẫn nguồn tài liệu tham khảo rõ ràng.', '2. Thảo luận văn minh.'],
+    requirePostApproval: false,
+    requireMemberApproval: false,
+    allowAnonymousPosts: true,
+    isSuspended: false,
+    ownerId: '',
+    members: [],
+    pinnedPostIds: [],
+    announcements: [],
+    events: [],
+    activityLogs: [],
+    createdAt: '2026-11-01T00:00:00.000Z',
   },
 ];
 
@@ -781,17 +240,34 @@ interface SocialStoreState {
   userSlices: Record<string, ScopedUserSlice>;
   feedScrollOffset: number;
 
-  // Scope & Identity Sync
+  // Scope, Legacy Recovery & Cloud Sync
   switchAccountScope: (userId: string) => void;
+  migrateLegacyUserContent: () => void;
   ensureUserProfile: (input: {
     id: string;
     displayName: string;
     avatarUrl?: string | null;
     role?: SocialUserProfile['role'];
+    isPrivateAccount?: boolean;
+    major?: string;
+    bio?: string;
   }) => SocialUserProfile;
   propagateIdentityUpdate: (
     userId: string,
-    patch: Partial<Pick<SocialUserProfile, 'displayName' | 'avatarUrl' | 'coverUrl' | 'bio' | 'university' | 'major' | 'interests' | 'locationArea' | 'websiteUrl'>> & {
+    patch: Partial<
+      Pick<
+        SocialUserProfile,
+        | 'displayName'
+        | 'avatarUrl'
+        | 'coverUrl'
+        | 'bio'
+        | 'university'
+        | 'major'
+        | 'interests'
+        | 'locationArea'
+        | 'websiteUrl'
+      >
+    > & {
       privacy?: Partial<SocialUserProfile['privacy']>;
     }
   ) => void;
@@ -799,7 +275,10 @@ interface SocialStoreState {
   incrementProfileView: (targetUserId: string, viewerId: string) => void;
 
   // Social Graph (1-Way Follow vs 2-Way Friendship + Close Friends + Block/Mute/Restrict)
-  toggleFollowUser: (followerId: string, targetId: string) => 'followed' | 'requested' | 'unfollowed';
+  toggleFollowUser: (
+    followerId: string,
+    targetId: string
+  ) => 'followed' | 'requested' | 'unfollowed';
   respondFollowRequest: (ownerId: string, followerId: string, accept: boolean) => void;
   toggleCloseFriend: (userId: string, targetId: string) => void;
   sendFriendRequest: (senderId: string, receiverId: string) => void;
@@ -808,7 +287,7 @@ interface SocialStoreState {
   toggleUserRelation: (actorId: string, targetId: string, type: UserRelationType) => boolean;
   dismissFriendRecommendation: (userId: string, targetId: string) => void;
 
-  // Composer Drafts & Post Lifecycle (Create, Edit+History, Delete, Archive, Pin, Scheduled, Ghost)
+  // Composer Drafts & Post Lifecycle
   saveComposerDraft: (userId: string, draft: ComposerDraftPayload | null) => void;
   runScheduledAndGhostSweep: () => void;
   createSocialPost: (input: {
@@ -839,15 +318,30 @@ interface SocialStoreState {
     locationLabel?: string | null;
     scheduledFor?: string | null;
     ghostHours?: number;
-  }) => SocialPostItem;
-  editSocialPost: (postId: string, editorId: string, nextParts: string[], nextLongForm?: string, nextMedia?: SocialMediaItem[]) => boolean;
-  deleteOrArchivePost: (postId: string, actorId: string, mode: 'delete' | 'archive' | 'restore') => void;
+  }) => SocialPostItem | null;
+  editSocialPost: (
+    postId: string,
+    editorId: string,
+    nextParts: string[],
+    nextLongForm?: string,
+    nextMedia?: SocialMediaItem[]
+  ) => boolean;
+  deleteOrArchivePost: (
+    postId: string,
+    actorId: string,
+    mode: 'delete' | 'archive' | 'restore'
+  ) => void;
   togglePinPost: (postId: string, scope: 'profile' | 'community') => void;
   summarizePostWithAi: (postId: string) => Promise<void>;
   voteDebateSide: (postId: string, side: 'A' | 'B', userId: string) => void;
-  addDebateArgument: (postId: string, side: 'A' | 'B', author: { id: string; name: string; avatar: string | null }, content: string) => void;
+  addDebateArgument: (
+    postId: string,
+    side: 'A' | 'B',
+    author: { id: string; name: string; avatar: string | null },
+    content: string
+  ) => void;
 
-  // Engagement (Reactions, Threaded Comments, Repost/Quote, Bookmarks/Collections, Favourites, Unified Polls)
+  // Engagement
   togglePostEmojiReaction: (postId: string, reaction: EmojiReactionType, userId: string) => void;
   addThreadedReply: (input: {
     postId: string;
@@ -859,23 +353,55 @@ interface SocialStoreState {
     mediaItem?: SocialMediaItem | null;
     mentionedUserIds?: string[];
   }) => ThreadedReplyItem | null;
-  editOrDeleteComment: (postId: string, commentId: string, actorId: string, newContent?: string | null) => void;
-  toggleCommentReaction: (postId: string, commentId: string, reaction: EmojiReactionType, userId: string) => void;
+  editOrDeleteComment: (
+    postId: string,
+    commentId: string,
+    actorId: string,
+    newContent?: string | null
+  ) => void;
+  toggleCommentReaction: (
+    postId: string,
+    commentId: string,
+    reaction: EmojiReactionType,
+    userId: string
+  ) => void;
   togglePinComment: (postId: string, commentId: string) => void;
   togglePureRepost: (postId: string, userId: string) => boolean;
   toggleSaveBookmark: (userId: string, postId: string, collectionId?: string) => boolean;
   toggleFavouritePost: (userId: string, postId: string) => boolean;
-  createBookmarkCollection: (userId: string, name: string, coverEmoji: string, topicRule?: string) => BookmarkCollection;
+  createBookmarkCollection: (
+    userId: string,
+    name: string,
+    coverEmoji: string,
+    topicRule?: string
+  ) => BookmarkCollection;
   deleteBookmarkCollection: (userId: string, collectionId: string) => void;
-  voteUnifiedPoll: (targetKind: 'post' | 'message', targetId: string, optionId: string, userId: string) => void;
-  addUnifiedPollOption: (targetKind: 'post' | 'message', targetId: string, text: string, user: { id: string; name: string }) => void;
-  toggleCloseUnifiedPoll: (targetKind: 'post' | 'message', targetId: string, actorId: string) => void;
+  voteUnifiedPoll: (
+    targetKind: 'post' | 'message',
+    targetId: string,
+    optionId: string,
+    userId: string
+  ) => void;
+  addUnifiedPollOption: (
+    targetKind: 'post' | 'message',
+    targetId: string,
+    text: string,
+    user: { id: string; name: string }
+  ) => void;
+  toggleCloseUnifiedPoll: (
+    targetKind: 'post' | 'message',
+    targetId: string,
+    actorId: string
+  ) => void;
 
   // Custom Feeds, Your Algo & Scroll Recovery
   setFeedScrollOffset: (y: number) => void;
   updateYourAlgo: (userId: string, patch: Partial<YourAlgoConfig>) => void;
   resetYourAlgo: (userId: string) => void;
-  saveCustomFeed: (userId: string, feed: Omit<CustomFeedConfig, 'id' | 'ownerId' | 'order'> & { id?: string }) => void;
+  saveCustomFeed: (
+    userId: string,
+    feed: Omit<CustomFeedConfig, 'id' | 'ownerId' | 'order'> & { id?: string }
+  ) => void;
   deleteCustomFeed: (userId: string, feedId: string) => void;
   recordSearchQuery: (userId: string, query: string) => void;
   clearSearchHistory: (userId: string) => void;
@@ -893,9 +419,17 @@ interface SocialStoreState {
     accentColor?: string;
     allowAnonymousPosts?: boolean;
     requirePostApproval?: boolean;
-  }) => SocialCommunityGroup;
-  joinOrLeaveCommunity: (communityId: string, user: { id: string; name: string; avatar: string | null }) => string;
-  updateCommunityMemberRole: (communityId: string, actorName: string, targetUserId: string, role: CommunityRole) => void;
+  }) => SocialCommunityGroup | null;
+  joinOrLeaveCommunity: (
+    communityId: string,
+    user: { id: string; name: string; avatar: string | null }
+  ) => string;
+  updateCommunityMemberRole: (
+    communityId: string,
+    actorName: string,
+    targetUserId: string,
+    role: CommunityRole
+  ) => void;
   approvePendingPost: (postId: string, approve: boolean) => void;
   createCommunityEvent: (input: {
     communityId: string;
@@ -905,20 +439,20 @@ interface SocialStoreState {
     description: string;
     locationLabel: string;
     startsAt: string;
-  }) => CommunityEventItem;
+  }) => CommunityEventItem | null;
   toggleEventRsvp: (communityId: string, eventId: string, userId: string) => void;
 
-  // Dedicated Messaging Center (DM, Group Chat, Requests, SharedPostCard, Polls, Recall/Edit)
+  // Dedicated Messaging Center
   openOrCreateDirectConversation: (
     me: { id: string; name: string; avatar: string | null },
     peer: { id: string; name: string; avatar?: string | null }
-  ) => MessagingConversation;
+  ) => MessagingConversation | null;
   createGroupConversation: (input: {
     creatorId: string;
     title: string;
     topic: string;
     memberIds: string[];
-  }) => MessagingConversation;
+  }) => MessagingConversation | null;
   acceptOrArchiveConversation: (conversationId: string, state: 'accepted' | 'archived') => void;
   togglePinOrMuteConversation: (conversationId: string, field: 'isPinned' | 'isMuted') => void;
   markConversationRead: (conversationId: string, userId: string) => void;
@@ -934,14 +468,21 @@ interface SocialStoreState {
     quizCard?: DirectOrGroupMessage['quizCard'];
     replyTo?: DirectOrGroupMessage['replyTo'];
     forwardedFromName?: string;
-  }) => DirectOrGroupMessage;
-  editOrRecallChatMessage: (messageId: string, senderId: string, mode: 'edit' | 'recall', newText?: string) => void;
+  }) => DirectOrGroupMessage | null;
+  editOrRecallChatMessage: (
+    messageId: string,
+    senderId: string,
+    mode: 'edit' | 'recall',
+    newText?: string
+  ) => void;
   toggleChatMessageReaction: (messageId: string, emoji: string, userId: string) => void;
   pinChatMessage: (conversationId: string, messageId: string | null) => void;
   sharePostToDestination: (
     post: SocialPostItem,
     sender: { id: string; name: string; avatar: string | null },
-    destination: { type: 'conversation'; conversationId: string } | { type: 'community'; communityId: string },
+    destination:
+      | { type: 'conversation'; conversationId: string }
+      | { type: 'community'; communityId: string },
     commentText?: string
   ) => void;
 
@@ -955,7 +496,7 @@ interface SocialStoreState {
     targetOwnerId: string;
     reason: string;
     details: string;
-  }) => SocialModerationCase;
+  }) => SocialModerationCase | null;
   applyAdminModerationAction: (
     caseId: string,
     adminName: string,
@@ -964,7 +505,12 @@ interface SocialStoreState {
     reason?: string
   ) => void;
   submitUserAppeal: (caseId: string, userId: string, appealReason: string) => void;
-  resolveUserAppeal: (caseId: string, adminName: string, decision: 'accepted' | 'rejected', note: string) => void;
+  resolveUserAppeal: (
+    caseId: string,
+    adminName: string,
+    decision: 'accepted' | 'rejected',
+    note: string
+  ) => void;
   updateUserAccountStatusAdmin: (
     targetUserId: string,
     adminName: string,
@@ -973,7 +519,10 @@ interface SocialStoreState {
   ) => void;
   createOrUpdateAdminDocument: (
     adminName: string,
-    doc: Omit<AdminManagedDocument, 'id' | 'downloadCount' | 'giftHistory' | 'createdAt' | 'updatedAt'> & { id?: string }
+    doc: Omit<
+      AdminManagedDocument,
+      'id' | 'downloadCount' | 'giftHistory' | 'createdAt' | 'updatedAt'
+    > & { id?: string }
   ) => Promise<AdminManagedDocument>;
   deleteAdminDocument: (adminName: string, docId: string) => void;
   giftAdminDocument: (input: {
@@ -996,39 +545,16 @@ export const useSocialStore = create<SocialStoreState>()(
 
       return {
         activeScopeUserId: 'guest',
-        profilesById: SEED_PROFILES,
-        follows: [
-          {
-            followerId: 'scholar-minhquan',
-            followingId: 'scholar-khanh',
-            status: 'accepted',
-            isCloseFriend: true,
-            createdAt: '2026-11-01T00:00:00.000Z',
-          },
-          {
-            followerId: 'scholar-khanh',
-            followingId: 'scholar-minhquan',
-            status: 'accepted',
-            isCloseFriend: true,
-            createdAt: '2026-11-01T00:00:00.000Z',
-          },
-        ],
-        friendRequests: [
-          {
-            id: 'freq-seed-1',
-            senderId: 'scholar-khanh',
-            receiverId: 'scholar-minhquan',
-            status: 'accepted',
-            createdAt: '2026-11-02T00:00:00.000Z',
-          },
-        ],
+        profilesById: {},
+        follows: [],
+        friendRequests: [],
         relations: [],
-        posts: SEED_SOCIAL_POSTS,
-        communities: SEED_COMMUNITIES,
-        conversations: SEED_CONVERSATIONS,
-        chatMessages: SEED_CHAT_MESSAGES,
+        posts: [],
+        communities: STARTER_COMMUNITIES,
+        conversations: [],
+        chatMessages: [],
         moderationCases: [],
-        adminDocuments: SEED_ADMIN_DOCS,
+        adminDocuments: [],
         auditLogs: [],
         userSlices: { guest: emptyScopedSlice('guest') },
         feedScrollOffset: 0,
@@ -1044,24 +570,235 @@ export const useSocialStore = create<SocialStoreState>()(
           }));
         },
 
+        /**
+         * Preserves 100% of real user-created posts & messages from `useCommunityStore` (`papyrus.community.v1`)
+         * so nothing the user ever wrote disappears!
+         */
+        migrateLegacyUserContent: () => {
+          const legacy = useCommunityStore.getState();
+          const current = get();
+          const existingPostIds = new Set(current.posts.map((p) => p.id));
+
+          const migratedPosts: SocialPostItem[] = [];
+          for (const lp of legacy.posts) {
+            if (
+              LEGACY_FAKE_POST_IDS.has(lp.id) ||
+              LEGACY_FAKE_USER_IDS.has(lp.authorId) ||
+              lp.authorId === 'guest' ||
+              existingPostIds.has(lp.id)
+            ) {
+              continue;
+            }
+            const item: SocialPostItem = {
+              id: lp.id,
+              authorId: lp.authorId,
+              internalAuthorId: lp.authorId,
+              authorName: lp.authorName,
+              authorAvatar: lp.authorAvatar,
+              postKind: lp.threadParts.length > 1 ? 'thread' : 'standard',
+              threadParts: lp.threadParts,
+              mediaItems: lp.imageUri
+                ? [{ id: `img-${lp.id}`, kind: 'image', uri: lp.imageUri, thumbnailUri: lp.imageUri }]
+                : [],
+              poll: lp.poll
+                ? {
+                    id: `poll-${lp.id}`,
+                    scopeType: 'post',
+                    question: lp.poll.question,
+                    options: lp.poll.options,
+                    allowMultiple: false,
+                    isAnonymous: false,
+                    allowAddOptions: false,
+                    allowChangeVote: true,
+                    isClosed: false,
+                    createdBy: lp.authorId,
+                    createdAt: lp.createdAt,
+                  }
+                : null,
+              attachedQuiz: lp.attachedQuiz ?? null,
+              codeSnippet: lp.codeSnippet,
+              linkPreview: lp.sourceCitation
+                ? {
+                    url: lp.sourceCitation.url,
+                    title: lp.sourceCitation.title,
+                    description: lp.sourceCitation.sourceName || '',
+                    siteName: lp.sourceCitation.sourceName,
+                  }
+                : null,
+              isSpoiler: false,
+              isAnonymous: false,
+              audience: 'public',
+              selectedAudienceIds: [],
+              replyPermission: 'everyone',
+              topics: lp.tags ?? [],
+              hashtags: lp.tags ?? [],
+              mentionedUserIds: [],
+              reactions: {
+                love: lp.reactions?.heart ?? [],
+                bulb: lp.reactions?.bulb ?? [],
+                fire: lp.reactions?.fire ?? [],
+                clap: lp.reactions?.clap ?? [],
+              },
+              repostedByIds: lp.repostedByIds ?? [],
+              quoteCount: 0,
+              comments: (lp.comments ?? []).map((c) => ({
+                id: c.id,
+                postId: lp.id,
+                parentCommentId: null,
+                authorId: c.authorId,
+                authorName: c.authorName,
+                authorAvatar: c.authorAvatar,
+                content: c.content,
+                mentionedUserIds: [],
+                reactions: {},
+                isPinned: false,
+                isEdited: false,
+                createdAt: c.createdAt,
+              })),
+              isPinnedProfile: false,
+              isPinnedCommunity: false,
+              lifecycleStatus: 'published',
+              editHistory: [],
+              impressionsCount: 1,
+              viewsCount: 1,
+              sharesCount: 0,
+              videoWatchSec: 0,
+              createdAt: lp.createdAt,
+              updatedAt: lp.createdAt,
+            };
+            migratedPosts.push(item);
+            void persistSocialPostToSupabase(item);
+          }
+
+          const existingMsgIds = new Set(current.chatMessages.map((m) => m.id));
+          const existingConvIds = new Set(current.conversations.map((c) => c.id));
+          const migratedConvs: MessagingConversation[] = [];
+          const migratedMsgs: DirectOrGroupMessage[] = [];
+
+          for (const lm of legacy.messages) {
+            if (
+              LEGACY_FAKE_MSG_IDS.has(lm.id) ||
+              LEGACY_FAKE_USER_IDS.has(lm.senderId) ||
+              lm.senderId === 'guest' ||
+              existingMsgIds.has(lm.id)
+            ) {
+              continue;
+            }
+            const ch = legacy.channels.find((c) => c.id === lm.channelId);
+            const convId = lm.channelId;
+            if (!existingConvIds.has(convId)) {
+              existingConvIds.add(convId);
+              migratedConvs.push({
+                id: convId,
+                kind: ch?.isDirect ? 'direct' : 'group',
+                title: ch?.name.replace(/^💬\s*/, '') || 'Cuộc trò chuyện',
+                subtitle: ch?.subtitle || 'Hội thoại',
+                avatarUrl: null,
+                accentColor: ch?.accentColor || '#6366F1',
+                peerUserId: ch?.peerUserId,
+                memberIds: [lm.senderId, ...(ch?.peerUserId ? [ch.peerUserId] : [])],
+                adminIds: [lm.senderId],
+                requestState: 'accepted',
+                isPinned: false,
+                isMuted: false,
+                pinnedMessageId: null,
+                announcement: '',
+                typingUserNames: [],
+                lastMessagePreview: lm.text,
+                lastMessageAt: lm.createdAt,
+                unreadByUserIds: {},
+              });
+            }
+            migratedMsgs.push({
+              id: lm.id,
+              conversationId: convId,
+              senderId: lm.senderId,
+              senderName: lm.senderName,
+              senderAvatar: lm.senderAvatar,
+              text: lm.text,
+              mediaAttachments: lm.imageUri
+                ? [{ id: `img-${lm.id}`, kind: 'image', uri: lm.imageUri, thumbnailUri: lm.imageUri }]
+                : [],
+              quizCard: lm.quizCard ?? null,
+              replyTo: lm.replyTo ?? null,
+              reactions: lm.reactions ?? {},
+              isEdited: false,
+              isRecalled: false,
+              deliveryStatus: 'delivered',
+              readByIds: [lm.senderId],
+              createdAt: lm.createdAt,
+            });
+          }
+
+          if (migratedPosts.length > 0 || migratedMsgs.length > 0 || migratedConvs.length > 0) {
+            set((s) => ({
+              posts: [...migratedPosts, ...s.posts].sort(
+                (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)
+              ),
+              conversations: [...migratedConvs, ...s.conversations],
+              chatMessages: [...s.chatMessages, ...migratedMsgs].sort(
+                (a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt)
+              ),
+            }));
+          }
+        },
+
         ensureUserProfile: (input) => {
+          if (!input.id || input.id === 'guest') {
+            return {
+              id: 'guest',
+              displayName: 'Khách',
+              avatarUrl: null,
+              coverUrl: null,
+              bio: '',
+              university: '',
+              major: '',
+              interests: [],
+              locationArea: '',
+              websiteUrl: '',
+              badges: [],
+              reputationScore: 0,
+              role: 'user',
+              accountStatus: 'active',
+              privacy: {
+                isPrivateAccount: false,
+                allowMessagesFrom: 'everyone',
+                allowMentionsFrom: 'everyone',
+                showOnlineStatus: false,
+                showJoinedCommunities: false,
+                showPersonalInfo: 'only_me',
+                discoverableInRecommendations: false,
+              },
+              followersCount: 0,
+              followingCount: 0,
+              friendsCount: 0,
+              profileViewsCount: 0,
+            };
+          }
           const existing = get().profilesById[input.id];
-          const cleanName = input.displayName.trim() || existing?.displayName || 'Thành viên Papyrus';
+          const cleanName =
+            input.displayName.trim() || existing?.displayName || 'Thành viên Papyrus';
           const next: SocialUserProfile = existing
             ? {
                 ...existing,
                 displayName: cleanName,
                 avatarUrl: input.avatarUrl !== undefined ? input.avatarUrl : existing.avatarUrl,
                 role: input.role ?? existing.role,
+                major: input.major !== undefined ? input.major : existing.major,
+                bio: input.bio !== undefined ? input.bio : existing.bio,
+                privacy:
+                  input.isPrivateAccount !== undefined
+                    ? { ...existing.privacy, isPrivateAccount: input.isPrivateAccount }
+                    : existing.privacy,
               }
             : {
                 id: input.id,
                 displayName: cleanName,
                 avatarUrl: input.avatarUrl ?? null,
                 coverUrl: null,
-                bio: '',
+                bio: input.bio ?? '',
                 university: '',
-                major: '',
+                major: input.major ?? '',
                 interests: ['CNTT', 'ÔnThi'],
                 locationArea: '',
                 websiteUrl: '',
@@ -1070,7 +807,7 @@ export const useSocialStore = create<SocialStoreState>()(
                 role: input.role ?? 'user',
                 accountStatus: 'active',
                 privacy: {
-                  isPrivateAccount: false,
+                  isPrivateAccount: Boolean(input.isPrivateAccount),
                   allowMessagesFrom: 'everyone',
                   allowMentionsFrom: 'everyone',
                   showOnlineStatus: true,
@@ -1092,14 +829,21 @@ export const useSocialStore = create<SocialStoreState>()(
         },
 
         propagateIdentityUpdate: (userId, patch) => {
-          if (!userId) return;
+          if (!userId || userId === 'guest') return;
           set((state) => {
             const current = state.profilesById[userId];
-            const updatedName = patch.displayName?.trim() || current?.displayName || 'Thành viên Papyrus';
-            const updatedAvatar = patch.avatarUrl !== undefined ? patch.avatarUrl : current?.avatarUrl ?? null;
+            const updatedName =
+              patch.displayName?.trim() || current?.displayName || 'Thành viên Papyrus';
+            const updatedAvatar =
+              patch.avatarUrl !== undefined ? patch.avatarUrl : current?.avatarUrl ?? null;
 
             const updatedProfile: SocialUserProfile = {
-              ...(current ?? get().ensureUserProfile({ id: userId, displayName: updatedName, avatarUrl: updatedAvatar })),
+              ...(current ??
+                get().ensureUserProfile({
+                  id: userId,
+                  displayName: updatedName,
+                  avatarUrl: updatedAvatar,
+                })),
               ...patch,
               displayName: updatedName,
               avatarUrl: updatedAvatar,
@@ -1119,7 +863,6 @@ export const useSocialStore = create<SocialStoreState>()(
 
             return {
               profilesById: { ...state.profilesById, [userId]: updatedProfile },
-              // Propagate updated main Profile Name & Avatar across all authored posts, comments, communities & messages!
               posts: state.posts.map((p) => {
                 const realAuthor = p.internalAuthorId || p.authorId;
                 const nextComments = p.comments.map((c) =>
@@ -1167,13 +910,33 @@ export const useSocialStore = create<SocialStoreState>()(
 
         syncCloudDirectory: async () => {
           void triggerServerPostLifecycleSweep();
-          const remote = await fetchRealProfilesDirectory(50);
-          if (remote.length === 0) return;
+          get().migrateLegacyUserContent();
+
+          const snap = await fetchSocialHydrationSnapshot();
+          if (!snap) {
+            const remote = await fetchRealProfilesDirectory(50);
+            if (remote.length > 0) {
+              set((state) => {
+                const merged = { ...state.profilesById };
+                for (const prof of remote) {
+                  const local = merged[prof.id];
+                  merged[prof.id] = local ? { ...local, ...prof } : prof;
+                }
+                return { profilesById: merged };
+              });
+            }
+            return;
+          }
+
+          if (snap.stories.length > 0) {
+            useCommunityStore.getState().mergeCloudStories(snap.stories);
+          }
+
           set((state) => {
-            const merged = { ...state.profilesById };
-            for (const prof of remote) {
-              const local = merged[prof.id];
-              merged[prof.id] = local
+            const mergedProfiles = { ...state.profilesById };
+            for (const prof of snap.profiles) {
+              const local = mergedProfiles[prof.id];
+              mergedProfiles[prof.id] = local
                 ? {
                     ...local,
                     displayName: prof.displayName || local.displayName,
@@ -1182,15 +945,110 @@ export const useSocialStore = create<SocialStoreState>()(
                     bio: prof.bio || local.bio,
                     university: prof.university || local.university,
                     major: prof.major || local.major,
+                    followersCount: 0,
+                    followingCount: 0,
+                    friendsCount: 0,
                   }
                 : prof;
             }
-            return { profilesById: merged };
+
+            // Merge posts by id (remote wins metadata while keeping any unsynced local posts)
+            const postMap = new Map<string, SocialPostItem>();
+            for (const lp of state.posts) {
+              if (!LEGACY_FAKE_POST_IDS.has(lp.id) && !LEGACY_FAKE_USER_IDS.has(lp.authorId)) {
+                postMap.set(lp.id, lp);
+              }
+            }
+            for (const rp of snap.posts) {
+              const prev = postMap.get(rp.id);
+              postMap.set(
+                rp.id,
+                prev
+                  ? {
+                      ...prev,
+                      ...rp,
+                      // Preserve local session blob media if any
+                      mediaItems: rp.mediaItems.length > 0 ? rp.mediaItems : prev.mediaItems,
+                    }
+                  : rp
+              );
+            }
+
+            // Merge communities by slug/id
+            const commBySlug = new Map<string, SocialCommunityGroup>();
+            for (const sc of state.communities) {
+              commBySlug.set(sc.slug || sc.id, sc);
+            }
+            for (const rc of snap.communities) {
+              const prev = commBySlug.get(rc.slug || rc.id);
+              commBySlug.set(
+                rc.slug || rc.id,
+                prev
+                  ? {
+                      ...prev,
+                      ...rc,
+                      avatarEmoji: prev.avatarEmoji || rc.avatarEmoji,
+                      accentColor: prev.accentColor || rc.accentColor,
+                      events: rc.events.length > 0 ? rc.events : prev.events,
+                    }
+                  : rc
+              );
+            }
+
+            // Merge conversations & messages
+            const convMap = new Map<string, MessagingConversation>();
+            for (const lc of state.conversations) {
+              if (!LEGACY_FAKE_CONV_IDS.has(lc.id)) convMap.set(lc.id, lc);
+            }
+            for (const rc of snap.conversations) {
+              const prev = convMap.get(rc.id);
+              convMap.set(rc.id, prev ? { ...prev, ...rc } : rc);
+            }
+
+            const msgMap = new Map<string, DirectOrGroupMessage>();
+            for (const lm of state.chatMessages) {
+              if (!LEGACY_FAKE_MSG_IDS.has(lm.id)) msgMap.set(lm.id, lm);
+            }
+            for (const rm of snap.chatMessages) {
+              msgMap.set(rm.id, rm);
+            }
+
+            // Merge follows & friendRequests if remote returned rows
+            const followKey = (f: FollowEdge) => `${f.followerId}->${f.followingId}`;
+            const followMap = new Map<string, FollowEdge>();
+            for (const lf of state.follows) followMap.set(followKey(lf), lf);
+            for (const rf of snap.follows) followMap.set(followKey(rf), rf);
+
+            const freqMap = new Map<string, FriendRequestRecord>();
+            for (const lfr of state.friendRequests) {
+              if (!LEGACY_FAKE_FREQ_IDS.has(lfr.id)) {
+                freqMap.set(`${lfr.senderId}->${lfr.receiverId}`, lfr);
+              }
+            }
+            for (const rfr of snap.friendRequests) {
+              freqMap.set(`${rfr.senderId}->${rfr.receiverId}`, rfr);
+            }
+
+            return {
+              profilesById: mergedProfiles,
+              posts: Array.from(postMap.values()).sort(
+                (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)
+              ),
+              communities: Array.from(commBySlug.values()),
+              conversations: Array.from(convMap.values()),
+              chatMessages: Array.from(msgMap.values()).sort(
+                (a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt)
+              ),
+              follows: Array.from(followMap.values()),
+              friendRequests: Array.from(freqMap.values()),
+            };
           });
         },
 
         incrementProfileView: (targetUserId, viewerId) => {
-          if (!targetUserId || targetUserId === viewerId) return;
+          if (!targetUserId || !viewerId || viewerId === 'guest' || targetUserId === viewerId) {
+            return;
+          }
           set((state) => {
             const target = state.profilesById[targetUserId];
             if (!target) return state;
@@ -1204,7 +1062,9 @@ export const useSocialStore = create<SocialStoreState>()(
         },
 
         toggleFollowUser: (followerId, targetId) => {
-          if (!followerId || !targetId || followerId === targetId) return 'unfollowed';
+          if (!followerId || followerId === 'guest' || !targetId || followerId === targetId) {
+            return 'unfollowed';
+          }
           const state = get();
           const existing = state.follows.find(
             (f) => f.followerId === followerId && f.followingId === targetId
@@ -1215,6 +1075,7 @@ export const useSocialStore = create<SocialStoreState>()(
                 (f) => !(f.followerId === followerId && f.followingId === targetId)
               ),
             }));
+            void persistFollowEdgeToSupabase(targetId, 'delete');
             return 'unfollowed';
           }
           const targetProf = state.profilesById[targetId];
@@ -1233,10 +1094,12 @@ export const useSocialStore = create<SocialStoreState>()(
               },
             ],
           }));
+          void persistFollowEdgeToSupabase(targetId, 'upsert', nextStatus, false);
           return nextStatus === 'pending' ? 'requested' : 'followed';
         },
 
         respondFollowRequest: (ownerId, followerId, accept) => {
+          if (!ownerId || ownerId === 'guest') return;
           set((s) => ({
             follows: accept
               ? s.follows.map((f) =>
@@ -1251,17 +1114,23 @@ export const useSocialStore = create<SocialStoreState>()(
         },
 
         toggleCloseFriend: (userId, targetId) => {
+          if (!userId || userId === 'guest') return;
+          let nextClose = false;
           set((s) => ({
-            follows: s.follows.map((f) =>
-              f.followerId === userId && f.followingId === targetId
-                ? { ...f, isCloseFriend: !f.isCloseFriend }
-                : f
-            ),
+            follows: s.follows.map((f) => {
+              if (f.followerId === userId && f.followingId === targetId) {
+                nextClose = !f.isCloseFriend;
+                return { ...f, isCloseFriend: nextClose };
+              }
+              return f;
+            }),
           }));
+          void persistFollowEdgeToSupabase(targetId, 'upsert', 'accepted', nextClose);
         },
 
         sendFriendRequest: (senderId, receiverId) => {
-          if (!senderId || !receiverId || senderId === receiverId) return;
+          if (!senderId || senderId === 'guest' || !receiverId || senderId === receiverId) return;
+          let createdReq: FriendRequestRecord | null = null;
           set((s) => {
             const exists = s.friendRequests.find(
               (r) =>
@@ -1270,30 +1139,43 @@ export const useSocialStore = create<SocialStoreState>()(
                 (r.status === 'pending' || r.status === 'accepted')
             );
             if (exists) return s;
+            createdReq = {
+              id: generateClientUuid(),
+              senderId,
+              receiverId,
+              status: 'pending',
+              createdAt: new Date().toISOString(),
+            };
             return {
-              friendRequests: [
-                {
-                  id: `freq-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-                  senderId,
-                  receiverId,
-                  status: 'pending',
-                  createdAt: new Date().toISOString(),
-                },
-                ...s.friendRequests,
-              ],
+              friendRequests: [createdReq, ...s.friendRequests],
             };
           });
+          if (createdReq) {
+            void persistFriendRequestToSupabase(createdReq, 'upsert');
+          }
         },
 
         respondFriendRequest: (requestId, accept) => {
+          let updatedReq: FriendRequestRecord | null = null;
           set((s) => ({
-            friendRequests: s.friendRequests.map((r) =>
-              r.id === requestId ? { ...r, status: accept ? 'accepted' : 'rejected' } : r
-            ),
+            friendRequests: s.friendRequests.map((r) => {
+              if (r.id !== requestId) return r;
+              updatedReq = { ...r, status: accept ? 'accepted' : 'rejected' };
+              return updatedReq;
+            }),
           }));
+          if (updatedReq) {
+            void persistFriendRequestToSupabase(updatedReq, 'upsert');
+          }
         },
 
         cancelOrUnfriend: (userId, otherUserId) => {
+          if (!userId || userId === 'guest') return;
+          const existing = get().friendRequests.find(
+            (r) =>
+              (r.senderId === userId && r.receiverId === otherUserId) ||
+              (r.senderId === otherUserId && r.receiverId === userId)
+          );
           set((s) => ({
             friendRequests: s.friendRequests.filter(
               (r) =>
@@ -1303,10 +1185,13 @@ export const useSocialStore = create<SocialStoreState>()(
                 )
             ),
           }));
+          if (existing) {
+            void persistFriendRequestToSupabase(existing, 'delete');
+          }
         },
 
         toggleUserRelation: (actorId, targetId, type) => {
-          if (!actorId || !targetId || actorId === targetId) return false;
+          if (!actorId || actorId === 'guest' || !targetId || actorId === targetId) return false;
           const exists = get().relations.some(
             (r) => r.actorId === actorId && r.targetId === targetId && r.type === type
           );
@@ -1316,7 +1201,6 @@ export const useSocialStore = create<SocialStoreState>()(
                   (r) => !(r.actorId === actorId && r.targetId === targetId && r.type === type)
                 )
               : [...s.relations, { actorId, targetId, type }];
-            // Blocking also cleanly severs active follows & friend requests
             const nextFollows =
               !exists && type === 'block'
                 ? s.follows.filter(
@@ -1384,7 +1268,11 @@ export const useSocialStore = create<SocialStoreState>()(
                 Date.parse(p.scheduledFor) <= now
               ) {
                 changed = true;
-                return { ...p, lifecycleStatus: 'published' as const, updatedAt: new Date().toISOString() };
+                return {
+                  ...p,
+                  lifecycleStatus: 'published' as const,
+                  updatedAt: new Date().toISOString(),
+                };
               }
               if (
                 p.lifecycleStatus === 'published' &&
@@ -1392,7 +1280,11 @@ export const useSocialStore = create<SocialStoreState>()(
                 Date.parse(p.expiresAt) <= now
               ) {
                 changed = true;
-                return { ...p, lifecycleStatus: 'expired' as const, updatedAt: new Date().toISOString() };
+                return {
+                  ...p,
+                  lifecycleStatus: 'expired' as const,
+                  updatedAt: new Date().toISOString(),
+                };
               }
               return p;
             });
@@ -1401,6 +1293,7 @@ export const useSocialStore = create<SocialStoreState>()(
         },
 
         createSocialPost: (input) => {
+          if (!input.authorId || input.authorId === 'guest') return null;
           const nowIso = new Date().toISOString();
           const comm = input.communityId
             ? get().communities.find((c) => c.id === input.communityId)
@@ -1428,7 +1321,7 @@ export const useSocialStore = create<SocialStoreState>()(
               : null;
 
           const newPost: SocialPostItem = {
-            id: `spost-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            id: generateClientUuid(),
             authorId: input.authorId,
             internalAuthorId: input.authorId,
             authorName: input.authorName.trim() || 'Thành viên Papyrus',
@@ -1447,7 +1340,7 @@ export const useSocialStore = create<SocialStoreState>()(
             repostOfId: input.repostOfId ?? null,
             isQuote: Boolean(input.isQuote),
             isSpoiler: Boolean(input.isSpoiler),
-            spoilerWarning: input.spoilerWarning || 'Nội dung ẩn Spoiler · Chạm để xem',
+            spoilerWarning: input.spoilerWarning || 'Nội dung ẩn · Chạm để xem',
             isAnonymous: Boolean(input.isAnonymous),
             audience: input.audience ?? (input.communityId ? 'community' : 'public'),
             selectedAudienceIds: input.selectedAudienceIds ?? [],
@@ -1512,61 +1405,74 @@ export const useSocialStore = create<SocialStoreState>()(
         },
 
         editSocialPost: (postId, editorId, nextParts, nextLongForm, nextMedia) => {
+          if (!editorId || editorId === 'guest') return false;
           const target = get().posts.find((p) => p.id === postId);
           if (!target) return false;
           const realOwner = target.internalAuthorId || target.authorId;
           if (realOwner !== editorId) return false;
 
+          let updatedPost: SocialPostItem | null = null;
           set((s) => ({
-            posts: s.posts.map((p) =>
-              p.id !== postId
-                ? p
-                : {
-                    ...p,
-                    threadParts: nextParts,
-                    longFormBody: nextLongForm !== undefined ? nextLongForm : p.longFormBody,
-                    mediaItems: nextMedia !== undefined ? nextMedia : p.mediaItems,
-                    editHistory: [
-                      {
-                        id: `ver-${Date.now()}`,
-                        editedAt: new Date().toISOString(),
-                        editorId,
-                        previousParts: p.threadParts,
-                        previousLongForm: p.longFormBody,
-                      },
-                      ...p.editHistory,
-                    ],
-                    updatedAt: new Date().toISOString(),
-                  }
-            ),
+            posts: s.posts.map((p) => {
+              if (p.id !== postId) return p;
+              updatedPost = {
+                ...p,
+                threadParts: nextParts,
+                longFormBody: nextLongForm !== undefined ? nextLongForm : p.longFormBody,
+                mediaItems: nextMedia !== undefined ? nextMedia : p.mediaItems,
+                editHistory: [
+                  {
+                    id: `ver-${Date.now()}`,
+                    editedAt: new Date().toISOString(),
+                    editorId,
+                    previousParts: p.threadParts,
+                    previousLongForm: p.longFormBody,
+                  },
+                  ...p.editHistory,
+                ],
+                updatedAt: new Date().toISOString(),
+              };
+              return updatedPost;
+            }),
           }));
+          if (updatedPost) void persistSocialPostToSupabase(updatedPost);
           return true;
         },
 
         deleteOrArchivePost: (postId, actorId, mode) => {
+          if (!actorId || actorId === 'guest') return;
+          let updatedPost: SocialPostItem | null = null;
           set((s) => ({
-            posts: s.posts
-              .map((p) => {
-                const realOwner = p.internalAuthorId || p.authorId;
-                if (p.id !== postId) return p;
-                if (realOwner !== actorId && actorId !== 'admin') return p;
-                if (mode === 'delete') return { ...p, lifecycleStatus: 'removed' as const };
-                if (mode === 'archive') return { ...p, lifecycleStatus: 'archived' as const };
-                return { ...p, lifecycleStatus: 'published' as const };
-              }),
+            posts: s.posts.map((p) => {
+              const realOwner = p.internalAuthorId || p.authorId;
+              if (p.id !== postId) return p;
+              if (realOwner !== actorId && actorId !== 'admin') return p;
+              const nextStatus =
+                mode === 'delete'
+                  ? ('removed' as const)
+                  : mode === 'archive'
+                  ? ('archived' as const)
+                  : ('published' as const);
+              updatedPost = { ...p, lifecycleStatus: nextStatus };
+              return updatedPost;
+            }),
           }));
+          if (updatedPost) void persistSocialPostToSupabase(updatedPost);
         },
 
         togglePinPost: (postId, scope) => {
+          let updatedPost: SocialPostItem | null = null;
           set((s) => ({
-            posts: s.posts.map((p) =>
-              p.id !== postId
-                ? p
-                : scope === 'profile'
-                ? { ...p, isPinnedProfile: !p.isPinnedProfile }
-                : { ...p, isPinnedCommunity: !p.isPinnedCommunity }
-            ),
+            posts: s.posts.map((p) => {
+              if (p.id !== postId) return p;
+              updatedPost =
+                scope === 'profile'
+                  ? { ...p, isPinnedProfile: !p.isPinnedProfile }
+                  : { ...p, isPinnedCommunity: !p.isPinnedCommunity };
+              return updatedPost;
+            }),
           }));
+          if (updatedPost) void persistSocialPostToSupabase(updatedPost);
         },
 
         summarizePostWithAi: async (postId) => {
@@ -1581,6 +1487,7 @@ export const useSocialStore = create<SocialStoreState>()(
         },
 
         voteDebateSide: (postId, side, userId) => {
+          if (!userId || userId === 'guest') return;
           set((s) => ({
             posts: s.posts.map((p) => {
               if (p.id !== postId || !p.debate) return p;
@@ -1599,6 +1506,7 @@ export const useSocialStore = create<SocialStoreState>()(
         },
 
         addDebateArgument: (postId, side, author, content) => {
+          if (!author.id || author.id === 'guest') return;
           const clean = content.trim();
           if (!clean) return;
           set((s) => ({
@@ -1629,30 +1537,35 @@ export const useSocialStore = create<SocialStoreState>()(
         },
 
         togglePostEmojiReaction: (postId, reaction, userId) => {
-          if (!userId) return;
+          if (!userId || userId === 'guest') return;
+          let updatedPost: SocialPostItem | null = null;
           set((s) => ({
             posts: s.posts.map((p) => {
               if (p.id !== postId) return p;
               const alreadySame = (p.reactions[reaction] ?? []).includes(userId);
-              // Ensure 1 active reaction per user per post (Facebook/Messenger model — zero duplicate reaction bugs on rapid taps!)
               const cleanedReactions: Partial<Record<EmojiReactionType, string[]>> = {};
-              for (const [k, list] of Object.entries(p.reactions) as Array<[EmojiReactionType, string[]]>) {
+              for (const [k, list] of Object.entries(p.reactions) as Array<
+                [EmojiReactionType, string[]]
+              >) {
                 const filtered = (list ?? []).filter((id) => id !== userId);
                 if (filtered.length > 0) cleanedReactions[k] = filtered;
               }
               if (!alreadySame) {
                 cleanedReactions[reaction] = [...(cleanedReactions[reaction] ?? []), userId];
               }
-              return { ...p, reactions: cleanedReactions };
+              updatedPost = { ...p, reactions: cleanedReactions };
+              return updatedPost;
             }),
           }));
+          if (updatedPost) void syncPostEngagementToSupabase(updatedPost);
         },
 
         addThreadedReply: (input) => {
+          if (!input.authorId || input.authorId === 'guest') return null;
           const clean = input.content.trim();
           if (!clean && !input.mediaItem) return null;
           const reply: ThreadedReplyItem = {
-            id: `scmt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            id: generateClientUuid(),
             postId: input.postId,
             parentCommentId: input.parentCommentId,
             authorId: input.authorId,
@@ -1666,20 +1579,26 @@ export const useSocialStore = create<SocialStoreState>()(
             isEdited: false,
             createdAt: new Date().toISOString(),
           };
+          let updatedPost: SocialPostItem | null = null;
           set((s) => ({
-            posts: s.posts.map((p) =>
-              p.id !== input.postId ? p : { ...p, comments: [...p.comments, reply] }
-            ),
+            posts: s.posts.map((p) => {
+              if (p.id !== input.postId) return p;
+              updatedPost = { ...p, comments: [...p.comments, reply] };
+              return updatedPost;
+            }),
           }));
+          if (updatedPost) void syncPostEngagementToSupabase(updatedPost);
           return reply;
         },
 
         editOrDeleteComment: (postId, commentId, actorId, newContent) => {
+          if (!actorId || actorId === 'guest') return;
+          let updatedPost: SocialPostItem | null = null;
           set((s) => ({
             posts: s.posts.map((p) => {
               if (p.id !== postId) return p;
               if (newContent === null || newContent === undefined) {
-                return {
+                updatedPost = {
                   ...p,
                   comments: p.comments.filter(
                     (c) =>
@@ -1689,69 +1608,86 @@ export const useSocialStore = create<SocialStoreState>()(
                       )
                   ),
                 };
+                return updatedPost;
               }
-              return {
+              updatedPost = {
                 ...p,
                 comments: p.comments.map((c) =>
                   c.id === commentId && c.authorId === actorId
-                    ? { ...c, content: newContent.trim(), isEdited: true, updatedAt: new Date().toISOString() }
+                    ? {
+                        ...c,
+                        content: newContent.trim(),
+                        isEdited: true,
+                        updatedAt: new Date().toISOString(),
+                      }
                     : c
                 ),
               };
+              return updatedPost;
             }),
           }));
+          if (updatedPost) void syncPostEngagementToSupabase(updatedPost);
         },
 
         toggleCommentReaction: (postId, commentId, reaction, userId) => {
+          if (!userId || userId === 'guest') return;
+          let updatedPost: SocialPostItem | null = null;
           set((s) => ({
-            posts: s.posts.map((p) =>
-              p.id !== postId
-                ? p
-                : {
-                    ...p,
-                    comments: p.comments.map((c) => {
-                      if (c.id !== commentId) return c;
-                      const prev = c.reactions[reaction] ?? [];
-                      const next = prev.includes(userId)
-                        ? prev.filter((id) => id !== userId)
-                        : [...prev, userId];
-                      return { ...c, reactions: { ...c.reactions, [reaction]: next } };
-                    }),
-                  }
-            ),
+            posts: s.posts.map((p) => {
+              if (p.id !== postId) return p;
+              updatedPost = {
+                ...p,
+                comments: p.comments.map((c) => {
+                  if (c.id !== commentId) return c;
+                  const prev = c.reactions[reaction] ?? [];
+                  const next = prev.includes(userId)
+                    ? prev.filter((id) => id !== userId)
+                    : [...prev, userId];
+                  return { ...c, reactions: { ...c.reactions, [reaction]: next } };
+                }),
+              };
+              return updatedPost;
+            }),
           }));
+          if (updatedPost) void syncPostEngagementToSupabase(updatedPost);
         },
 
         togglePinComment: (postId, commentId) => {
+          let updatedPost: SocialPostItem | null = null;
           set((s) => ({
-            posts: s.posts.map((p) =>
-              p.id !== postId
-                ? p
-                : {
-                    ...p,
-                    comments: p.comments.map((c) =>
-                      c.id === commentId ? { ...c, isPinned: !c.isPinned } : c
-                    ),
-                  }
-            ),
+            posts: s.posts.map((p) => {
+              if (p.id !== postId) return p;
+              updatedPost = {
+                ...p,
+                comments: p.comments.map((c) =>
+                  c.id === commentId ? { ...c, isPinned: !c.isPinned } : c
+                ),
+              };
+              return updatedPost;
+            }),
           }));
+          if (updatedPost) void syncPostEngagementToSupabase(updatedPost);
         },
 
         togglePureRepost: (postId, userId) => {
+          if (!userId || userId === 'guest') return false;
           let activeNow = false;
+          let updatedPost: SocialPostItem | null = null;
           set((s) => ({
             posts: s.posts.map((p) => {
               if (p.id !== postId) return p;
               const has = p.repostedByIds.includes(userId);
               activeNow = !has;
-              return {
+              updatedPost = {
                 ...p,
                 repostedByIds: has
                   ? p.repostedByIds.filter((id) => id !== userId)
                   : [...p.repostedByIds, userId],
               };
+              return updatedPost;
             }),
           }));
+          if (updatedPost) void syncPostEngagementToSupabase(updatedPost);
           return activeNow;
         },
 
@@ -1766,7 +1702,6 @@ export const useSocialStore = create<SocialStoreState>()(
               ? slice.bookmarkedPostIds.filter((id) => id !== postId)
               : [postId, ...slice.bookmarkedPostIds];
 
-            // Smart AI Topic Auto-Classification into Smart Collections!
             const targetPost = s.posts.find((p) => p.id === postId);
             const nextCollections = slice.collections.map((col) => {
               if (has) {
@@ -1779,7 +1714,9 @@ export const useSocialStore = create<SocialStoreState>()(
                 !collectionId &&
                 col.isSmart &&
                 col.topicRule &&
-                targetPost?.topics.some((t) => t.toLowerCase().includes(col.topicRule!.toLowerCase()))
+                targetPost?.topics.some((t) =>
+                  t.toLowerCase().includes(col.topicRule!.toLowerCase())
+                )
               ) {
                 return { ...col, postIds: Array.from(new Set([postId, ...col.postIds])) };
               }
@@ -1828,7 +1765,7 @@ export const useSocialStore = create<SocialStoreState>()(
             id: `col-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
             ownerId: scope,
             name: name.trim() || 'Bộ sưu tập mới',
-            coverEmoji: coverEmoji || '🔖',
+            coverEmoji: coverEmoji || '📂',
             topicRule: topicRule?.trim() || undefined,
             isSmart: Boolean(topicRule?.trim()),
             postIds: [],
@@ -1863,7 +1800,7 @@ export const useSocialStore = create<SocialStoreState>()(
         },
 
         voteUnifiedPoll: (targetKind, targetId, optionId, userId) => {
-          if (!userId) return;
+          if (!userId || userId === 'guest') return;
           const applyVoteToPoll = (poll: UnifiedPoll): UnifiedPoll => {
             if (poll.isClosed || (poll.expiresAt && Date.parse(poll.expiresAt) <= Date.now())) {
               return poll;
@@ -1884,7 +1821,6 @@ export const useSocialStore = create<SocialStoreState>()(
                       : [...opt.voterIds, userId],
                   };
                 }
-                // Single choice
                 if (opt.id === optionId) {
                   return {
                     ...opt,
@@ -1899,11 +1835,15 @@ export const useSocialStore = create<SocialStoreState>()(
           };
 
           if (targetKind === 'post') {
+            let updatedPost: SocialPostItem | null = null;
             set((s) => ({
-              posts: s.posts.map((p) =>
-                p.id === targetId && p.poll ? { ...p, poll: applyVoteToPoll(p.poll) } : p
-              ),
+              posts: s.posts.map((p) => {
+                if (p.id !== targetId || !p.poll) return p;
+                updatedPost = { ...p, poll: applyVoteToPoll(p.poll) };
+                return updatedPost;
+              }),
             }));
+            if (updatedPost) void syncPostEngagementToSupabase(updatedPost);
           } else {
             set((s) => ({
               chatMessages: s.chatMessages.map((m) =>
@@ -1914,6 +1854,7 @@ export const useSocialStore = create<SocialStoreState>()(
         },
 
         addUnifiedPollOption: (targetKind, targetId, text, user) => {
+          if (!user.id || user.id === 'guest') return;
           const clean = text.trim();
           if (!clean) return;
           const appendOpt = (poll: UnifiedPoll): UnifiedPoll => {
@@ -1934,11 +1875,15 @@ export const useSocialStore = create<SocialStoreState>()(
             };
           };
           if (targetKind === 'post') {
+            let updatedPost: SocialPostItem | null = null;
             set((s) => ({
-              posts: s.posts.map((p) =>
-                p.id === targetId && p.poll ? { ...p, poll: appendOpt(p.poll) } : p
-              ),
+              posts: s.posts.map((p) => {
+                if (p.id !== targetId || !p.poll) return p;
+                updatedPost = { ...p, poll: appendOpt(p.poll) };
+                return updatedPost;
+              }),
             }));
+            if (updatedPost) void syncPostEngagementToSupabase(updatedPost);
           } else {
             set((s) => ({
               chatMessages: s.chatMessages.map((m) =>
@@ -1949,16 +1894,21 @@ export const useSocialStore = create<SocialStoreState>()(
         },
 
         toggleCloseUnifiedPoll: (targetKind, targetId, actorId) => {
+          if (!actorId || actorId === 'guest') return;
           const toggleClose = (poll: UnifiedPoll): UnifiedPoll =>
             poll.createdBy === actorId || actorId === 'admin'
               ? { ...poll, isClosed: !poll.isClosed }
               : poll;
           if (targetKind === 'post') {
+            let updatedPost: SocialPostItem | null = null;
             set((s) => ({
-              posts: s.posts.map((p) =>
-                p.id === targetId && p.poll ? { ...p, poll: toggleClose(p.poll) } : p
-              ),
+              posts: s.posts.map((p) => {
+                if (p.id !== targetId || !p.poll) return p;
+                updatedPost = { ...p, poll: toggleClose(p.poll) };
+                return updatedPost;
+              }),
             }));
+            if (updatedPost) void syncPostEngagementToSupabase(updatedPost);
           } else {
             set((s) => ({
               chatMessages: s.chatMessages.map((m) =>
@@ -2067,7 +2017,9 @@ export const useSocialStore = create<SocialStoreState>()(
                   ...slice,
                   recentSearchQueries: [
                     clean,
-                    ...slice.recentSearchQueries.filter((q) => q.toLowerCase() !== clean.toLowerCase()),
+                    ...slice.recentSearchQueries.filter(
+                      (q) => q.toLowerCase() !== clean.toLowerCase()
+                    ),
                   ].slice(0, 12),
                 },
               },
@@ -2089,14 +2041,15 @@ export const useSocialStore = create<SocialStoreState>()(
         },
 
         createCommunity: (input) => {
+          if (!input.ownerId || input.ownerId === 'guest') return null;
           const slug =
             input.name
               .toLowerCase()
               .replace(/[^a-z0-9]+/g, '-')
               .replace(/^-|-$/g, '') || `comm-${Date.now()}`;
           const comm: SocialCommunityGroup = {
-            id: `comm-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
-            slug,
+            id: generateClientUuid(),
+            slug: `${slug}-${Date.now().toString(36).slice(-4)}`,
             name: input.name.trim(),
             description: input.description.trim(),
             avatarEmoji: input.avatarEmoji || '🏛️',
@@ -2104,7 +2057,10 @@ export const useSocialStore = create<SocialStoreState>()(
             coverUrl: null,
             visibility: input.visibility,
             topics: input.topics,
-            rules: input.rules.length > 0 ? input.rules : ['1. Tôn trọng thành viên & chia sẻ tri thức văn minh.'],
+            rules:
+              input.rules.length > 0
+                ? input.rules
+                : ['1. Tôn trọng thành viên & chia sẻ tri thức văn minh.'],
             requirePostApproval: Boolean(input.requirePostApproval),
             requireMemberApproval: input.visibility === 'private',
             allowAnonymousPosts: input.allowAnonymousPosts ?? true,
@@ -2116,9 +2072,9 @@ export const useSocialStore = create<SocialStoreState>()(
                 displayName: input.ownerName,
                 avatarUrl: null,
                 role: 'owner',
-                reputationPoints: 150,
-                helpfulCount: 1,
-                badges: ['Community Founder'],
+                reputationPoints: 100,
+                helpfulCount: 0,
+                badges: [],
                 joinedAt: new Date().toISOString(),
               },
             ],
@@ -2129,18 +2085,21 @@ export const useSocialStore = create<SocialStoreState>()(
               {
                 id: `alog-${Date.now()}`,
                 actorName: input.ownerName,
-                action: 'Khởi tạo cộng đồng',
+                action: 'Tạo nhóm mới',
                 createdAt: new Date().toISOString(),
               },
             ],
             createdAt: new Date().toISOString(),
           };
           set((s) => ({ communities: [comm, ...s.communities] }));
+          void persistCommunityToSupabase(comm);
           return comm;
         },
 
         joinOrLeaveCommunity: (communityId, user) => {
+          if (!user.id || user.id === 'guest') return 'guest';
           let outcome = 'joined';
+          let nextRole: CommunityRole = 'member';
           set((s) => ({
             communities: s.communities.map((c) => {
               if (c.id !== communityId) return c;
@@ -2153,8 +2112,8 @@ export const useSocialStore = create<SocialStoreState>()(
                 outcome = 'left';
                 return { ...c, members: c.members.filter((m) => m.userId !== user.id) };
               }
-              const role: CommunityRole = c.requireMemberApproval ? 'pending' : 'member';
-              outcome = role === 'pending' ? 'pending' : 'joined';
+              nextRole = c.requireMemberApproval ? 'pending' : 'member';
+              outcome = nextRole === 'pending' ? 'pending' : 'joined';
               return {
                 ...c,
                 members: [
@@ -2163,8 +2122,8 @@ export const useSocialStore = create<SocialStoreState>()(
                     userId: user.id,
                     displayName: user.name,
                     avatarUrl: user.avatar,
-                    role,
-                    reputationPoints: 25,
+                    role: nextRole,
+                    reputationPoints: 10,
                     helpfulCount: 0,
                     badges: [],
                     joinedAt: new Date().toISOString(),
@@ -2173,6 +2132,11 @@ export const useSocialStore = create<SocialStoreState>()(
               };
             }),
           }));
+          if (outcome === 'left') {
+            void persistCommunityMembershipToSupabase(communityId, false);
+          } else if (outcome === 'joined' || outcome === 'pending') {
+            void persistCommunityMembershipToSupabase(communityId, true, nextRole);
+          }
           return outcome;
         },
 
@@ -2190,7 +2154,7 @@ export const useSocialStore = create<SocialStoreState>()(
                       {
                         id: `alog-${Date.now()}`,
                         actorName,
-                        action: `Cập nhật vai trò thành viên thành "${role}"`,
+                        action: `Cập nhật vai trò thành "${role}"`,
                         createdAt: new Date().toISOString(),
                       },
                       ...c.activityLogs,
@@ -2201,16 +2165,19 @@ export const useSocialStore = create<SocialStoreState>()(
         },
 
         approvePendingPost: (postId, approve) => {
+          let updatedPost: SocialPostItem | null = null;
           set((s) => ({
-            posts: s.posts.map((p) =>
-              p.id !== postId
-                ? p
-                : { ...p, lifecycleStatus: approve ? 'published' : 'removed' }
-            ),
+            posts: s.posts.map((p) => {
+              if (p.id !== postId) return p;
+              updatedPost = { ...p, lifecycleStatus: approve ? 'published' : 'removed' };
+              return updatedPost;
+            }),
           }));
+          if (updatedPost) void persistSocialPostToSupabase(updatedPost);
         },
 
         createCommunityEvent: (input) => {
+          if (!input.creatorId || input.creatorId === 'guest') return null;
           const ev: CommunityEventItem = {
             id: `evt-${Date.now()}`,
             communityId: input.communityId,
@@ -2218,7 +2185,7 @@ export const useSocialStore = create<SocialStoreState>()(
             creatorName: input.creatorName,
             title: input.title.trim(),
             description: input.description.trim(),
-            locationLabel: input.locationLabel.trim() || 'Online · Papyrus Live',
+            locationLabel: input.locationLabel.trim() || 'Online · Papyrus',
             startsAt: input.startsAt,
             status: 'scheduled',
             rsvpUserIds: [input.creatorId],
@@ -2233,6 +2200,7 @@ export const useSocialStore = create<SocialStoreState>()(
         },
 
         toggleEventRsvp: (communityId, eventId, userId) => {
+          if (!userId || userId === 'guest') return;
           set((s) => ({
             communities: s.communities.map((c) =>
               c.id !== communityId
@@ -2255,6 +2223,7 @@ export const useSocialStore = create<SocialStoreState>()(
         },
 
         openOrCreateDirectConversation: (me, peer) => {
+          if (!me.id || me.id === 'guest' || !peer.id || peer.id === 'guest') return null;
           const state = get();
           const existing = state.conversations.find(
             (c) =>
@@ -2272,38 +2241,41 @@ export const useSocialStore = create<SocialStoreState>()(
           };
           const isFriend = areUsersFriends(me.id, peer.id, graph);
           const conv: MessagingConversation = {
-            id: `conv-dm-${peer.id.slice(0, 12)}-${me.id.slice(0, 6)}`,
+            id: generateClientUuid(),
             kind: 'direct',
             title: peer.name.trim() || 'Thành viên Papyrus',
-            subtitle: isFriend ? 'Bạn bè trên Papyrus · Đang hoạt động' : 'Tin nhắn chờ kết nối',
+            subtitle: isFriend ? 'Bạn bè trên Papyrus' : 'Trò chuyện trực tiếp',
             avatarUrl: peer.avatar ?? null,
             accentColor: '#0EA5E9',
             peerUserId: peer.id,
             memberIds: [me.id, peer.id],
             adminIds: [me.id, peer.id],
-            requestState: isFriend ? 'accepted' : 'accepted',
+            requestState: 'accepted',
             isPinned: false,
             isMuted: false,
             pinnedMessageId: null,
             announcement: '',
             typingUserNames: [],
-            lastMessagePreview: 'Bắt đầu cuộc trò chuyện mới',
+            lastMessagePreview: 'Bắt đầu cuộc trò chuyện',
             lastMessageAt: new Date().toISOString(),
             unreadByUserIds: {},
           };
           set((s) => ({ conversations: [conv, ...s.conversations] }));
+          void persistConversationToSupabase(conv);
           return conv;
         },
 
         createGroupConversation: (input) => {
+          if (!input.creatorId || input.creatorId === 'guest') return null;
+          const memberList = Array.from(new Set([input.creatorId, ...input.memberIds]));
           const conv: MessagingConversation = {
-            id: `conv-grp-${Date.now()}`,
+            id: generateClientUuid(),
             kind: 'group',
-            title: input.title.trim() || 'Nhóm Học Tập Mới',
-            subtitle: `${input.memberIds.length} thành viên · ${input.topic || 'Thảo luận nhóm'}`,
+            title: input.title.trim() || 'Nhóm học tập mới',
+            subtitle: `${memberList.length} thành viên · ${input.topic || 'Thảo luận nhóm'}`,
             avatarUrl: null,
             accentColor: '#6366F1',
-            memberIds: Array.from(new Set([input.creatorId, ...input.memberIds])),
+            memberIds: memberList,
             adminIds: [input.creatorId],
             requestState: 'accepted',
             isPinned: false,
@@ -2316,6 +2288,7 @@ export const useSocialStore = create<SocialStoreState>()(
             unreadByUserIds: {},
           };
           set((s) => ({ conversations: [conv, ...s.conversations] }));
+          void persistConversationToSupabase(conv);
           return conv;
         },
 
@@ -2336,6 +2309,7 @@ export const useSocialStore = create<SocialStoreState>()(
         },
 
         markConversationRead: (conversationId, userId) => {
+          if (!userId || userId === 'guest') return;
           set((s) => ({
             conversations: s.conversations.map((c) =>
               c.id !== conversationId
@@ -2351,9 +2325,10 @@ export const useSocialStore = create<SocialStoreState>()(
         },
 
         sendChatMessage: (input) => {
+          if (!input.senderId || input.senderId === 'guest') return null;
           const nowIso = new Date().toISOString();
           const msg: DirectOrGroupMessage = {
-            id: `cmsg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            id: generateClientUuid(),
             conversationId: input.conversationId,
             senderId: input.senderId,
             senderName: input.senderName,
@@ -2376,23 +2351,29 @@ export const useSocialStore = create<SocialStoreState>()(
           const preview = input.sharedPost
             ? `${input.senderName} đã chia sẻ bài viết của ${input.sharedPost.authorName}`
             : input.poll
-            ? `📊 Bình chọn: ${input.poll.question}`
+            ? `Khảo sát: ${input.poll.question}`
             : input.mediaAttachments?.length
-            ? `📎 ${input.senderName} đã gửi phương tiện đính kèm`
+            ? `${input.senderName} đã gửi tệp đính kèm`
             : msg.text;
 
-          set((s) => ({
-            chatMessages: [...s.chatMessages, msg].slice(-500),
-            conversations: s.conversations.map((c) =>
-              c.id !== input.conversationId
-                ? c
-                : {
-                    ...c,
-                    lastMessagePreview: preview.slice(0, 90),
-                    lastMessageAt: nowIso,
-                  }
-            ),
-          }));
+          let activeConv: MessagingConversation | undefined;
+          set((s) => {
+            const nextConvs = s.conversations.map((c) => {
+              if (c.id !== input.conversationId) return c;
+              activeConv = {
+                ...c,
+                lastMessagePreview: preview.slice(0, 90),
+                lastMessageAt: nowIso,
+              };
+              return activeConv;
+            });
+            return {
+              chatMessages: [...s.chatMessages, msg].slice(-500),
+              conversations: nextConvs,
+            };
+          });
+
+          void persistChatMessageToSupabase(activeConv, msg);
 
           broadcastCommunityEvent({
             type: 'new-message',
@@ -2412,29 +2393,38 @@ export const useSocialStore = create<SocialStoreState>()(
         },
 
         editOrRecallChatMessage: (messageId, senderId, mode, newText) => {
+          if (!senderId || senderId === 'guest') return;
+          let updatedMsg: DirectOrGroupMessage | null = null;
           set((s) => ({
             chatMessages: s.chatMessages.map((m) => {
               if (m.id !== messageId || m.senderId !== senderId) return m;
               if (mode === 'recall') {
-                return {
+                updatedMsg = {
                   ...m,
                   isRecalled: true,
                   text: 'Tin nhắn đã được thu hồi',
                   mediaAttachments: [],
                   sharedPost: null,
                 };
+                return updatedMsg;
               }
-              return {
+              updatedMsg = {
                 ...m,
                 text: (newText ?? m.text).trim(),
                 isEdited: true,
                 updatedAt: new Date().toISOString(),
               };
+              return updatedMsg;
             }),
           }));
+          if (updatedMsg) {
+            const conv = get().conversations.find((c) => c.id === updatedMsg!.conversationId);
+            void persistChatMessageToSupabase(conv, updatedMsg);
+          }
         },
 
         toggleChatMessageReaction: (messageId, emoji, userId) => {
+          if (!userId || userId === 'guest') return;
           set((s) => ({
             chatMessages: s.chatMessages.map((m) => {
               if (m.id !== messageId) return m;
@@ -2456,7 +2446,7 @@ export const useSocialStore = create<SocialStoreState>()(
         },
 
         sharePostToDestination: (post, sender, destination, commentText) => {
-          // Build rich SharedPostReference (NEVER raw URL/text!)
+          if (!sender.id || sender.id === 'guest') return;
           const firstMedia = post.mediaItems[0];
           const sharedRef: SharedPostReference = {
             postId: post.id,
@@ -2464,7 +2454,7 @@ export const useSocialStore = create<SocialStoreState>()(
             authorName: post.isAnonymous ? 'Thành viên Ẩn danh' : post.authorName,
             authorAvatar: post.isAnonymous ? null : post.authorAvatar,
             previewText: post.isSpoiler
-              ? `⚠️ [Spoiler] ${post.spoilerWarning || 'Chạm để mở bài viết gốc'}`
+              ? `[Nội dung ẩn] ${post.spoilerWarning || 'Chạm để mở bài viết gốc'}`
               : (post.threadParts[0] || post.longFormBody || '').slice(0, 180),
             thumbnailUri: firstMedia?.thumbnailUri || firstMedia?.uri || null,
             mediaKind:
@@ -2503,7 +2493,7 @@ export const useSocialStore = create<SocialStoreState>()(
               authorAvatar: sender.avatar,
               communityId: destination.communityId,
               postKind: 'standard',
-              threadParts: [commentText?.trim() || `Chia sẻ bài viết đáng chú ý vào cộng đồng:`],
+              threadParts: [commentText?.trim() || 'Chia sẻ bài viết vào nhóm:'],
               repostOfId: post.id,
               isQuote: true,
               audience: 'community',
@@ -2512,6 +2502,7 @@ export const useSocialStore = create<SocialStoreState>()(
         },
 
         submitModerationReport: (input) => {
+          if (!input.reporterId || input.reporterId === 'guest') return null;
           const lower = `${input.targetPreview} ${input.details}`.toLowerCase();
           const hasSpamSignal = /(lừa đảo|cá độ|18\+|hack|spam|chửi|xúc phạm)/i.test(lower);
           const item: SocialModerationCase = {
@@ -2525,8 +2516,8 @@ export const useSocialStore = create<SocialStoreState>()(
             reason: input.reason,
             details: input.details,
             aiFlagSummary: hasSpamSignal
-              ? 'PapyAI Safety: Phát hiện từ khóa nhạy cảm — Đề xuất Kiểm duyệt viên ưu tiên xem xét (Không tự động khóa vĩnh viễn).'
-              : 'PapyAI Safety: Chuyển vào hàng đợi Pending Review để Quản trị viên xác minh.',
+              ? 'Phát hiện từ khóa nhạy cảm — ưu tiên kiểm duyệt.'
+              : 'Đang chờ Quản trị viên xác minh.',
             aiSpamScore: hasSpamSignal ? 86 : 24,
             workflowStatus: 'pending_review',
             createdAt: new Date().toISOString(),
@@ -2578,6 +2569,7 @@ export const useSocialStore = create<SocialStoreState>()(
         },
 
         submitUserAppeal: (caseId, userId, appealReason) => {
+          if (!userId || userId === 'guest') return;
           set((s) => ({
             moderationCases: s.moderationCases.map((c) =>
               c.id === caseId && c.targetOwnerId === userId
@@ -2669,7 +2661,7 @@ export const useSocialStore = create<SocialStoreState>()(
               }
             : {
                 ...docInput,
-                id: `adoc-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+                id: generateClientUuid(),
                 downloadCount: 0,
                 giftHistory: [],
                 createdAt: nowIso,
@@ -2782,6 +2774,83 @@ export const useSocialStore = create<SocialStoreState>()(
     {
       name: 'papyrus.social.v3',
       storage: createJSONStorage(() => preferenceStorage),
+      merge: (persistedState, currentState) => {
+        const persisted = (persistedState as Partial<SocialStoreState> | undefined) ?? {};
+
+        // Strip all legacy fake profiles, posts, conversations, messages & fake follower counts (e.g. 184/185)
+        const cleanProfiles: Record<string, SocialUserProfile> = {};
+        for (const [id, prof] of Object.entries(persisted.profilesById ?? {})) {
+          if (!LEGACY_FAKE_USER_IDS.has(id) && id !== 'guest' && prof) {
+            cleanProfiles[id] = {
+              ...prof,
+              followersCount: 0,
+              followingCount: 0,
+              friendsCount: 0,
+            };
+          }
+        }
+
+        const cleanFollows = (persisted.follows ?? []).filter(
+          (f) =>
+            !LEGACY_FAKE_USER_IDS.has(f.followerId) &&
+            !LEGACY_FAKE_USER_IDS.has(f.followingId) &&
+            f.followerId !== 'guest'
+        );
+
+        const cleanFriendRequests = (persisted.friendRequests ?? []).filter(
+          (r) =>
+            !LEGACY_FAKE_FREQ_IDS.has(r.id) &&
+            !LEGACY_FAKE_USER_IDS.has(r.senderId) &&
+            !LEGACY_FAKE_USER_IDS.has(r.receiverId) &&
+            r.senderId !== 'guest'
+        );
+
+        const cleanPosts = (persisted.posts ?? []).filter(
+          (p) =>
+            !LEGACY_FAKE_POST_IDS.has(p.id) &&
+            !LEGACY_FAKE_USER_IDS.has(p.internalAuthorId || p.authorId) &&
+            (p.internalAuthorId || p.authorId) !== 'guest'
+        );
+
+        const cleanConversations = (persisted.conversations ?? []).filter(
+          (c) => !LEGACY_FAKE_CONV_IDS.has(c.id)
+        );
+
+        const cleanMessages = (persisted.chatMessages ?? []).filter(
+          (m) =>
+            !LEGACY_FAKE_MSG_IDS.has(m.id) &&
+            !LEGACY_FAKE_USER_IDS.has(m.senderId) &&
+            m.senderId !== 'guest'
+        );
+
+        const cleanCommunities = (persisted.communities ?? STARTER_COMMUNITIES).map((c) => ({
+          ...c,
+          ownerId: LEGACY_FAKE_USER_IDS.has(c.ownerId) ? '' : c.ownerId,
+          members: (c.members ?? []).filter(
+            (m) => !LEGACY_FAKE_USER_IDS.has(m.userId) && m.userId !== 'guest'
+          ),
+          pinnedPostIds: (c.pinnedPostIds ?? []).filter((pid) => !LEGACY_FAKE_POST_IDS.has(pid)),
+          events: (c.events ?? []).filter((ev) => !LEGACY_FAKE_USER_IDS.has(ev.creatorId)),
+          announcements: c.id === 'comm-software-ai' || c.id === 'comm-stem-olympiad' ? [] : c.announcements,
+        }));
+
+        const cleanDocs = (persisted.adminDocuments ?? []).filter(
+          (d) => !LEGACY_FAKE_DOC_IDS.has(d.id)
+        );
+
+        return {
+          ...currentState,
+          ...persisted,
+          profilesById: cleanProfiles,
+          follows: cleanFollows,
+          friendRequests: cleanFriendRequests,
+          posts: cleanPosts,
+          communities: cleanCommunities.length > 0 ? cleanCommunities : STARTER_COMMUNITIES,
+          conversations: cleanConversations,
+          chatMessages: cleanMessages,
+          adminDocuments: cleanDocs,
+        };
+      },
     }
   )
 );

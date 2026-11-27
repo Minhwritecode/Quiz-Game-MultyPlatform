@@ -1,7 +1,16 @@
 import { useEffect, useState } from 'react';
-import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  Image,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Badge, Button, Card, usePalette } from '@/shared/ui';
+import { Button, Card, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import type { QuestionSet } from '@/core/domain/models';
 import { pickMultipleMediaImages, pickVideoWithAutoCover } from '@/composition/social';
@@ -22,13 +31,17 @@ import { SharedPostCard } from './SharedPostCard';
 
 const LOCATION_OPTIONS = ['TP. Hồ Chí Minh', 'Hà Nội', 'Đà Nẵng', 'Cần Thơ', 'Huế', 'Quốc tế'];
 
+const AUDIENCE_LABELS: Record<Exclude<PostAudience, 'community' | 'selected'>, string> = {
+  public: 'Công khai',
+  followers: 'Người theo dõi',
+  friends: 'Bạn bè',
+  close_friends: 'Bạn thân',
+  only_me: 'Chỉ mình tôi',
+};
+
 /**
- * Advanced Meta Threads + Facebook Post Composer (Section 5.1–5.6):
- * Supports connected Thread parts (add/delete/reorder), Auto-saved Drafts,
- * Multi-Image Carousel + Upload Progress, Video + Video Cover Frame Editor,
- * GIF/Sticker/Emoji Library, Unified Zalo Poll, Long-form, Ghost 24h, Anonymous,
- * Spoiler, Debate Mode, Scheduled Post, @Mention Friend, Consented Location,
- * Audience Control, and Reply Permission!
+ * Clean, Focused Meta Threads Composer (Warm Paper & Egyptian Ink):
+ * Primary surface stays calm and uncluttered; advanced controls live inside a collapsible drawer.
  */
 export function AdvancedThreadComposerModal({
   visible,
@@ -36,6 +49,7 @@ export function AdvancedThreadComposerModal({
   viewerName,
   savedDraft,
   quotedPost,
+  initialPrefill,
   communities,
   knownUsers,
   questionSets,
@@ -48,6 +62,7 @@ export function AdvancedThreadComposerModal({
   viewerName: string;
   savedDraft: ComposerDraftPayload | null;
   quotedPost?: SocialPostItem | null;
+  initialPrefill?: { text: string; topics?: string; communityId?: string | null } | null;
   communities: SocialCommunityGroup[];
   knownUsers: SocialUserProfile[];
   questionSets: QuestionSet[];
@@ -78,14 +93,15 @@ export function AdvancedThreadComposerModal({
   }) => void;
 }) {
   if (!visible) return null;
-  const modalKey = `${viewerId}-${quotedPost?.id ?? 'new'}`;
+  const modalKey = `${viewerId}-${quotedPost?.id ?? 'new'}-${initialPrefill?.text?.slice(0, 24) ?? ''}`;
   return (
     <ComposerInner
       key={modalKey}
       viewerId={viewerId}
       viewerName={viewerName}
-      savedDraft={quotedPost ? null : savedDraft}
+      savedDraft={quotedPost || initialPrefill ? null : savedDraft}
       quotedPost={quotedPost}
+      initialPrefill={initialPrefill}
       communities={communities}
       knownUsers={knownUsers}
       questionSets={questionSets}
@@ -98,8 +114,10 @@ export function AdvancedThreadComposerModal({
 
 function ComposerInner({
   viewerId,
+  viewerName,
   savedDraft,
   quotedPost,
+  initialPrefill,
   communities,
   knownUsers,
   questionSets,
@@ -111,6 +129,7 @@ function ComposerInner({
   viewerName: string;
   savedDraft: ComposerDraftPayload | null;
   quotedPost?: SocialPostItem | null;
+  initialPrefill?: { text: string; topics?: string; communityId?: string | null } | null;
   communities: SocialCommunityGroup[];
   knownUsers: SocialUserProfile[];
   questionSets: QuestionSet[];
@@ -122,19 +141,33 @@ function ComposerInner({
 
   const [postKind, setPostKind] = useState<PostKind>(savedDraft?.postKind ?? 'thread');
   const [threadParts, setThreadParts] = useState<string[]>(
-    savedDraft?.threadParts?.length ? savedDraft.threadParts : ['']
+    initialPrefill?.text
+      ? [initialPrefill.text]
+      : savedDraft?.threadParts?.length
+      ? savedDraft.threadParts
+      : ['']
   );
   const [longFormBody, setLongFormBody] = useState(savedDraft?.longFormBody ?? '');
   const [showLongForm, setShowLongForm] = useState(Boolean(savedDraft?.longFormBody));
   const [mediaItems, setMediaItems] = useState<SocialMediaItem[]>(savedDraft?.mediaItems ?? []);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
 
-  const [topicsText, setTopicsText] = useState(savedDraft?.topicsText ?? 'CNTT, ChiaSẻKiếnThức');
-  const [audience, setAudience] = useState<PostAudience>(savedDraft?.audience ?? 'public');
+  const [topicsText, setTopicsText] = useState(
+    initialPrefill?.topics ?? savedDraft?.topicsText ?? ''
+  );
+  const [audience, setAudience] = useState<Exclude<PostAudience, 'community' | 'selected'>>(
+    savedDraft?.audience && savedDraft.audience !== 'community' && savedDraft.audience !== 'selected'
+      ? savedDraft.audience
+      : 'public'
+  );
   const [replyPermission, setReplyPermission] = useState<ReplyPermission>(
     savedDraft?.replyPermission ?? 'everyone'
   );
-  const [communityId, setCommunityId] = useState<string | null>(savedDraft?.communityId ?? null);
+  const [communityId, setCommunityId] = useState<string | null>(
+    initialPrefill?.communityId ?? savedDraft?.communityId ?? null
+  );
+  const [showAudienceMenu, setShowAudienceMenu] = useState(false);
+  const [showDestinationMenu, setShowDestinationMenu] = useState(false);
 
   const [isSpoiler, setIsSpoiler] = useState(Boolean(savedDraft?.isSpoiler));
   const [spoilerWarning, setSpoilerWarning] = useState(savedDraft?.spoilerWarning ?? '');
@@ -161,13 +194,13 @@ function ComposerInner({
   const [showCode, setShowCode] = useState(Boolean(savedDraft?.codeSnippet));
   const [showMentionPicker, setShowMentionPicker] = useState(false);
   const [mentionedIds, setMentionedIds] = useState<string[]>([]);
+  const [showAdvancedDrawer, setShowAdvancedDrawer] = useState(false);
 
   const [stickerOpen, setStickerOpen] = useState(false);
   const [editingVideoCoverItem, setEditingVideoCoverItem] = useState<SocialMediaItem | null>(null);
 
-  // Auto-save draft whenever content changes so closing keyboard, losing network, or navigating never loses work!
   useEffect(() => {
-    if (quotedPost) return;
+    if (quotedPost || initialPrefill) return;
     const hasContent =
       threadParts.some((p) => p.trim().length > 0) ||
       longFormBody.trim().length > 0 ||
@@ -203,6 +236,7 @@ function ComposerInner({
     communityId,
     debateSideA,
     debateSideB,
+    initialPrefill,
     isAnonymous,
     isSpoiler,
     locationLabel,
@@ -219,6 +253,8 @@ function ComposerInner({
 
   const totalChars = threadParts.reduce((s, p) => s + p.length, 0) + longFormBody.length;
   const validToSubmit = threadParts.some((p) => p.trim().length > 0) || mediaItems.length > 0;
+  const activeCommunityName = communities.find((c) => c.id === communityId)?.name ?? null;
+  const chosenSet = attachedSetId ? questionSets.find((s) => s.id === attachedSetId) : undefined;
 
   const movePart = (index: number, dir: -1 | 1) => {
     const target = index + dir;
@@ -240,7 +276,7 @@ function ComposerInner({
         setMediaItems((prev) => [...prev, ...imgs].slice(0, 8));
       }
     } finally {
-      setTimeout(() => setUploadProgress(null), 400);
+      setTimeout(() => setUploadProgress(null), 350);
     }
   };
 
@@ -260,9 +296,9 @@ function ComposerInner({
   const handlePublishClick = () => {
     const cleanedParts = threadParts.map((p) => p.trim()).filter(Boolean);
     if (cleanedParts.length === 0 && mediaItems.length > 0) {
-      cleanedParts.push('Chia sẻ khoảnh khắc mới ✨');
+      cleanedParts.push('');
     }
-    if (cleanedParts.length === 0) return;
+    if (cleanedParts.length === 0 && mediaItems.length === 0) return;
 
     const tags = topicsText
       .split(/[,#\s]+/)
@@ -292,7 +328,6 @@ function ComposerInner({
           }
         : null;
 
-    const chosenSet = attachedSetId ? questionSets.find((s) => s.id === attachedSetId) : undefined;
     const scheduledFor =
       showSchedule && Number(scheduleMinutesFromNow) > 0
         ? new Date(Date.now() + Number(scheduleMinutesFromNow) * 60_000).toISOString()
@@ -300,7 +335,7 @@ function ComposerInner({
 
     onPublish({
       postKind: isAnonymous ? 'anonymous' : postKind,
-      threadParts: cleanedParts,
+      threadParts: cleanedParts.filter(Boolean).length > 0 ? cleanedParts.filter(Boolean) : ['Chia sẻ mới'],
       longFormBody: showLongForm && longFormBody.trim() ? longFormBody.trim() : undefined,
       mediaItems,
       poll,
@@ -316,8 +351,8 @@ function ComposerInner({
       debate:
         postKind === 'debate'
           ? {
-              sideALabel: debateSideA.trim() || 'Phe A',
-              sideBLabel: debateSideB.trim() || 'Phe B',
+              sideALabel: debateSideA.trim() || 'Quan điểm A',
+              sideBLabel: debateSideB.trim() || 'Quan điểm B',
               sideAVoterIds: [],
               sideBVoterIds: [],
               arguments: [],
@@ -338,7 +373,7 @@ function ComposerInner({
       scheduledFor,
     });
 
-    if (!quotedPost) {
+    if (!quotedPost && !initialPrefill) {
       onSaveDraft(null);
     }
     onClose();
@@ -348,16 +383,24 @@ function ComposerInner({
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <Card style={[styles.sheet, { backgroundColor: palette.paper }]}>
-          <View style={styles.topHeader}>
-            <View style={{ flex: 1, minWidth: 0 }}>
+          {/* Minimal Clean Header */}
+          <View style={[styles.topHeader, { borderBottomColor: palette.paperMuted }]}>
+            <Pressable onPress={onClose} hitSlop={8}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: palette.inkMuted }}>Hủy</Text>
+            </Pressable>
+
+            <View style={{ alignItems: 'center', flex: 1 }}>
               <Text style={[typography.title, { color: palette.ink }]}>
-                {quotedPost ? '🔁 Trích dẫn Bài viết (Quote Post)' : '🧵 Trình soạn Bài viết & Chuỗi Threads'}
+                {quotedPost ? 'Trích dẫn bài viết' : 'Bài viết mới'}
               </Text>
-              <Text style={{ fontSize: 11, color: palette.mint, fontWeight: '700' }}>
-                ✓ Tự động lưu nháp thời gian thực · {totalChars}/4.000 ký tự
-              </Text>
+              {totalChars > 0 ? (
+                <Text style={{ fontSize: 11, color: palette.inkMuted }}>
+                  Đã lưu nháp · {totalChars}/4.000
+                </Text>
+              ) : null}
             </View>
-            {savedDraft && !quotedPost && (
+
+            {savedDraft && !quotedPost ? (
               <Pressable
                 onPress={() => {
                   onSaveDraft(null);
@@ -365,123 +408,190 @@ function ComposerInner({
                   setMediaItems([]);
                   setLongFormBody('');
                 }}
+                hitSlop={8}
               >
-                <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.danger }}>Xóa nháp</Text>
+                <Text style={{ fontSize: 12.5, fontWeight: '700', color: palette.danger }}>
+                  Xóa nháp
+                </Text>
               </Pressable>
+            ) : (
+              <View style={{ width: 32 }} />
             )}
-            <Pressable onPress={onClose} hitSlop={8}>
-              <Ionicons name="close" size={23} color={palette.inkMuted} />
-            </Pressable>
           </View>
 
-          <ScrollView style={{ maxHeight: 500 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
-            {/* Post Kind Modes: Thread / Ghost 24h / Anonymous / Debate */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
-              {(
-                [
-                  { id: 'thread', label: '🧵 Chuỗi Thread' },
-                  { id: 'ghost', label: '👻 Ghost Post (24h)' },
-                  { id: 'debate', label: '⚖️ Tranh biện (Debate)' },
-                  { id: 'article', label: '📰 Bài viết chuyên sâu' },
-                ] as const
-              ).map((k) => {
-                const active = postKind === k.id;
-                return (
+          <ScrollView
+            style={{ maxHeight: 490 }}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{ gap: 12, paddingTop: 4 }}
+          >
+            {/* Author & Compact Audience / Destination Selectors */}
+            <View style={styles.authorMetaRow}>
+              <View style={[styles.authorCircle, { backgroundColor: palette.indigo }]}>
+                <Text style={{ color: palette.onPrimary, fontSize: 13, fontWeight: '800' }}>
+                  {(isAnonymous ? '?' : viewerName[0] || 'P').toUpperCase()}
+                </Text>
+              </View>
+              <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+                <Text style={{ fontSize: 14, fontWeight: '800', color: palette.ink }} numberOfLines={1}>
+                  {isAnonymous ? 'Thành viên ẩn danh' : viewerName}
+                </Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                   <Pressable
-                    key={k.id}
                     onPress={() => {
-                      setPostKind(k.id);
-                      if (k.id === 'article') setShowLongForm(true);
+                      setShowAudienceMenu((v) => !v);
+                      setShowDestinationMenu(false);
                     }}
                     style={[
-                      styles.modeChip,
+                      styles.selectorPill,
+                      { backgroundColor: palette.paperRaised, borderColor: palette.paperMuted },
+                    ]}
+                  >
+                    <Text style={{ fontSize: 11.5, fontWeight: '700', color: palette.indigo }}>
+                      {communityId ? 'Trong nhóm' : AUDIENCE_LABELS[audience]}
+                    </Text>
+                    <Ionicons name="chevron-down" size={12} color={palette.indigo} />
+                  </Pressable>
+
+                  <Pressable
+                    onPress={() => {
+                      setShowDestinationMenu((v) => !v);
+                      setShowAudienceMenu(false);
+                    }}
+                    style={[
+                      styles.selectorPill,
+                      { backgroundColor: palette.paperRaised, borderColor: palette.paperMuted },
+                    ]}
+                  >
+                    <Text
+                      style={{ fontSize: 11.5, fontWeight: '700', color: palette.ink }}
+                      numberOfLines={1}
+                    >
+                      {activeCommunityName || 'Trang cá nhân'}
+                    </Text>
+                    <Ionicons name="chevron-down" size={12} color={palette.inkMuted} />
+                  </Pressable>
+
+                  {postKind !== 'thread' ? (
+                    <View
+                      style={[
+                        styles.selectorPill,
+                        { backgroundColor: palette.indigoTint, borderColor: palette.indigoBorder },
+                      ]}
+                    >
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: palette.indigo }}>
+                        {postKind === 'ghost'
+                          ? 'Tự hủy 24h'
+                          : postKind === 'debate'
+                          ? 'Tranh biện'
+                          : 'Bài viết dài'}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+              </View>
+            </View>
+
+            {showAudienceMenu ? (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                {(Object.keys(AUDIENCE_LABELS) as Array<keyof typeof AUDIENCE_LABELS>).map((aud) => (
+                  <Pressable
+                    key={aud}
+                    onPress={() => {
+                      setCommunityId(null);
+                      setAudience(aud);
+                      setShowAudienceMenu(false);
+                    }}
+                    style={[
+                      styles.miniChip,
                       {
-                        backgroundColor: active ? palette.indigo : palette.paperRaised,
-                        borderColor: active ? palette.indigo : palette.paperMuted,
+                        borderColor:
+                          !communityId && audience === aud ? palette.indigo : palette.paperMuted,
+                        backgroundColor:
+                          !communityId && audience === aud
+                            ? palette.indigoTint
+                            : palette.paperRaised,
                       },
                     ]}
                   >
-                    <Text style={{ fontSize: 11.5, fontWeight: '800', color: active ? '#FFF' : palette.ink }}>
-                      {k.label}
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: palette.ink }}>
+                      {AUDIENCE_LABELS[aud]}
                     </Text>
                   </Pressable>
-                );
-              })}
-            </ScrollView>
+                ))}
+              </View>
+            ) : null}
 
-            {/* Audience, Reply Permission & Optional Target Community */}
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-              {(['public', 'followers', 'friends', 'close_friends', 'only_me'] as const).map((aud) => (
+            {showDestinationMenu ? (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: 6 }}
+              >
                 <Pressable
-                  key={aud}
                   onPress={() => {
                     setCommunityId(null);
-                    setAudience(aud);
+                    setShowDestinationMenu(false);
                   }}
                   style={[
                     styles.miniChip,
                     {
-                      borderColor: !communityId && audience === aud ? palette.indigo : palette.paperMuted,
-                      backgroundColor: !communityId && audience === aud ? palette.indigoTint : palette.paperRaised,
+                      borderColor: !communityId ? palette.indigo : palette.paperMuted,
+                      backgroundColor: !communityId ? palette.indigoTint : palette.paperRaised,
                     },
                   ]}
                 >
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: palette.ink }}>
-                    {aud === 'public'
-                      ? '🌐 Công khai'
-                      : aud === 'followers'
-                      ? '👤 Followers'
-                      : aud === 'friends'
-                      ? '👥 Bạn bè'
-                      : aud === 'close_friends'
-                      ? '⭐ Bạn thân'
-                      : '🔒 Chỉ mình tôi'}
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: palette.ink }}>
+                    Trang cá nhân
                   </Text>
                 </Pressable>
-              ))}
-            </View>
+                {communities.map((c) => (
+                  <Pressable
+                    key={c.id}
+                    onPress={() => {
+                      setCommunityId(c.id);
+                      setShowDestinationMenu(false);
+                    }}
+                    style={[
+                      styles.miniChip,
+                      {
+                        borderColor: communityId === c.id ? palette.indigo : palette.paperMuted,
+                        backgroundColor:
+                          communityId === c.id ? palette.indigoTint : palette.paperRaised,
+                      },
+                    ]}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: palette.ink }}>
+                      {c.name}
+                    </Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            ) : null}
 
-            {/* Optional Target Community Selector */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
-              <Pressable
-                onPress={() => setCommunityId(null)}
-                style={[
-                  styles.miniChip,
-                  { borderColor: !communityId ? palette.indigo : palette.paperMuted },
-                ]}
-              >
-                <Text style={{ fontSize: 11, fontWeight: '700', color: palette.ink }}>Đăng trên Bảng tin cá nhân</Text>
-              </Pressable>
-              {communities.map((c) => (
-                <Pressable
-                  key={c.id}
-                  onPress={() => setCommunityId(c.id)}
-                  style={[
-                    styles.miniChip,
-                    {
-                      borderColor: communityId === c.id ? palette.indigo : palette.paperMuted,
-                      backgroundColor: communityId === c.id ? palette.indigoTint : palette.paperRaised,
-                    },
-                  ]}
-                >
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: palette.ink }}>
-                    {c.avatarEmoji} {c.name}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-
-            {/* Connected Thread Parts with Reorder ↑ / ↓ & Delete */}
+            {/* Clean Connected Thread Inputs */}
             {threadParts.map((val, idx) => (
-              <View key={idx} style={{ flexDirection: 'row', gap: 8 }}>
-                <View style={{ width: 24, alignItems: 'center', paddingTop: 8 }}>
-                  <View style={[styles.stepNode, { backgroundColor: palette.indigo }]}>
-                    <Text style={{ color: '#FFF', fontSize: 10, fontWeight: '900' }}>{idx + 1}</Text>
+              <View key={idx} style={{ flexDirection: 'row', gap: 10 }}>
+                {threadParts.length > 1 ? (
+                  <View style={{ width: 18, alignItems: 'center', paddingTop: 10 }}>
+                    <View
+                      style={[
+                        styles.threadDot,
+                        { backgroundColor: palette.indigoBorder },
+                      ]}
+                    />
+                    {idx < threadParts.length - 1 ? (
+                      <View
+                        style={{
+                          width: 2,
+                          flex: 1,
+                          backgroundColor: palette.paperMuted,
+                          marginTop: 4,
+                        }}
+                      />
+                    ) : null}
                   </View>
-                  {idx < threadParts.length - 1 && (
-                    <View style={{ width: 2, flex: 1, backgroundColor: palette.indigoBorder, marginTop: 4 }} />
-                  )}
-                </View>
+                ) : null}
 
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <TextInput
@@ -491,138 +601,223 @@ function ComposerInner({
                     }
                     multiline
                     placeholder={
-                      idx === 0
-                        ? 'Bạn đang suy nghĩ hoặc muốn chia sẻ điều gì hôm nay?'
-                        : `Phần tiếp theo trong chuỗi Thread #${idx + 1}...`
+                      idx === 0 ? 'Bạn đang nghĩ gì?' : `Thêm vào chuỗi (${idx + 1})...`
                     }
                     placeholderTextColor={palette.inkMuted}
                     style={[
                       styles.partInput,
-                      { color: palette.ink, borderColor: palette.paperMuted, backgroundColor: palette.paperRaised },
+                      {
+                        color: palette.ink,
+                        borderColor: palette.paperMuted,
+                        backgroundColor: palette.paperRaised,
+                      },
                     ]}
                   />
                 </View>
 
-                {threadParts.length > 1 && (
+                {threadParts.length > 1 ? (
                   <View style={{ gap: 4, paddingTop: 4 }}>
                     <Pressable disabled={idx === 0} onPress={() => movePart(idx, -1)}>
-                      <Ionicons name="chevron-up" size={18} color={idx === 0 ? palette.paperMuted : palette.ink} />
+                      <Ionicons
+                        name="chevron-up"
+                        size={17}
+                        color={idx === 0 ? palette.paperMuted : palette.inkMuted}
+                      />
                     </Pressable>
-                    <Pressable disabled={idx === threadParts.length - 1} onPress={() => movePart(idx, 1)}>
+                    <Pressable
+                      disabled={idx === threadParts.length - 1}
+                      onPress={() => movePart(idx, 1)}
+                    >
                       <Ionicons
                         name="chevron-down"
-                        size={18}
-                        color={idx === threadParts.length - 1 ? palette.paperMuted : palette.ink}
+                        size={17}
+                        color={
+                          idx === threadParts.length - 1 ? palette.paperMuted : palette.inkMuted
+                        }
                       />
                     </Pressable>
                     <Pressable
                       onPress={() => setThreadParts((prev) => prev.filter((_, i) => i !== idx))}
                     >
-                      <Ionicons name="trash-outline" size={17} color={palette.danger} />
+                      <Ionicons name="close-circle-outline" size={17} color={palette.danger} />
                     </Pressable>
                   </View>
-                )}
+                ) : null}
               </View>
             ))}
 
             <Pressable
               onPress={() => setThreadParts((prev) => [...prev, ''])}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start' }}
             >
-              <Ionicons name="add-circle" size={18} color={palette.indigo} />
-              <Text style={{ fontSize: 12.5, fontWeight: '800', color: palette.indigo }}>
-                + Nối thêm bài vào chuỗi Thread
+              <Ionicons name="add-circle-outline" size={17} color={palette.indigo} />
+              <Text style={{ fontSize: 12.5, fontWeight: '700', color: palette.indigo }}>
+                Thêm vào chuỗi
               </Text>
             </Pressable>
 
-            {/* Debate Mode Side Labels */}
-            {postKind === 'debate' && (
+            {/* Debate Side Labels */}
+            {postKind === 'debate' ? (
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 <TextInput
                   value={debateSideA}
                   onChangeText={setDebateSideA}
-                  placeholder="Tên Phe A..."
+                  placeholder="Quan điểm A"
                   placeholderTextColor={palette.inkMuted}
-                  style={[styles.halfInput, { color: palette.ink, borderColor: '#3B82F6' }]}
+                  style={[
+                    styles.halfInput,
+                    {
+                      color: palette.ink,
+                      borderColor: palette.indigoBorder,
+                      backgroundColor: palette.paperRaised,
+                    },
+                  ]}
                 />
                 <TextInput
                   value={debateSideB}
                   onChangeText={setDebateSideB}
-                  placeholder="Tên Phe B..."
+                  placeholder="Quan điểm B"
                   placeholderTextColor={palette.inkMuted}
-                  style={[styles.halfInput, { color: palette.ink, borderColor: '#EC4899' }]}
+                  style={[
+                    styles.halfInput,
+                    {
+                      color: palette.ink,
+                      borderColor: palette.goldBorder,
+                      backgroundColor: palette.paperRaised,
+                    },
+                  ]}
                 />
               </View>
-            )}
+            ) : null}
 
-            {/* Long-Form Rich Content Editor */}
-            {showLongForm && (
+            {/* Long-Form Editor */}
+            {showLongForm ? (
               <TextInput
                 value={longFormBody}
                 onChangeText={setLongFormBody}
                 multiline
-                placeholder="Nội dung bài viết dài (Long-form) — Hỗ trợ PapyAI tự động tóm tắt cho người đọc..."
+                placeholder="Nội dung chi tiết cho bài viết dài..."
                 placeholderTextColor={palette.inkMuted}
                 style={[
                   styles.longInput,
-                  { color: palette.ink, borderColor: palette.indigoBorder, backgroundColor: palette.paperRaised },
+                  {
+                    color: palette.ink,
+                    borderColor: palette.indigoBorder,
+                    backgroundColor: palette.paperRaised,
+                  },
                 ]}
               />
-            )}
+            ) : null}
 
-            {/* Upload Progress Bar */}
-            {uploadProgress !== null && (
+            {uploadProgress !== null ? (
               <View style={{ gap: 4 }}>
-                <Text style={{ fontSize: 11, fontWeight: '700', color: palette.indigo }}>
-                  Đang tối ưu & tải phương tiện: {uploadProgress}%
+                <Text style={{ fontSize: 11.5, fontWeight: '700', color: palette.indigo }}>
+                  Đang tải tệp lên: {uploadProgress}%
                 </Text>
-                <View style={{ height: 6, borderRadius: 4, backgroundColor: palette.paperMuted, overflow: 'hidden' }}>
-                  <View style={{ width: `${uploadProgress}%`, height: '100%', backgroundColor: palette.indigo }} />
+                <View
+                  style={{
+                    height: 5,
+                    borderRadius: 3,
+                    backgroundColor: palette.paperMuted,
+                    overflow: 'hidden',
+                  }}
+                >
+                  <View
+                    style={{
+                      width: `${uploadProgress}%`,
+                      height: '100%',
+                      backgroundColor: palette.indigo,
+                    }}
+                  />
                 </View>
               </View>
-            )}
+            ) : null}
 
-            {/* Attached Media Preview Strip (with Video Cover Editor button!) */}
-            {mediaItems.length > 0 && (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+            {/* Media Previews */}
+            {mediaItems.length > 0 ? (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: 8 }}
+              >
                 {mediaItems.map((m) => (
                   <View key={m.id} style={styles.mediaThumbCard}>
-                    <Image source={{ uri: m.thumbnailUri || m.uri }} style={styles.mediaThumbImg} resizeMode="cover" />
-                    {m.kind === 'video' && (
+                    <Image
+                      source={{ uri: m.thumbnailUri || m.uri }}
+                      style={styles.mediaThumbImg}
+                      resizeMode="cover"
+                    />
+                    {m.kind === 'video' ? (
                       <Pressable
                         onPress={() => setEditingVideoCoverItem(m)}
-                        style={styles.editCoverBadge}
+                        style={[styles.editCoverBadge, { backgroundColor: palette.indigo }]}
                       >
-                        <Ionicons name="film-outline" size={12} color="#FFF" />
-                        <Text style={{ color: '#FFF', fontSize: 10, fontWeight: '800' }}>Chọn bìa</Text>
+                        <Ionicons name="film-outline" size={12} color={palette.onPrimary} />
+                        <Text
+                          style={{ color: palette.onPrimary, fontSize: 10, fontWeight: '800' }}
+                        >
+                          Ảnh bìa
+                        </Text>
                       </Pressable>
-                    )}
+                    ) : null}
                     <Pressable
                       onPress={() => setMediaItems((prev) => prev.filter((x) => x.id !== m.id))}
-                      style={styles.removeMediaBtn}
+                      style={[styles.removeMediaBtn, { backgroundColor: palette.danger }]}
                     >
-                      <Ionicons name="close" size={13} color="#FFF" />
+                      <Ionicons name="close" size={13} color="#FFFFFF" />
                     </Pressable>
                   </View>
                 ))}
               </ScrollView>
-            )}
+            ) : null}
 
-            {/* Embedded Quoted Post Preview */}
-            {quotedPost && <SharedPostCard postId={quotedPost.id} viewerId={viewerId} />}
-
-            {/* Unified Zalo Poll Builder */}
-            {showPoll && (
-              <View style={[styles.subPanel, { borderColor: palette.indigoBorder, backgroundColor: palette.paperRaised }]}>
-                <Text style={{ fontSize: 12.5, fontWeight: '800', color: palette.indigo }}>
-                  📊 Tạo Bình chọn Thống nhất (Zalo Poll)
+            {chosenSet ? (
+              <View
+                style={[
+                  styles.attachedQuizBanner,
+                  { backgroundColor: palette.indigoTint, borderColor: palette.indigoBorder },
+                ]}
+              >
+                <Ionicons name="book-outline" size={16} color={palette.indigo} />
+                <Text
+                  style={{ fontSize: 12.5, fontWeight: '700', color: palette.ink, flex: 1 }}
+                  numberOfLines={1}
+                >
+                  Bộ đề: {chosenSet.title} ({chosenSet.questions.length} câu)
                 </Text>
+                <Pressable onPress={() => setAttachedSetId('')}>
+                  <Ionicons name="close-circle" size={17} color={palette.inkMuted} />
+                </Pressable>
+              </View>
+            ) : null}
+
+            {quotedPost ? <SharedPostCard postId={quotedPost.id} viewerId={viewerId} /> : null}
+
+            {/* Interactive Poll Builder */}
+            {showPoll ? (
+              <View
+                style={[
+                  styles.subPanel,
+                  { borderColor: palette.indigoBorder, backgroundColor: palette.paperRaised },
+                ]}
+              >
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: palette.ink }}>
+                    Tạo khảo sát
+                  </Text>
+                  <Pressable onPress={() => setShowPoll(false)}>
+                    <Ionicons name="close" size={17} color={palette.inkMuted} />
+                  </Pressable>
+                </View>
                 <TextInput
                   value={pollQuestion}
                   onChangeText={setPollQuestion}
-                  placeholder="Câu hỏi bình chọn..."
+                  placeholder="Đặt câu hỏi khảo sát..."
                   placeholderTextColor={palette.inkMuted}
-                  style={[styles.singleInput, { color: palette.ink, borderColor: palette.paperMuted }]}
+                  style={[
+                    styles.singleInput,
+                    { color: palette.ink, borderColor: palette.paperMuted },
+                  ]}
                 />
                 {pollOptions.map((opt, idx) => (
                   <TextInput
@@ -631,123 +826,64 @@ function ComposerInner({
                     onChangeText={(txt) =>
                       setPollOptions((prev) => prev.map((o, i) => (i === idx ? txt : o)))
                     }
-                    placeholder={`Phương án ${idx + 1}`}
+                    placeholder={`Lựa chọn ${idx + 1}`}
                     placeholderTextColor={palette.inkMuted}
-                    style={[styles.singleInput, { color: palette.ink, borderColor: palette.paperMuted }]}
+                    style={[
+                      styles.singleInput,
+                      { color: palette.ink, borderColor: palette.paperMuted },
+                    ]}
                   />
                 ))}
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
                   <Pressable onPress={() => setPollOptions((p) => [...p, ''])}>
-                    <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.indigo }}>+ Thêm lựa chọn</Text>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: palette.indigo }}>
+                      + Thêm lựa chọn
+                    </Text>
                   </Pressable>
                   <Pressable onPress={() => setPollMulti((v) => !v)}>
-                    <Text style={{ fontSize: 11.5, fontWeight: '700', color: pollMulti ? palette.mint : palette.inkMuted }}>
-                      {pollMulti ? '✓ Chọn nhiều' : '○ Chọn nhiều'}
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontWeight: '700',
+                        color: pollMulti ? palette.mint : palette.inkMuted,
+                      }}
+                    >
+                      {pollMulti ? 'Chọn nhiều: Bật' : 'Chọn nhiều: Tắt'}
                     </Text>
                   </Pressable>
                   <Pressable onPress={() => setPollAnon((v) => !v)}>
-                    <Text style={{ fontSize: 11.5, fontWeight: '700', color: pollAnon ? palette.mint : palette.inkMuted }}>
-                      {pollAnon ? '✓ Bỏ phiếu ẩn danh' : '○ Ẩn danh'}
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontWeight: '700',
+                        color: pollAnon ? palette.mint : palette.inkMuted,
+                      }}
+                    >
+                      {pollAnon ? 'Ẩn danh: Bật' : 'Ẩn danh: Tắt'}
                     </Text>
                   </Pressable>
                   <Pressable onPress={() => setPollAllowAdd((v) => !v)}>
-                    <Text style={{ fontSize: 11.5, fontWeight: '700', color: pollAllowAdd ? palette.mint : palette.inkMuted }}>
-                      {pollAllowAdd ? '✓ Cho phép thêm mục' : '○ Khóa mục'}
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontWeight: '700',
+                        color: pollAllowAdd ? palette.mint : palette.inkMuted,
+                      }}
+                    >
+                      {pollAllowAdd ? 'Cho thêm mục: Bật' : 'Cho thêm mục: Tắt'}
                     </Text>
                   </Pressable>
                 </View>
               </View>
-            )}
+            ) : null}
 
-            {/* Spoiler Warning Input */}
-            {isSpoiler && (
-              <TextInput
-                value={spoilerWarning}
-                onChangeText={setSpoilerWarning}
-                placeholder="Nhập nhãn cảnh báo Spoiler (vd: Lời giải đề thi / Cốt truyện)..."
-                placeholderTextColor={palette.inkMuted}
-                style={[styles.singleInput, { color: palette.ink, borderColor: palette.gold }]}
-              />
-            )}
-
-            {/* Scheduled Post Time Input */}
-            {showSchedule && (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Ionicons name="calendar-outline" size={16} color={palette.indigo} />
-                <Text style={{ fontSize: 12, color: palette.ink }}>Hẹn giờ tự động đăng sau (phút):</Text>
-                <TextInput
-                  value={scheduleMinutesFromNow}
-                  onChangeText={setScheduleMinutesFromNow}
-                  keyboardType="numeric"
-                  style={[styles.smallNumInput, { color: palette.ink, borderColor: palette.indigo }]}
-                />
-              </View>
-            )}
-
-            {/* Consented Approximate Location Selector */}
-            {showLocationPicker && (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
-                {LOCATION_OPTIONS.map((loc) => (
-                  <Pressable
-                    key={loc}
-                    onPress={() => {
-                      setLocationLabel(locationLabel === loc ? '' : loc);
-                      setShowLocationPicker(false);
-                    }}
-                    style={[
-                      styles.miniChip,
-                      { borderColor: locationLabel === loc ? palette.indigo : palette.paperMuted },
-                    ]}
-                  >
-                    <Text style={{ fontSize: 11.5, color: palette.ink }}>📍 {loc}</Text>
-                  </Pressable>
-                ))}
-              </ScrollView>
-            )}
-
-            {/* @Mention Friend Picker */}
-            {showMentionPicker && (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
-                {knownUsers
-                  .filter((u) => u.id !== viewerId)
-                  .slice(0, 12)
-                  .map((u) => (
-                    <Pressable
-                      key={u.id}
-                      onPress={() => {
-                        setMentionedIds((prev) => Array.from(new Set([...prev, u.id])));
-                        setThreadParts((prev) => {
-                          const copy = [...prev];
-                          copy[0] = `${copy[0] || ''} @${u.displayName} `.trimStart();
-                          return copy;
-                        });
-                        setShowMentionPicker(false);
-                      }}
-                      style={[styles.miniChip, { borderColor: palette.indigo }]}
-                    >
-                      <Text style={{ fontSize: 11.5, fontWeight: '700', color: palette.indigo }}>
-                        @{u.displayName}
-                      </Text>
-                    </Pressable>
-                  ))}
-              </ScrollView>
-            )}
-
-            {/* Code Block */}
-            {showCode && (
-              <TextInput
-                value={codeSnippet}
-                onChangeText={setCodeSnippet}
-                multiline
-                placeholder="Dán đoạn code minh họa..."
-                placeholderTextColor="#94A3B8"
-                style={styles.codeArea}
-              />
-            )}
-
-            {/* Quiz Attachment Picker */}
-            {showQuizPicker && (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+            {/* Quiz Set Picker */}
+            {showQuizPicker ? (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: 6 }}
+              >
                 {questionSets.slice(0, 12).map((qs) => (
                   <Pressable
                     key={qs.id}
@@ -757,138 +893,389 @@ function ComposerInner({
                     }}
                     style={[
                       styles.miniChip,
-                      { borderColor: attachedSetId === qs.id ? palette.indigo : palette.paperMuted },
+                      {
+                        borderColor: attachedSetId === qs.id ? palette.indigo : palette.paperMuted,
+                        backgroundColor:
+                          attachedSetId === qs.id ? palette.indigoTint : palette.paperRaised,
+                      },
                     ]}
                   >
-                    <Text style={{ fontSize: 11.5, color: palette.ink }} numberOfLines={1}>
-                      📜 {qs.title}
+                    <Text style={{ fontSize: 12, color: palette.ink }} numberOfLines={1}>
+                      {qs.title}
                     </Text>
                   </Pressable>
                 ))}
               </ScrollView>
-            )}
+            ) : null}
 
-            {/* Rich Attachment & Safety Toolbar */}
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-              <Pressable onPress={() => void handlePickPhotos()} style={[styles.toolChip, { borderColor: palette.paperMuted }]}>
-                <Ionicons name="images-outline" size={15} color="#10B981" />
-                <Text style={{ fontSize: 11.5, fontWeight: '700', color: palette.ink }}>Ảnh Carousel</Text>
+            {/* Code Block */}
+            {showCode ? (
+              <TextInput
+                value={codeSnippet}
+                onChangeText={setCodeSnippet}
+                multiline
+                placeholder="Dán đoạn mã nguồn..."
+                placeholderTextColor="#94A3B8"
+                style={styles.codeArea}
+              />
+            ) : null}
+
+            {/* Primary Uncluttered Attachment Toolbar */}
+            <View style={[styles.primaryToolbar, { borderTopColor: palette.paperMuted }]}>
+              <Pressable
+                onPress={() => void handlePickPhotos()}
+                style={[styles.toolChip, { borderColor: palette.paperMuted }]}
+              >
+                <Ionicons name="images-outline" size={16} color={palette.indigo} />
+                <Text style={{ fontSize: 12, fontWeight: '700', color: palette.ink }}>Ảnh</Text>
               </Pressable>
 
-              <Pressable onPress={() => void handlePickVideo()} style={[styles.toolChip, { borderColor: palette.paperMuted }]}>
-                <Ionicons name="videocam-outline" size={15} color="#EC4899" />
-                <Text style={{ fontSize: 11.5, fontWeight: '700', color: palette.ink }}>Video + Bìa</Text>
+              <Pressable
+                onPress={() => void handlePickVideo()}
+                style={[styles.toolChip, { borderColor: palette.paperMuted }]}
+              >
+                <Ionicons name="videocam-outline" size={16} color={palette.indigo} />
+                <Text style={{ fontSize: 12, fontWeight: '700', color: palette.ink }}>Video</Text>
               </Pressable>
 
-              <Pressable onPress={() => setStickerOpen(true)} style={[styles.toolChip, { borderColor: palette.paperMuted }]}>
-                <Ionicons name="happy-outline" size={15} color="#F59E0B" />
-                <Text style={{ fontSize: 11.5, fontWeight: '700', color: palette.ink }}>GIF & Sticker</Text>
+              <Pressable
+                onPress={() => setStickerOpen(true)}
+                style={[styles.toolChip, { borderColor: palette.paperMuted }]}
+              >
+                <Ionicons name="happy-outline" size={16} color={palette.gold} />
+                <Text style={{ fontSize: 12, fontWeight: '700', color: palette.ink }}>GIF</Text>
               </Pressable>
 
-              <Pressable onPress={() => setShowPoll((v) => !v)} style={[styles.toolChip, { borderColor: palette.paperMuted }]}>
-                <Ionicons name="stats-chart-outline" size={15} color="#6366F1" />
-                <Text style={{ fontSize: 11.5, fontWeight: '700', color: palette.ink }}>Poll Zalo</Text>
-              </Pressable>
-
-              <Pressable onPress={() => setShowQuizPicker((v) => !v)} style={[styles.toolChip, { borderColor: palette.paperMuted }]}>
-                <Ionicons name="school-outline" size={15} color="#8B5CF6" />
-                <Text style={{ fontSize: 11.5, fontWeight: '700', color: palette.ink }}>Đính kèm Quiz</Text>
-              </Pressable>
-
-              <Pressable onPress={() => setShowCode((v) => !v)} style={[styles.toolChip, { borderColor: palette.paperMuted }]}>
-                <Ionicons name="code-slash-outline" size={15} color="#06B6D4" />
-                <Text style={{ fontSize: 11.5, fontWeight: '700', color: palette.ink }}>Code</Text>
-              </Pressable>
-
-              <Pressable onPress={() => setShowMentionPicker((v) => !v)} style={[styles.toolChip, { borderColor: palette.paperMuted }]}>
-                <Ionicons name="at-outline" size={15} color={palette.indigo} />
-                <Text style={{ fontSize: 11.5, fontWeight: '700', color: palette.ink }}>Nhắc bạn</Text>
-              </Pressable>
-
-              <Pressable onPress={() => setShowLocationPicker((v) => !v)} style={[styles.toolChip, { borderColor: palette.paperMuted }]}>
-                <Ionicons name="location-outline" size={15} color="#EF4444" />
-                <Text style={{ fontSize: 11.5, fontWeight: '700', color: palette.ink }}>
-                  {locationLabel || 'Vị trí'}
+              <Pressable
+                onPress={() => setShowPoll((v) => !v)}
+                style={[
+                  styles.toolChip,
+                  {
+                    borderColor: showPoll ? palette.indigo : palette.paperMuted,
+                    backgroundColor: showPoll ? palette.indigoTint : 'transparent',
+                  },
+                ]}
+              >
+                <Ionicons name="stats-chart-outline" size={15} color={palette.indigo} />
+                <Text style={{ fontSize: 12, fontWeight: '700', color: palette.ink }}>
+                  Khảo sát
                 </Text>
               </Pressable>
 
               <Pressable
-                onPress={() => setIsSpoiler((v) => !v)}
+                onPress={() => setShowQuizPicker((v) => !v)}
                 style={[
                   styles.toolChip,
-                  { borderColor: isSpoiler ? palette.gold : palette.paperMuted },
+                  {
+                    borderColor: attachedSetId ? palette.indigo : palette.paperMuted,
+                    backgroundColor: attachedSetId ? palette.indigoTint : 'transparent',
+                  },
                 ]}
               >
-                <Ionicons name="eye-off-outline" size={15} color={palette.gold} />
-                <Text style={{ fontSize: 11.5, fontWeight: '700', color: palette.ink }}>Spoiler</Text>
+                <Ionicons name="book-outline" size={15} color={palette.indigo} />
+                <Text style={{ fontSize: 12, fontWeight: '700', color: palette.ink }}>Bộ đề</Text>
               </Pressable>
 
               <Pressable
-                onPress={() => setIsAnonymous((v) => !v)}
+                onPress={() => setShowAdvancedDrawer((v) => !v)}
                 style={[
                   styles.toolChip,
-                  { borderColor: isAnonymous ? palette.indigo : palette.paperMuted },
+                  {
+                    borderColor: showAdvancedDrawer ? palette.indigo : palette.paperMuted,
+                    backgroundColor: showAdvancedDrawer ? palette.indigoTint : 'transparent',
+                  },
                 ]}
               >
-                <Ionicons name="glasses-outline" size={15} color={palette.indigo} />
-                <Text style={{ fontSize: 11.5, fontWeight: '700', color: palette.ink }}>
-                  {isAnonymous ? '✓ Ẩn danh' : 'Ẩn danh'}
+                <Ionicons name="options-outline" size={15} color={palette.inkMuted} />
+                <Text style={{ fontSize: 12, fontWeight: '700', color: palette.ink }}>
+                  Tùy chọn khác
                 </Text>
-              </Pressable>
-
-              <Pressable
-                onPress={() => setShowSchedule((v) => !v)}
-                style={[
-                  styles.toolChip,
-                  { borderColor: showSchedule ? palette.indigo : palette.paperMuted },
-                ]}
-              >
-                <Ionicons name="time-outline" size={15} color={palette.indigo} />
-                <Text style={{ fontSize: 11.5, fontWeight: '700', color: palette.ink }}>Hẹn giờ</Text>
               </Pressable>
             </View>
 
-            {/* Topic Tags & Reply Permission */}
-            <TextInput
-              value={topicsText}
-              onChangeText={setTopicsText}
-              placeholder="Chủ đề & Hashtag (vd: CNTT, AI, ÔnThi)..."
-              placeholderTextColor={palette.inkMuted}
-              style={[styles.singleInput, { color: palette.ink, borderColor: palette.paperMuted }]}
-            />
+            {/* Collapsible Secondary Options Drawer */}
+            {showAdvancedDrawer ? (
+              <View
+                style={[
+                  styles.subPanel,
+                  { backgroundColor: palette.paperRaised, borderColor: palette.paperMuted },
+                ]}
+              >
+                <Text style={{ fontSize: 11.5, fontWeight: '800', color: palette.inkMuted }}>
+                  Định dạng bài viết
+                </Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {(
+                    [
+                      { id: 'thread', label: 'Chuỗi bài' },
+                      { id: 'ghost', label: 'Tự hủy 24h' },
+                      { id: 'debate', label: 'Tranh biện' },
+                      { id: 'article', label: 'Bài viết dài' },
+                    ] as const
+                  ).map((k) => {
+                    const active = postKind === k.id;
+                    return (
+                      <Pressable
+                        key={k.id}
+                        onPress={() => {
+                          setPostKind(k.id);
+                          setShowLongForm(k.id === 'article');
+                        }}
+                        style={[
+                          styles.miniChip,
+                          {
+                            backgroundColor: active ? palette.indigo : palette.paper,
+                            borderColor: active ? palette.indigo : palette.paperMuted,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            fontWeight: '700',
+                            color: active ? palette.onPrimary : palette.ink,
+                          }}
+                        >
+                          {k.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
 
-            <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
-              <Text style={{ fontSize: 11.5, fontWeight: '700', color: palette.inkMuted }}>Ai có thể trả lời:</Text>
-              {(['everyone', 'followers', 'friends', 'mentioned', 'nobody'] as const).map((rp) => (
-                <Pressable
-                  key={rp}
-                  onPress={() => setReplyPermission(rp)}
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+                  <Pressable
+                    onPress={() => setIsSpoiler((v) => !v)}
+                    style={[
+                      styles.miniChip,
+                      {
+                        borderColor: isSpoiler ? palette.gold : palette.paperMuted,
+                        backgroundColor: isSpoiler ? palette.goldTint : palette.paper,
+                      },
+                    ]}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: palette.ink }}>
+                      {isSpoiler ? 'Ẩn nội dung: Bật' : 'Ẩn nội dung'}
+                    </Text>
+                  </Pressable>
+
+                  <Pressable
+                    onPress={() => setIsAnonymous((v) => !v)}
+                    style={[
+                      styles.miniChip,
+                      {
+                        borderColor: isAnonymous ? palette.indigo : palette.paperMuted,
+                        backgroundColor: isAnonymous ? palette.indigoTint : palette.paper,
+                      },
+                    ]}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: palette.ink }}>
+                      {isAnonymous ? 'Ẩn danh: Bật' : 'Đăng ẩn danh'}
+                    </Text>
+                  </Pressable>
+
+                  <Pressable
+                    onPress={() => setShowSchedule((v) => !v)}
+                    style={[
+                      styles.miniChip,
+                      {
+                        borderColor: showSchedule ? palette.indigo : palette.paperMuted,
+                        backgroundColor: showSchedule ? palette.indigoTint : palette.paper,
+                      },
+                    ]}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: palette.ink }}>
+                      Hẹn giờ đăng
+                    </Text>
+                  </Pressable>
+
+                  <Pressable
+                    onPress={() => setShowCode((v) => !v)}
+                    style={[
+                      styles.miniChip,
+                      {
+                        borderColor: showCode ? palette.indigo : palette.paperMuted,
+                        backgroundColor: showCode ? palette.indigoTint : palette.paper,
+                      },
+                    ]}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: palette.ink }}>
+                      Đoạn code
+                    </Text>
+                  </Pressable>
+
+                  <Pressable
+                    onPress={() => setShowLocationPicker((v) => !v)}
+                    style={[
+                      styles.miniChip,
+                      {
+                        borderColor: locationLabel ? palette.indigo : palette.paperMuted,
+                        backgroundColor: locationLabel ? palette.indigoTint : palette.paper,
+                      },
+                    ]}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: palette.ink }}>
+                      {locationLabel || 'Vị trí'}
+                    </Text>
+                  </Pressable>
+
+                  {knownUsers.filter((u) => u.id !== viewerId).length > 0 ? (
+                    <Pressable
+                      onPress={() => setShowMentionPicker((v) => !v)}
+                      style={[
+                        styles.miniChip,
+                        { borderColor: palette.paperMuted, backgroundColor: palette.paper },
+                      ]}
+                    >
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: palette.ink }}>
+                        Nhắc tên @
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+
+                {isSpoiler ? (
+                  <TextInput
+                    value={spoilerWarning}
+                    onChangeText={setSpoilerWarning}
+                    placeholder="Ghi chú trước khi mở nội dung ẩn..."
+                    placeholderTextColor={palette.inkMuted}
+                    style={[
+                      styles.singleInput,
+                      { color: palette.ink, borderColor: palette.goldBorder },
+                    ]}
+                  />
+                ) : null}
+
+                {showSchedule ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text style={{ fontSize: 12, color: palette.ink }}>Đăng sau (phút):</Text>
+                    <TextInput
+                      value={scheduleMinutesFromNow}
+                      onChangeText={setScheduleMinutesFromNow}
+                      keyboardType="numeric"
+                      style={[
+                        styles.smallNumInput,
+                        { color: palette.ink, borderColor: palette.indigoBorder },
+                      ]}
+                    />
+                  </View>
+                ) : null}
+
+                {showLocationPicker ? (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{ gap: 6 }}
+                  >
+                    {LOCATION_OPTIONS.map((loc) => (
+                      <Pressable
+                        key={loc}
+                        onPress={() => {
+                          setLocationLabel(locationLabel === loc ? '' : loc);
+                          setShowLocationPicker(false);
+                        }}
+                        style={[
+                          styles.miniChip,
+                          {
+                            borderColor:
+                              locationLabel === loc ? palette.indigo : palette.paperMuted,
+                          },
+                        ]}
+                      >
+                        <Text style={{ fontSize: 12, color: palette.ink }}>{loc}</Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                ) : null}
+
+                {showMentionPicker ? (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{ gap: 6 }}
+                  >
+                    {knownUsers
+                      .filter((u) => u.id !== viewerId)
+                      .slice(0, 12)
+                      .map((u) => (
+                        <Pressable
+                          key={u.id}
+                          onPress={() => {
+                            setMentionedIds((prev) => Array.from(new Set([...prev, u.id])));
+                            setThreadParts((prev) => {
+                              const copy = [...prev];
+                              copy[0] = `${copy[0] || ''} @${u.displayName} `.trimStart();
+                              return copy;
+                            });
+                            setShowMentionPicker(false);
+                          }}
+                          style={[styles.miniChip, { borderColor: palette.indigo }]}
+                        >
+                          <Text style={{ fontSize: 12, fontWeight: '700', color: palette.indigo }}>
+                            @{u.displayName}
+                          </Text>
+                        </Pressable>
+                      ))}
+                  </ScrollView>
+                ) : null}
+
+                <TextInput
+                  value={topicsText}
+                  onChangeText={setTopicsText}
+                  placeholder="Chủ đề (cách nhau bằng dấu phẩy, ví dụ: CNTT, AI)"
+                  placeholderTextColor={palette.inkMuted}
                   style={[
-                    styles.miniChip,
-                    {
-                      borderColor: replyPermission === rp ? palette.indigo : palette.paperMuted,
-                      backgroundColor: replyPermission === rp ? palette.indigoTint : palette.paperRaised,
-                    },
+                    styles.singleInput,
+                    { color: palette.ink, borderColor: palette.paperMuted },
                   ]}
-                >
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: palette.ink }}>
-                    {rp === 'everyone'
-                      ? 'Mọi người'
-                      : rp === 'followers'
-                      ? 'Followers'
-                      : rp === 'friends'
-                      ? 'Bạn bè'
-                      : rp === 'mentioned'
-                      ? 'Người được nhắc'
-                      : 'Không ai'}
+                />
+
+                <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                  <Text style={{ fontSize: 11.5, fontWeight: '700', color: palette.inkMuted }}>
+                    Ai có thể bình luận:
                   </Text>
-                </Pressable>
-              ))}
-            </View>
+                  {(['everyone', 'followers', 'friends', 'mentioned', 'nobody'] as const).map(
+                    (rp) => (
+                      <Pressable
+                        key={rp}
+                        onPress={() => setReplyPermission(rp)}
+                        style={[
+                          styles.miniChip,
+                          {
+                            borderColor:
+                              replyPermission === rp ? palette.indigo : palette.paperMuted,
+                            backgroundColor:
+                              replyPermission === rp ? palette.indigoTint : palette.paper,
+                          },
+                        ]}
+                      >
+                        <Text style={{ fontSize: 11.5, fontWeight: '700', color: palette.ink }}>
+                          {rp === 'everyone'
+                            ? 'Mọi người'
+                            : rp === 'followers'
+                            ? 'Người theo dõi'
+                            : rp === 'friends'
+                            ? 'Bạn bè'
+                            : rp === 'mentioned'
+                            ? 'Người được nhắc'
+                            : 'Tắt bình luận'}
+                        </Text>
+                      </Pressable>
+                    )
+                  )}
+                </View>
+              </View>
+            ) : null}
           </ScrollView>
 
-          <Button icon="paper-plane" disabled={!validToSubmit} onPress={handlePublishClick} fullWidth>
-            {showSchedule ? 'Lên lịch đăng bài tự động' : 'Đăng lên Bảng tin Threads'}
+          <Button
+            icon="paper-plane"
+            disabled={!validToSubmit}
+            onPress={handlePublishClick}
+            fullWidth
+          >
+            {showSchedule ? 'Hẹn giờ đăng' : 'Đăng bài'}
           </Button>
         </Card>
       </View>
@@ -927,39 +1314,66 @@ function ComposerInner({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(2, 6, 23, 0.76)',
+    backgroundColor: 'rgba(2, 6, 23, 0.72)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: spacing.sm,
   },
-  sheet: { width: '100%', maxWidth: 560, gap: 10, padding: spacing.md },
-  topHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  modeChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: radii.pill, borderWidth: 1 },
-  miniChip: { paddingHorizontal: 9, paddingVertical: 5, borderRadius: radii.pill, borderWidth: 1 },
-  stepNode: { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  partInput: {
-    minHeight: 74,
+  sheet: { width: '100%', maxWidth: 540, gap: 10, padding: spacing.md },
+  topHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+  },
+  authorMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  authorCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectorPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radii.pill,
     borderWidth: 1,
-    borderRadius: radii.sm,
-    padding: 10,
-    fontSize: 13.5,
+  },
+  miniChip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: radii.pill, borderWidth: 1 },
+  threadDot: { width: 8, height: 8, borderRadius: 4 },
+  partInput: {
+    minHeight: 82,
+    borderWidth: 1,
+    borderRadius: radii.md,
+    padding: 12,
+    fontSize: 14.5,
+    lineHeight: 21,
     textAlignVertical: 'top',
   },
   halfInput: {
     flex: 1,
     minWidth: 0,
     minHeight: 40,
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderRadius: radii.sm,
     paddingHorizontal: 10,
-    fontSize: 12.5,
+    fontSize: 13,
   },
   longInput: {
     minHeight: 110,
     borderWidth: 1,
     borderRadius: radii.sm,
     padding: 10,
-    fontSize: 13,
+    fontSize: 13.5,
     textAlignVertical: 'top',
   },
   mediaThumbCard: {
@@ -978,7 +1392,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
-    backgroundColor: 'rgba(79,70,229,0.9)',
     paddingHorizontal: 6,
     paddingVertical: 3,
     borderRadius: 8,
@@ -990,17 +1403,25 @@ const styles = StyleSheet.create({
     width: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: 'rgba(239,68,68,0.9)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  subPanel: { padding: 10, borderRadius: radii.md, borderWidth: 1, gap: 6 },
+  attachedQuizBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+  },
+  subPanel: { padding: 12, borderRadius: radii.md, borderWidth: 1, gap: 8 },
   singleInput: {
     minHeight: 40,
     borderWidth: 1,
     borderRadius: radii.sm,
     paddingHorizontal: 10,
-    fontSize: 12.5,
+    fontSize: 13,
   },
   smallNumInput: {
     width: 64,
@@ -1020,12 +1441,19 @@ const styles = StyleSheet.create({
     padding: 10,
     textAlignVertical: 'top',
   },
+  primaryToolbar: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    paddingTop: 10,
+    borderTopWidth: 1,
+  },
   toolChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    paddingHorizontal: 9,
-    paddingVertical: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
     borderRadius: radii.pill,
     borderWidth: 1,
   },

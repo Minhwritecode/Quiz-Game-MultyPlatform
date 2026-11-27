@@ -75,17 +75,17 @@ export default function PostDetailScreen() {
 
   return (
     <Screen bottomNav>
-      <TopBar title="Chi tiết Bài viết" />
+      <TopBar title="Chi tiết bài viết" />
 
       {!rawPost || !accessible ? (
         <Card style={{ alignItems: 'center', paddingVertical: spacing.xxl, gap: 10 }}>
           <Ionicons name="lock-closed-outline" size={40} color={palette.inkMuted} />
           <Text style={[typography.title, { color: palette.ink }]}>Nội dung không khả dụng</Text>
           <Text style={[typography.caption, { color: palette.inkMuted, textAlign: 'center' }]}>
-            Bài viết này không tồn tại, đã hết hạn (Ghost Post 24h), bị gỡ bỏ hoặc bạn không có quyền xem.
+            Bài viết này không tồn tại, đã hết hạn sau 24 giờ, bị gỡ bỏ hoặc bạn không có quyền xem.
           </Text>
           <Button variant="secondary" icon="arrow-back" onPress={() => router.back()}>
-            Quay lại Bảng tin
+            Quay lại
           </Button>
         </Card>
       ) : (
