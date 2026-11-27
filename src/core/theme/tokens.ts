@@ -7,10 +7,10 @@ import { Platform } from 'react-native';
 export const colors = {
   ink: '#181C25',
   inkMuted: '#575E6E',
-  paper: '#F7F3E8',
+  paper: '#F2ECDC',
   paperRaised: '#FFFDF8',
-  paperMuted: '#E4DCC6',
-  paperSoft: '#EFE9D8',
+  paperMuted: '#DDD2B7',
+  paperSoft: '#EAE1CB',
 
   // Primary Brand: Egyptian Lapis Blue (preserving existing `indigo` token key across app)
   indigo: '#1C3F94',
@@ -42,10 +42,10 @@ export const colors = {
   fireBorder: '#F7C29E',
 
   // Dark Mode Ink & Paper Surfaces
-  night: '#12151F',
-  nightSurface: '#1B2030',
-  nightRaised: '#242A3D',
-  nightMuted: '#2F374F',
+  night: '#0E121B',
+  nightSurface: '#191F2E',
+  nightRaised: '#232A3D',
+  nightMuted: '#2E3750',
   white: '#FFFFFF',
 } as const;
 
@@ -53,14 +53,14 @@ export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 28, xxxl: 36
 export const radii = { sm: 10, md: 16, lg: 22, pill: 999 } as const;
 export const shadows = {
   card: Platform.select({
-    ios: { shadowColor: '#181C25', shadowOpacity: 0.04, shadowRadius: 10, shadowOffset: { width: 0, height: 3 } },
-    android: { elevation: 1 },
-    default: { boxShadow: '0 2px 10px -1px rgba(24, 28, 37, 0.05)' },
+    ios: { shadowColor: '#181C25', shadowOpacity: 0.07, shadowRadius: 10, shadowOffset: { width: 0, height: 3 } },
+    android: { elevation: 2 },
+    default: { boxShadow: '0 3px 12px -2px rgba(24, 28, 37, 0.08), 0 1px 0 rgba(154, 88, 4, 0.07)' },
   }),
   raised: Platform.select({
-    ios: { shadowColor: '#181C25', shadowOpacity: 0.08, shadowRadius: 16, shadowOffset: { width: 0, height: 6 } },
+    ios: { shadowColor: '#181C25', shadowOpacity: 0.1, shadowRadius: 18, shadowOffset: { width: 0, height: 6 } },
     android: { elevation: 3 },
-    default: { boxShadow: '0 6px 20px -4px rgba(24, 28, 37, 0.09)' },
+    default: { boxShadow: '0 8px 24px -4px rgba(24, 28, 37, 0.11)' },
   }),
 } as const;
 

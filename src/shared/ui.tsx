@@ -27,13 +27,18 @@ import * as Haptics from 'expo-haptics';
 import { colors, palettes, radii, shadows, spacing, typography } from '@/core/theme/tokens';
 import { useI18n } from '@/core/i18n';
 import { NotificationBell } from '@/features/notifications/presentation/NotificationBell';
+import { PapyrusBackdrop } from '@/shared/PapyrusBackdrop';
 
 export type { IconName } from '@/shared/AppIcon';
 
-export function usePalette() {
+export function useIsDarkTheme() {
   const system = useColorScheme();
   const theme = usePapyrusStore((state) => state.theme);
-  return palettes[(theme === 'system' ? system : theme) === 'dark' ? 'dark' : 'light'];
+  return (theme === 'system' ? system : theme) === 'dark';
+}
+
+export function usePalette() {
+  return palettes[useIsDarkTheme() ? 'dark' : 'light'];
 }
 
 /**
@@ -204,6 +209,7 @@ export function Screen({
   onPullRefresh?: () => Promise<void> | void;
 }>) {
   const palette = usePalette();
+  const isDark = useIsDarkTheme();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const desktopWeb = Platform.OS === 'web' && width >= 900;
@@ -348,6 +354,7 @@ export function Screen({
       style={[styles.safe, { backgroundColor: transparent ? 'transparent' : palette.paper }]}
       edges={['top', 'left', 'right']}
     >
+      {!transparent && <PapyrusBackdrop isDark={isDark} />}
       {bottomNav && desktopWeb && <DesktopNav />}
 
       {/* Minimalist silent orbital pull indicator (driven by Animated.Value — zero scroll layout shift!) */}
@@ -952,6 +959,7 @@ export const BottomNav = memo(function BottomNav() {
   const router = useRouter();
   const pathname = usePathname();
   const palette = usePalette();
+  const isDark = useIsDarkTheme();
   const insets = useSafeAreaInsets();
   const { t } = useI18n();
   const items = useMemo<
@@ -1297,7 +1305,7 @@ const styles = StyleSheet.create({
   topAction: { marginLeft: 'auto', minWidth: 36, alignItems: 'flex-end', justifyContent: 'center' },
   iconButton: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   brandMark: { alignItems: 'center', justifyContent: 'center' },
-  card: { borderRadius: radii.md, borderCurve: 'continuous', borderWidth: 1, padding: spacing.lg },
+  card: { borderRadius: radii.md, borderCurve: 'continuous', borderWidth: 1, borderBottomWidth: 2.5, padding: spacing.lg },
   button: {
     minHeight: 48,
     borderRadius: radii.sm,

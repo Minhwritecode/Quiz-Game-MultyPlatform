@@ -1,7 +1,7 @@
 import { AppIcon } from '@/shared/AppIcon';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Alert, Image, Modal, Platform, Pressable, Share, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { Alert, Modal, Platform, Pressable, Share, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Badge, Button, Card, EmptyState, OnlineStatusDot, Screen, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
@@ -257,7 +257,6 @@ export default function LibraryScreen() {
         />
       ) : (
         <View style={styles.shelf}>
-          <Image source={require('../../assets/paper-grain.png')} resizeMode="repeat" accessible={false} pointerEvents="none" style={styles.grain} />
           {visibleSets.map((set) => {
             const openStudy = () =>
               router.push({ pathname: '/study/[setId]', params: { setId: set.id } });
@@ -605,7 +604,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   shelf: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: spacing.md, paddingBottom: spacing.md },
-  grain: { ...StyleSheet.absoluteFill, width: '100%', height: '100%' },
   cover: {
     width: 48,
     height: 62,
