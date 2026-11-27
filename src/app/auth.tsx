@@ -411,11 +411,12 @@ export default function AuthScreen() {
       <AuthCosmicBackdrop mode={mode} reduceMotion={reduceMotion} />
 
       <ScrollView
+        style={styles.scrollViewport}
         contentContainerStyle={[
           styles.centeredScroll,
           {
-            paddingTop: Math.max(spacing.lg, insets.top + 12),
-            paddingBottom: Math.max(spacing.xl, insets.bottom + 16),
+            paddingTop: Math.max(spacing.md, insets.top + 10),
+            paddingBottom: Math.max(spacing.md, insets.bottom + 12),
           },
         ]}
         keyboardShouldPersistTaps="handled"
@@ -831,23 +832,35 @@ export default function AuthScreen() {
 const styles = StyleSheet.create({
   screenRoot: {
     flex: 1,
+    width: '100%',
     backgroundColor: '#050818',
+    ...(Platform.OS === 'web'
+      ? ({ minHeight: '100dvh' } as unknown as ViewStyle)
+      : null),
+  },
+  scrollViewport: {
+    flex: 1,
+    width: '100%',
   },
   centeredScroll: {
     flexGrow: 1,
+    minHeight: '100%',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: spacing.lg,
   },
   modalOuter: {
     width: '100%',
-    maxWidth: 432,
+    maxWidth: 428,
+    marginTop: 'auto',
+    marginBottom: 'auto',
+    alignSelf: 'center',
   },
   modalCard: {
     backgroundColor: 'rgba(13, 19, 46, 0.88)',
     borderWidth: 1.5,
-    padding: spacing.xl,
-    gap: 14,
+    padding: spacing.lg,
+    gap: 12,
   },
   modalHeader: {
     flexDirection: 'row',

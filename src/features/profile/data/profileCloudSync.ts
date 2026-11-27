@@ -157,7 +157,7 @@ export async function syncUserProgressToCloud(input: {
       ...(input.wins !== undefined ? { wins: input.wins } : {}),
       ...(input.eloRating !== undefined ? { eloRating: input.eloRating } : {}),
       ...(input.eloPeak !== undefined ? { eloPeak: input.eloPeak } : {}),
-      ...(input.coverUrl !== undefined && (!input.coverUrl || input.coverUrl.length < 8_000)
+      ...(input.coverUrl !== undefined && (!input.coverUrl || input.coverUrl.length < 48_000)
         ? { coverUrl: input.coverUrl }
         : {}),
       ...(input.bio !== undefined ? { bio: input.bio } : {}),

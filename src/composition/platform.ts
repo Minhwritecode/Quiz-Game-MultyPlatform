@@ -30,6 +30,7 @@ export {
   pickAvatarImageDataUrl,
   pickCoverImageDataUrl,
   pickStoryMedia,
+  resolvePlayableVideoUri,
   type PickedStoryMedia,
 } from '@/features/scan-ocr/data/mediaPicker';
 export { encodeImageUriToJpegBase64 } from '@/features/scan-ocr/data/ocr';
@@ -86,6 +87,7 @@ export {
 export {
   broadcastCommunityEvent,
   fetchDailyUpdatedKnowledgeFeed,
+  pickEditorialPhotoFallback,
   searchAcademicKnowledgeLive,
   subscribeCommunityRealtime,
   type CommunityRealtimeEvent,

@@ -57,6 +57,7 @@ jest.mock('@/composition/social', () => ({
   persistSocialPostToSupabase: jest.fn().mockResolvedValue(false),
   persistStoryToSupabase: jest.fn().mockResolvedValue(false),
   syncPostEngagementToSupabase: jest.fn().mockResolvedValue(false),
+  syncStoryEngagementToSupabase: jest.fn().mockResolvedValue(false),
   syncUnifiedProfileToSupabase: jest.fn().mockResolvedValue(false),
   triggerServerPostLifecycleSweep: jest.fn().mockResolvedValue(undefined),
   updateStoryPinInSupabase: jest.fn().mockResolvedValue(false),
@@ -239,6 +240,15 @@ describe('Papyrus v3.0 — Real Data Social Platform, 24h Grouped Stories & Gues
     const refAfterFirstView = useCommunityStore.getState().stories;
     comm.markStoryViewed(st1.id, 'user-lan');
     expect(useCommunityStore.getState().stories).toBe(refAfterFirstView);
+
+    // Owner viewing own story does NOT inflate viewer count; peer reactions record and toggle cleanly
+    expect(
+      useCommunityStore.getState().stories.find((s) => s.id === st1.id)!.viewedByIds
+    ).not.toContain('user-minh');
+    comm.reactToStory(st1.id, '😂', 'user-lan');
+    expect(
+      useCommunityStore.getState().stories.find((s) => s.id === st1.id)!.reactions['😂']
+    ).toEqual(['user-lan']);
   });
 
   it('Legacy Content Migration: preserves real user-created posts & messages while discarding legacy fake seeds', () => {

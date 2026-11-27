@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image,
   Linking,
@@ -23,6 +23,7 @@ import { extractCompleteSentences } from '@/features/scan-ocr/domain/ocrCleaner'
 import { seedQuestionSets } from '@/composition/preferences';
 import {
   fetchDailyUpdatedKnowledgeFeed,
+  pickEditorialPhotoFallback,
   searchAcademicKnowledgeLive,
 } from '@/composition/platform';
 import { askPapyAiFeedAssistant } from '@/composition/social';
@@ -90,11 +91,10 @@ export default function CommunityScreen() {
   }>();
   const palette = usePalette();
   const { width } = useWindowDimensions();
-  const isWide = width >= 880;
   const isCompactHeader = width < 600;
   const refreshTick = useRouteRefreshStore((s) => s.refreshTick);
-  const scrollRef = useRef<ComponentRef<typeof ScrollView> | null>(null);
-  const latestScrollYRef = useRef(0);
+  const searchSeqRef = useRef(0);
+  const searchAbortRef = useRef<AbortController | null>(null);
 
   const user = useAuthStore((s) => s.user);
   const viewerId = user?.id ?? 'guest';
@@ -219,20 +219,6 @@ export default function CommunityScreen() {
     void syncCloudDirectory();
   }, [ensureUserProfile, refreshTick, runScheduledAndGhostSweep, syncCloudDirectory, user]);
 
-  useEffect(() => {
-    const savedOffset = useSocialStore.getState().feedScrollOffset;
-    let restoreTimer: ReturnType<typeof setTimeout> | undefined;
-    if (savedOffset > 40) {
-      restoreTimer = setTimeout(() => {
-        scrollRef.current?.scrollTo({ y: savedOffset, animated: false });
-      }, 60);
-    }
-    return () => {
-      if (restoreTimer) clearTimeout(restoreTimer);
-      useSocialStore.getState().setFeedScrollOffset(latestScrollYRef.current);
-    };
-  }, []);
-
   const [hubSection, setHubSection] = useState<HubSection>(() =>
     params.communityId
       ? 'communities'
@@ -305,6 +291,7 @@ export default function CommunityScreen() {
   // Realtime Search Engine State
   const [docSearchQuery, setDocSearchQuery] = useState('');
   const [searchingDocs, setSearchingDocs] = useState(false);
+  const [hasCompletedSearch, setHasCompletedSearch] = useState(false);
   const [liveWikiResults, setLiveWikiResults] = useState<DailyKnowledgeArticle[]>([]);
   const [dailyFeed, setDailyFeed] = useState<DailyKnowledgeArticle[]>([]);
   const [loadingDaily, setLoadingDaily] = useState(true);
@@ -330,7 +317,7 @@ export default function CommunityScreen() {
   const reloadDailyTrending = useCallback(async () => {
     setLoadingDaily(true);
     try {
-      const items = await fetchDailyUpdatedKnowledgeFeed();
+      const items = await fetchDailyUpdatedKnowledgeFeed(true);
       setDailyFeed(items);
       setLastSyncedAt(
         new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
@@ -358,26 +345,34 @@ export default function CommunityScreen() {
     };
   }, [refreshTick]);
 
-  const executeLiveSearch = useCallback(
-    async (rawQuery: string) => {
-      const clean = rawQuery.trim();
-      if (clean.length < 2) {
-        setLiveWikiResults([]);
-        return;
-      }
-      setSearchingDocs(true);
-      try {
-        const res = await searchAcademicKnowledgeLive(clean);
-        setLiveWikiResults(res);
-        setLastSyncedAt(
-          new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
-        );
-      } finally {
+  const executeLiveSearch = useCallback(async (rawQuery: string) => {
+    const clean = rawQuery.trim();
+    searchAbortRef.current?.abort();
+    if (clean.length < 2) {
+      searchSeqRef.current += 1;
+      setSearchingDocs(false);
+      setHasCompletedSearch(false);
+      setLiveWikiResults([]);
+      return;
+    }
+    const seq = ++searchSeqRef.current;
+    const ctrl = new AbortController();
+    searchAbortRef.current = ctrl;
+    setSearchingDocs(true);
+    try {
+      const res = await searchAcademicKnowledgeLive(clean, ctrl.signal);
+      if (seq !== searchSeqRef.current || ctrl.signal.aborted) return;
+      setLiveWikiResults(res);
+      setHasCompletedSearch(true);
+      setLastSyncedAt(
+        new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+      );
+    } finally {
+      if (seq === searchSeqRef.current) {
         setSearchingDocs(false);
       }
-    },
-    []
-  );
+    }
+  }, []);
 
   useEffect(() => {
     const clean = docSearchQuery.trim();
@@ -386,12 +381,16 @@ export default function CommunityScreen() {
     }
     const t = setTimeout(() => {
       void executeLiveSearch(clean);
-    }, 380);
+    }, 240);
     return () => clearTimeout(t);
   }, [docSearchQuery, executeLiveSearch]);
 
   const handleResetSearchEngine = () => {
+    searchAbortRef.current?.abort();
+    searchSeqRef.current += 1;
     setDocSearchQuery('');
+    setSearchingDocs(false);
+    setHasCompletedSearch(false);
     setLiveWikiResults([]);
     setBrokenThumbs({});
     void reloadDailyTrending();
@@ -688,13 +687,13 @@ export default function CommunityScreen() {
   };
 
   return (
-    <Screen scroll={false} bottomNav>
-      <View
-        style={[
-          styles.container,
-          isWide && { maxWidth: 960, alignSelf: 'center', width: '100%' },
-        ]}
-      >
+    <Screen
+      bottomNav
+      maxWidth={960}
+      scrollResetKey={`${hubSection}:${discoverSubTab}:${selectedCommunityId ?? ''}`}
+      onPullRefresh={reloadDailyTrending}
+    >
+      <View style={styles.container}>
         <TopBar
           title={isCompactHeader ? 'Cộng đồng' : 'Mạng Xã Hội & Cộng Đồng'}
           subtitle={
@@ -812,21 +811,10 @@ export default function CommunityScreen() {
           })}
         </View>
 
-        <ScrollView
-          ref={scrollRef}
-          style={{ flex: 1 }}
-          contentContainerStyle={{
+        <View
+          style={{
             paddingTop: spacing.xs,
-            paddingBottom: spacing.xl,
             gap: spacing.md,
-          }}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          scrollEventThrottle={64}
-          onScroll={(e) => {
-            if (hubSection === 'feeds') {
-              latestScrollYRef.current = e.nativeEvent.contentOffset.y;
-            }
           }}
         >
           {/* ===================================================================== */}
@@ -1833,6 +1821,10 @@ export default function CommunityScreen() {
                         onChangeText={(val) => {
                           setDocSearchQuery(val);
                           if (val.trim().length < 2) {
+                            searchAbortRef.current?.abort();
+                            searchSeqRef.current += 1;
+                            setSearchingDocs(false);
+                            setHasCompletedSearch(false);
                             setLiveWikiResults([]);
                           }
                         }}
@@ -1922,7 +1914,10 @@ export default function CommunityScreen() {
                         {mySlice!.recentSearchQueries.map((q) => (
                           <Pressable
                             key={q}
-                            onPress={() => setDocSearchQuery(q)}
+                            onPress={() => {
+                              setDocSearchQuery(q);
+                              void executeLiveSearch(q);
+                            }}
                             style={[styles.utilChip, { backgroundColor: palette.paperRaised }]}
                           >
                             <Text style={{ fontSize: 11.5, color: palette.ink }}>{q}</Text>
@@ -1983,80 +1978,76 @@ export default function CommunityScreen() {
                     </Card>
                   ) : null}
 
-                  {/* Live Articles & Daily Knowledge Cards with Hero Thumbnails + Document/Quiz/Story Actions */}
+                  {/* Live Articles & Daily Knowledge Cards with Real Photo Thumbnails + Smooth Zero-Jitter Streaming */}
                   <View style={{ gap: 10 }}>
                     <View
                       style={{
                         flexDirection: 'row',
                         alignItems: 'center',
                         justifyContent: 'space-between',
+                        flexWrap: 'wrap',
+                        gap: 6,
                       }}
                     >
                       <Text style={[typography.title, { color: palette.ink }]}>
                         {docSearchQuery.trim().length >= 2
-                          ? `Kết quả trực tuyến (${
-                              searchingDocs ? 'Đang cập nhật...' : liveWikiResults.length
-                            })`
+                          ? `Kết quả cho "${docSearchQuery.trim()}" (${liveWikiResults.length})`
                           : 'Tin tức & học liệu mới nhất hôm nay'}
                       </Text>
+                      {searchingDocs ? (
+                        <Badge tone="primary">Đang cập nhật trực tiếp…</Badge>
+                      ) : null}
                     </View>
 
-                    {(loadingDaily && docSearchQuery.trim().length < 2) ||
-                    (searchingDocs && liveWikiResults.length === 0) ? (
+                    {loadingDaily && dailyFeed.length === 0 && liveWikiResults.length === 0 ? (
                       <PapyrusPageSkeleton />
+                    ) : docSearchQuery.trim().length >= 2 &&
+                      !searchingDocs &&
+                      hasCompletedSearch &&
+                      liveWikiResults.length === 0 ? (
+                      <Card style={{ alignItems: 'center', gap: 8, paddingVertical: spacing.lg }}>
+                        <Ionicons name="search-outline" size={26} color={palette.indigo} />
+                        <Text style={[typography.title, { color: palette.ink, textAlign: 'center' }]}>
+                          Chưa tìm thấy bài báo khớp từ khóa &ldquo;{docSearchQuery.trim()}&rdquo;
+                        </Text>
+                        <Text style={[typography.caption, { color: palette.inkMuted, textAlign: 'center' }]}>
+                          Thử rút gọn từ khóa hoặc bấm Đặt lại để xem tin tức mới nhất hôm nay.
+                        </Text>
+                      </Card>
                     ) : (
-                      (docSearchQuery.trim().length >= 2 ? liveWikiResults : dailyFeed).map(
-                        (art) => {
-                          const showRemoteThumb = Boolean(art.thumbnailUrl && !brokenThumbs[art.id]);
-                          return (
-                            <Card key={art.id} style={{ gap: 10 }}>
-                              {showRemoteThumb ? (
-                                <Image
-                                  source={{ uri: art.thumbnailUrl! }}
-                                  onError={() =>
-                                    setBrokenThumbs((prev) => ({ ...prev, [art.id]: true }))
-                                  }
-                                  style={[
-                                    styles.newsThumb,
-                                    { backgroundColor: palette.paperMuted },
-                                  ]}
-                                  resizeMode="cover"
-                                />
-                              ) : (
-                                <View
-                                  style={[
-                                    styles.newsThumb,
-                                    {
-                                      backgroundColor: palette.indigoDeep,
-                                      padding: spacing.md,
-                                      justifyContent: 'space-between',
-                                    },
-                                  ]}
-                                >
-                                  <Text
-                                    style={{
-                                      color: '#93C5FD',
-                                      fontSize: 11,
-                                      fontWeight: '800',
-                                      letterSpacing: 0.4,
-                                    }}
-                                    numberOfLines={1}
-                                  >
-                                    {art.source.toUpperCase()} · {art.category}
-                                  </Text>
-                                  <Text
-                                    style={{
-                                      color: '#FFFFFF',
-                                      fontSize: 16,
-                                      lineHeight: 22,
-                                      fontWeight: '800',
-                                    }}
-                                    numberOfLines={2}
-                                  >
-                                    {art.title}
-                                  </Text>
-                                </View>
-                              )}
+                      (docSearchQuery.trim().length >= 2
+                        ? liveWikiResults.length > 0
+                          ? liveWikiResults
+                          : dailyFeed
+                        : dailyFeed
+                      ).map((art) => {
+                        const fallbackPhoto = pickEditorialPhotoFallback(
+                          art.id,
+                          art.title,
+                          art.category,
+                          docSearchQuery
+                        );
+                        const resolvedThumb =
+                          !brokenThumbs[art.id] &&
+                          art.thumbnailUrl &&
+                          !art.thumbnailUrl.startsWith('data:image/svg+xml')
+                            ? art.thumbnailUrl
+                            : fallbackPhoto;
+                        return (
+                          <Card key={art.id} style={{ gap: 10 }}>
+                            <Image
+                              source={{ uri: resolvedThumb }}
+                              onError={() => {
+                                if (!brokenThumbs[art.id]) {
+                                  setBrokenThumbs((prev) => ({ ...prev, [art.id]: true }));
+                                }
+                              }}
+                              style={[
+                                styles.newsThumb,
+                                { backgroundColor: palette.paperMuted },
+                              ]}
+                              resizeMode="cover"
+                            />
 
                               <View
                                 style={{
@@ -2183,7 +2174,7 @@ export default function CommunityScreen() {
               )}
             </View>
           ) : null}
-        </ScrollView>
+        </View>
       </View>
 
       {/* ===================================================================== */}

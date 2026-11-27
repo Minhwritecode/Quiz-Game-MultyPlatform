@@ -114,6 +114,7 @@ function RootLayout() {
           padding: 0;
           width: 100%;
           height: 100%;
+          height: 100dvh;
           overflow: hidden;
           overscroll-behavior: none;
           -webkit-text-size-adjust: 100%;
@@ -123,6 +124,7 @@ function RootLayout() {
           flex-direction: column;
           width: 100%;
           height: 100%;
+          height: 100dvh;
           min-height: 0;
           overflow: hidden;
         }

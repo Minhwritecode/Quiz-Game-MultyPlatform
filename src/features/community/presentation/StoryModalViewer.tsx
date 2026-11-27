@@ -1,4 +1,4 @@
-import { createElement, useCallback, useEffect, useRef, useState } from 'react';
+import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Image,
@@ -16,9 +16,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { STORY_GRADIENTS, type ScholarStory } from '../domain/models';
 import { useCommunityStore } from '../state/useCommunityStore';
+import { useSocialStore } from '@/features/social/state/useSocialStore';
 import { Button, Card, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
-import { pickStoryMedia } from '@/composition/platform';
+import { pickStoryMedia, resolvePlayableVideoUri } from '@/composition/platform';
 import { usePapyrusStore } from '@/core/state/usePapyrusStore';
 import { VideoCoverEditorModal } from '@/features/social/presentation/VideoCoverEditorModal';
 import { GifStickerEmojiPickerModal } from '@/features/social/presentation/GifStickerEmojiPickerModal';
@@ -32,7 +33,7 @@ import { GifStickerEmojiPickerModal } from '@/features/social/presentation/GifSt
 export function StoryViewerModal({
   story,
   stories,
-  initialIndex = 0,
+  initialIndex,
   viewerId,
   onClose,
   onMarkViewed,
@@ -50,12 +51,23 @@ export function StoryViewerModal({
 }) {
   const slideList = stories && stories.length > 0 ? stories : story ? [story] : [];
   if (slideList.length === 0) return null;
-  const groupKey = slideList.map((s) => s.id).join('|');
+  const firstUnreadIdx = slideList.findIndex(
+    (s) => s.authorId !== viewerId && (!Array.isArray(s.viewedByIds) || !s.viewedByIds.includes(viewerId))
+  );
+  const defaultIdx =
+    initialIndex !== undefined
+      ? initialIndex
+      : firstUnreadIdx >= 0
+      ? firstUnreadIdx
+      : slideList[0]?.authorId === viewerId
+      ? slideList.length - 1
+      : 0;
+  const groupKey = `${slideList.map((s) => s.id).join('|')}::${defaultIdx}`;
   return (
     <StoryViewerModalInner
       key={groupKey}
       slides={slideList}
-      initialIndex={Math.min(Math.max(0, initialIndex), slideList.length - 1)}
+      initialIndex={Math.min(Math.max(0, defaultIdx), slideList.length - 1)}
       viewerId={viewerId}
       onClose={onClose}
       onMarkViewed={onMarkViewed}
@@ -83,13 +95,21 @@ function StoryViewerModalInner({
   onDirectMessage?: (author: { id: string; name: string; replyText?: string }) => void;
 }) {
   const router = useRouter();
+  const palette = usePalette();
   const reduceMotion = usePapyrusStore((s) => s.reduceMotion);
   const storeStories = useCommunityStore((s) => s.stories);
+  const profilesById = useSocialStore((s) => s.profilesById);
   const [activeIndex, setActiveIndex] = useState(initialIndex);
   const [paused, setPaused] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   const [muted, setMuted] = useState(false);
   const [replyText, setReplyText] = useState('');
   const [burstEmoji, setBurstEmoji] = useState<string | null>(null);
+  const [videoState, setVideoState] = useState<{
+    forStoryId: string;
+    playableUri: string | null;
+    failed: boolean;
+  }>({ forStoryId: '', playableUri: null, failed: false });
   const [progressAnim] = useState(() => new Animated.Value(0));
   const [flipAnim] = useState(() => new Animated.Value(1));
   const [burstAnim] = useState(() => new Animated.Value(0));
@@ -100,18 +120,89 @@ function StoryViewerModalInner({
 
   const rawSlide = slides[activeIndex] ?? slides[0]!;
   const story = storeStories.find((s) => s.id === rawSlide.id) ?? rawSlide;
+  const isOwnStory = Boolean(viewerId && viewerId !== 'guest' && story.authorId === viewerId);
   const safeAuthorName = story.authorName?.trim() || 'Thành viên Papyrus';
   const safeGrad: [string, string] =
     Array.isArray(story.gradient) && story.gradient.length >= 2
       ? [story.gradient[0] || '#312E81', story.gradient[1] || '#7C3AED']
       : ['#312E81', '#7C3AED'];
   const safeViewedByIds = Array.isArray(story.viewedByIds) ? story.viewedByIds : [];
-  const safeReactions =
-    story.reactions && typeof story.reactions === 'object' && !Array.isArray(story.reactions)
-      ? story.reactions
-      : {};
-  const isVideo = Boolean(story.mediaType === 'video' || story.videoUri);
-  const isWebVideo = Boolean(isVideo && story.videoUri && Platform.OS === 'web');
+  const otherViewerIds = useMemo(
+    () => safeViewedByIds.filter((uid) => Boolean(uid && uid !== story.authorId && uid !== 'guest')),
+    [safeViewedByIds, story.authorId]
+  );
+  const safeReactions = useMemo(
+    () =>
+      story.reactions && typeof story.reactions === 'object' && !Array.isArray(story.reactions)
+        ? story.reactions
+        : {},
+    [story.reactions]
+  );
+
+  const engagementRoster = useMemo(() => {
+    const byUser = new Map<
+      string,
+      { userId: string; viewed: boolean; emojis: string[]; isSelf: boolean }
+    >();
+    for (const uid of otherViewerIds) {
+      byUser.set(uid, { userId: uid, viewed: true, emojis: [], isSelf: false });
+    }
+    for (const [emo, uids] of Object.entries(safeReactions)) {
+      if (!Array.isArray(uids)) continue;
+      for (const uid of uids) {
+        if (!uid || uid === 'guest') continue;
+        const prev = byUser.get(uid);
+        if (prev) {
+          if (!prev.emojis.includes(emo)) prev.emojis.push(emo);
+        } else {
+          byUser.set(uid, {
+            userId: uid,
+            viewed: uid !== story.authorId,
+            emojis: [emo],
+            isSelf: uid === story.authorId,
+          });
+        }
+      }
+    }
+    return Array.from(byUser.values()).sort((a, b) => b.emojis.length - a.emojis.length);
+  }, [otherViewerIds, safeReactions, story.authorId]);
+
+  const totalReactionsCount = useMemo(
+    () =>
+      Object.values(safeReactions).reduce(
+        (acc, arr) => acc + (Array.isArray(arr) ? arr.length : 0),
+        0
+      ),
+    [safeReactions]
+  );
+
+  const rawVideoCandidate = story.mediaType === 'video' || story.videoUri ? story.videoUri : null;
+
+  useEffect(() => {
+    let active = true;
+    if (!rawVideoCandidate) return undefined;
+    void resolvePlayableVideoUri(rawVideoCandidate).then((resolved) => {
+      if (!active) return;
+      setVideoState({
+        forStoryId: story.id,
+        playableUri: resolved,
+        failed: !resolved,
+      });
+    });
+    return () => {
+      active = false;
+    };
+  }, [rawVideoCandidate, story.id]);
+
+  const activePlayableVideo =
+    rawVideoCandidate && videoState.forStoryId === story.id && !videoState.failed
+      ? videoState.playableUri
+      : null;
+  const videoFailedForSlide =
+    Boolean(rawVideoCandidate) && videoState.forStoryId === story.id && videoState.failed;
+  const isVideo = Boolean((story.mediaType === 'video' || story.videoUri) && !videoFailedForSlide);
+  const isWebVideo = Boolean(isVideo && activePlayableVideo && Platform.OS === 'web');
+  const effectivePaused = paused || inspectorOpen;
 
   const goNext = useCallback(() => {
     if (activeIndex < slides.length - 1) {
@@ -159,11 +250,11 @@ function StoryViewerModalInner({
   // Timer ONLY runs for image/text slides (or non-web fallback).
   // Web video slides are driven 100% by the `<video>` element's real duration (`onTimeUpdate` & `onEnded`)!
   useEffect(() => {
-    if (isWebVideo) {
+    if (isVideo && Platform.OS === 'web' && !videoFailedForSlide) {
       progressAnim.stopAnimation();
       return undefined;
     }
-    if (paused) {
+    if (effectivePaused) {
       progressAnim.stopAnimation();
       return undefined;
     }
@@ -180,14 +271,14 @@ function StoryViewerModalInner({
       if (finished) goNext();
     });
     return () => anim.stop();
-  }, [activeIndex, goNext, isVideo, isWebVideo, paused, progressAnim, story.durationSec, story.id]);
+  }, [activeIndex, effectivePaused, goNext, isVideo, progressAnim, story.durationSec, story.id, videoFailedForSlide]);
 
   useEffect(() => {
     if (!isWebVideo || typeof document === 'undefined') return;
     const videoEl = document.getElementById('papyrus-story-video-el') as HTMLVideoElement | null;
     if (!videoEl) return;
     videoEl.muted = muted;
-    if (paused || reduceMotion) {
+    if (effectivePaused || reduceMotion) {
       videoEl.pause();
     } else {
       void videoEl.play().catch(() => {
@@ -196,7 +287,7 @@ function StoryViewerModalInner({
         void videoEl.play().catch(() => undefined);
       });
     }
-  }, [isWebVideo, muted, paused, reduceMotion, story.id]);
+  }, [effectivePaused, isWebVideo, muted, reduceMotion, story.id]);
 
   const triggerEmojiBurst = (emo: string) => {
     if (!viewerId || viewerId === 'guest') return;
@@ -214,8 +305,8 @@ function StoryViewerModalInner({
   const bgStyle =
     Platform.OS === 'web'
       ? ({
-          backgroundImage: `linear-gradient(160deg, ${safeGrad[0]} 0%, ${safeGrad[1]} 100%)`,
-        } as unknown as ViewStyle)
+        backgroundImage: `linear-gradient(160deg, ${safeGrad[0]} 0%, ${safeGrad[1]} 100%)`,
+      } as unknown as ViewStyle)
       : { backgroundColor: safeGrad[0] };
 
   return (
@@ -229,16 +320,16 @@ function StoryViewerModalInner({
           ]}
         >
           {/* Full-bleed Photo OR Full-Length Video Player (ZERO duration cap!) */}
-          {isWebVideo ? (
+          {isWebVideo && activePlayableVideo ? (
             createElement('video', {
               key: story.id,
               id: 'papyrus-story-video-el',
-              src: story.videoUri,
+              src: activePlayableVideo,
               poster: story.thumbnailUri || undefined,
               width: 390,
               height: 690,
               playsInline: true,
-              autoPlay: !reduceMotion && !paused,
+              autoPlay: !reduceMotion && !effectivePaused,
               muted,
               onLoadedMetadata: () => {
                 progressAnim.setValue(0);
@@ -252,6 +343,13 @@ function StoryViewerModalInner({
               onEnded: () => {
                 progressAnim.setValue(1);
                 goNext();
+              },
+              onError: () => {
+                setVideoState({
+                  forStoryId: story.id,
+                  playableUri: null,
+                  failed: true,
+                });
               },
               style: {
                 position: 'absolute',
@@ -329,7 +427,8 @@ function StoryViewerModalInner({
                   </Text>
                   <Text style={{ color: 'rgba(255,255,255,0.82)', fontSize: 11 }} numberOfLines={1}>
                     {slides.length > 1 ? `Tin ${activeIndex + 1}/${slides.length} · ` : ''}
-                    {safeViewedByIds.length} lượt xem
+                    {otherViewerIds.length} lượt xem
+                    {totalReactionsCount > 0 ? ` · ${totalReactionsCount} tương tác` : ''}
                   </Text>
                 </View>
               </Pressable>
@@ -434,10 +533,30 @@ function StoryViewerModalInner({
             ) : null}
           </View>
 
-          {/* Bottom Reply Input + Quick Reactions */}
+          {/* Bottom Reply Input + Owner Viewers/Reactors Inspector + Quick Reactions */}
           {viewerId !== 'guest' ? (
             <View style={styles.viewerFooter}>
-              {onDirectMessage && story.authorId !== viewerId ? (
+              {isOwnStory ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Xem danh sách người đã xem và tương tác với tin của bạn"
+                  onPress={() => setInspectorOpen(true)}
+                  style={styles.ownerInsightsPill}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+                    <Ionicons name="eye-outline" size={16} color="#FFFFFF" />
+                    <Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '800' }}>
+                      {otherViewerIds.length} người xem · {totalReactionsCount} tương tác
+                    </Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Text style={{ color: '#93C5FD', fontSize: 11.5, fontWeight: '800' }}>
+                      Chi tiết
+                    </Text>
+                    <Ionicons name="chevron-up" size={15} color="#93C5FD" />
+                  </View>
+                </Pressable>
+              ) : onDirectMessage ? (
                 <View style={styles.replyRow}>
                   <TextInput
                     value={replyText}
@@ -493,6 +612,165 @@ function StoryViewerModalInner({
                     </Pressable>
                   );
                 })}
+              </View>
+            </View>
+          ) : null}
+
+          {/* Owner Story Viewers & Reactions Inspector Sheet */}
+          {isOwnStory && inspectorOpen ? (
+            <View style={styles.inspectorBackdrop}>
+              <View style={[styles.inspectorSheet, { backgroundColor: palette.paper }]}>
+                <View style={styles.inspectorHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[typography.title, { color: palette.ink }]}>
+                      Người xem & Tương tác
+                    </Text>
+                    <Text style={{ fontSize: 12, color: palette.inkMuted, marginTop: 2 }}>
+                      {otherViewerIds.length} người đã xem · {totalReactionsCount} cảm xúc
+                    </Text>
+                  </View>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Đóng danh sách người xem"
+                    onPress={() => setInspectorOpen(false)}
+                    hitSlop={8}
+                    style={[styles.inspectorCloseBtn, { backgroundColor: palette.paperRaised }]}
+                  >
+                    <Ionicons name="close" size={18} color={palette.ink} />
+                  </Pressable>
+                </View>
+
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {(['❤️', '🔥', '😂', '😮', '👏'] as const).map((emo) => {
+                    const c = Array.isArray(safeReactions[emo]) ? safeReactions[emo]!.length : 0;
+                    return (
+                      <View
+                        key={emo}
+                        style={[
+                          styles.reactionStatChip,
+                          {
+                            backgroundColor: c > 0 ? palette.indigoTint : palette.paperRaised,
+                            borderColor: c > 0 ? palette.indigoBorder : palette.paperMuted,
+                          },
+                        ]}
+                      >
+                        <Text style={{ fontSize: 13 }}>{emo}</Text>
+                        <Text style={{ fontSize: 12, fontWeight: '800', color: palette.ink }}>
+                          {c}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
+
+                <ScrollView
+                  style={{ maxHeight: 310 }}
+                  contentContainerStyle={{ gap: 8, paddingVertical: 4 }}
+                  showsVerticalScrollIndicator={false}
+                >
+                  {engagementRoster.length === 0 ? (
+                    <View style={{ alignItems: 'center', paddingVertical: 28, gap: 6 }}>
+                      <Ionicons name="eye-off-outline" size={28} color={palette.inkMuted} />
+                      <Text
+                        style={{
+                          fontSize: 13,
+                          fontWeight: '700',
+                          color: palette.ink,
+                          textAlign: 'center',
+                        }}
+                      >
+                        Chưa có người xem nào khác
+                      </Text>
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          color: palette.inkMuted,
+                          textAlign: 'center',
+                        }}
+                      >
+                        Khi bạn bè xem hoặc thả biểu cảm vào tin này, tên và cảm xúc sẽ xuất hiện tại đây.
+                      </Text>
+                    </View>
+                  ) : (
+                    engagementRoster.map((entry) => {
+                      const prof = profilesById[entry.userId];
+                      const displayName = entry.isSelf
+                        ? `${safeAuthorName} (Bạn)`
+                        : prof?.displayName || 'Thành viên Papyrus';
+                      const avatarUri = entry.isSelf
+                        ? story.authorAvatar
+                        : prof?.avatarUrl ?? null;
+                      return (
+                        <Pressable
+                          key={entry.userId}
+                          onPress={() => {
+                            setInspectorOpen(false);
+                            onClose();
+                            if (entry.isSelf) {
+                              router.push('/profile');
+                            } else {
+                              router.push({
+                                pathname: '/user/[userId]',
+                                params: { userId: entry.userId },
+                              });
+                            }
+                          }}
+                          style={[
+                            styles.viewerPersonRow,
+                            {
+                              backgroundColor: palette.paperRaised,
+                              borderColor: palette.paperMuted,
+                            },
+                          ]}
+                        >
+                          <View
+                            style={[
+                              styles.viewerPersonAvatar,
+                              { backgroundColor: palette.indigo },
+                            ]}
+                          >
+                            {avatarUri ? (
+                              <Image
+                                source={{ uri: avatarUri }}
+                                style={styles.viewerPersonAvatarImg}
+                              />
+                            ) : (
+                              <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 13 }}>
+                                {(displayName[0] || 'P').toUpperCase()}
+                              </Text>
+                            )}
+                          </View>
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <Text
+                              style={{ fontSize: 13.5, fontWeight: '800', color: palette.ink }}
+                              numberOfLines={1}
+                            >
+                              {displayName}
+                            </Text>
+                            <Text style={{ fontSize: 11.5, color: palette.inkMuted }}>
+                              {entry.emojis.length > 0
+                                ? entry.isSelf
+                                  ? 'Đã thả cảm xúc trên tin của bạn'
+                                  : 'Đã xem và bày tỏ cảm xúc'
+                                : 'Đã xem tin của bạn'}
+                            </Text>
+                          </View>
+                          {entry.emojis.length > 0 ? (
+                            <View style={styles.personEmojiRow}>
+                              {entry.emojis.map((em) => (
+                                <Text key={em} style={{ fontSize: 17 }}>
+                                  {em}
+                                </Text>
+                              ))}
+                            </View>
+                          ) : (
+                            <Ionicons name="eye" size={16} color={palette.indigo} />
+                          )}
+                        </Pressable>
+                      );
+                    })
+                  )}
+                </ScrollView>
               </View>
             </View>
           ) : null}
@@ -1055,6 +1333,84 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.16)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.22)',
+  },
+  ownerInsightsPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: radii.pill,
+    backgroundColor: 'rgba(2, 6, 23, 0.68)',
+    borderWidth: 1,
+    borderColor: 'rgba(147, 197, 253, 0.42)',
+  },
+  inspectorBackdrop: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    zIndex: 20,
+    backgroundColor: 'rgba(2, 6, 23, 0.62)',
+    justifyContent: 'flex-end',
+  },
+  inspectorSheet: {
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    padding: spacing.md,
+    gap: 10,
+    maxHeight: '78%',
+  },
+  inspectorHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  inspectorCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reactionStatChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+  },
+  viewerPersonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: radii.md,
+    borderWidth: 1,
+  },
+  viewerPersonAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  viewerPersonAvatarImg: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+  },
+  personEmojiRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
   },
   composerCard: {
     width: '100%',

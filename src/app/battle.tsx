@@ -227,6 +227,18 @@ export default function BattleScreen() {
     if (!roomId) return;
     let active = true;
     let fetching = false;
+    let consecutiveSnapshotFailures = 0;
+    let hasLoadedSnapshot = false;
+
+    const clearStaleSession = () => {
+      if (!active) return;
+      active = false;
+      void dependencies.battleSession.clear(roomOwner).catch(() => undefined);
+      setRoomId(null);
+      setBattle(null);
+      setConnectionBanner('connected');
+      setError('');
+    };
 
     const refresh = async () => {
       if (fetching || AppState.currentState === 'background') return;
@@ -234,6 +246,8 @@ export default function BattleScreen() {
       try {
         const next = await dependencies.battle.snapshot(roomId);
         if (active) {
+          hasLoadedSnapshot = true;
+          consecutiveSnapshotFailures = 0;
           setBattle(next);
           const myState = next.players.find((p) => p.userId === user?.id);
           if (myState?.forfeited || myState?.connectionState === 'forfeited') {
@@ -247,8 +261,18 @@ export default function BattleScreen() {
         }
       } catch (e) {
         if (active) {
+          consecutiveSnapshotFailures += 1;
+          const msg = errorMessage(e, t.battle.reconnecting);
+          if (
+            !hasLoadedSnapshot &&
+            (consecutiveSnapshotFailures >= 2 ||
+              /not found|không tồn tại|expired|invalid|permission/i.test(msg))
+          ) {
+            clearStaleSession();
+            return;
+          }
           setConnectionBanner('reconnecting');
-          setError(errorMessage(e, t.battle.reconnecting));
+          setError(msg);
         }
       } finally {
         fetching = false;
@@ -262,12 +286,17 @@ export default function BattleScreen() {
         .catch((err) => {
           if (!active) return;
           const msg = err instanceof Error ? err.message : '';
+          if (!hasLoadedSnapshot && /not found|không tồn tại|expired|invalid/i.test(msg)) {
+            clearStaleSession();
+            return;
+          }
           if (msg.includes('seat_forfeited')) {
             setConnectionBanner('forfeited');
             setError('Hết thời gian giữ chỗ 30 giây — bạn đã bị tính bỏ cuộc trong trận này.');
           } else {
             setConnectionBanner('reconnecting');
             setError(t.battle.lostConnection);
+            void refresh();
           }
         });
     };
@@ -314,10 +343,16 @@ export default function BattleScreen() {
   };
 
   const leave = async () => {
-    if (roomId) await dependencies.battle.leave(roomId);
-    await dependencies.battleSession.clear(roomOwner);
+    const previousRoomId = roomId;
     setRoomId(null);
     setBattle(null);
+    setError('');
+    setConnectionBanner('connected');
+    setBusy(false);
+    await dependencies.battleSession.clear(roomOwner).catch(() => undefined);
+    if (previousRoomId) {
+      await dependencies.battle.leave(previousRoomId).catch(() => undefined);
+    }
   };
 
   const me = battle?.players.find((p) => p.userId === user?.id);
@@ -1332,10 +1367,10 @@ export default function BattleScreen() {
           </View>
         )}
 
-        {/* Leave Button */}
+        {/* Leave Button — always operable even during reconnect or busy RPCs */}
         {roomId && (
           <View style={{ marginTop: spacing.md, marginBottom: spacing.xxl }}>
-            <Button disabled={busy} variant="danger" icon="exit-outline" onPress={() => void run(leave)} fullWidth>
+            <Button variant="danger" icon="exit-outline" onPress={() => void leave()} fullWidth>
               {t.battle.leaveRoom}
             </Button>
           </View>

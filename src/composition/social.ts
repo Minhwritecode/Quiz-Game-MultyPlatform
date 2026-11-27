@@ -29,6 +29,7 @@ export {
   persistSocialPostToSupabase,
   persistStoryToSupabase,
   syncPostEngagementToSupabase,
+  syncStoryEngagementToSupabase,
   syncUnifiedProfileToSupabase,
   triggerServerPostLifecycleSweep,
   updateStoryPinInSupabase,

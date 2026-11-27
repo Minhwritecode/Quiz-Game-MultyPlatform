@@ -1,6 +1,6 @@
 import { errorMessage } from '@/core/domain/failure';
 import { Ionicons } from '@expo/vector-icons';
-import { createElement, useEffect, useMemo, useRef, useState } from 'react';
+import { createElement, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Image,
   Modal,
@@ -48,7 +48,7 @@ import { projectSafePostForViewer } from '@/features/social/domain/rankingAndPer
 import { MetaThreadsPostCard } from '@/features/social/presentation/MetaThreadsPostCard';
 import { AdvancedThreadComposerModal } from '@/features/social/presentation/AdvancedThreadComposerModal';
 import { getScholarRankInfo, XP_PER_SCHOLAR_LEVEL } from '@/core/domain/scholarRank';
-import { getLocalDateString } from '@/features/streak/domain/models';
+import { getLocalDateString, reconcileStreakWithHistory } from '@/features/streak/domain/models';
 import { dependencies } from '@/composition/dependencies';
 import {
   fetchCloudProfileSnapshot,
@@ -67,39 +67,78 @@ import { sfx } from '@/core/audio/sfx';
 
 type ProfileTab = 'timeline' | 'saved' | 'vault' | 'insights' | 'friends' | 'about';
 
-function WebCoverFileOverlay({
+function WebCoverFileLabel({
   disabled,
   label,
+  variant = 'pill',
+  children,
   onPickFile,
 }: {
   disabled?: boolean;
   label: string;
+  variant?: 'pill' | 'block';
+  children: ReactNode;
   onPickFile: (file: File) => void;
 }) {
-  return createElement('input', {
-    type: 'file',
-    accept: 'image/*',
-    disabled,
-    'aria-label': label,
-    onChange: (event: { target?: { files?: FileList | null; value?: string } }) => {
-      const file = event?.target?.files?.[0];
-      if (event?.target) {
-        event.target.value = '';
-      }
-      if (file) {
-        onPickFile(file);
-      }
+  return createElement(
+    'label',
+    {
+      role: 'button',
+      'aria-label': label,
+      style:
+        variant === 'block'
+          ? {
+              display: 'flex',
+              width: '100%',
+              boxSizing: 'border-box',
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              paddingTop: 11,
+              paddingBottom: 11,
+              paddingLeft: 14,
+              paddingRight: 14,
+              borderRadius: 12,
+              border: '1px solid rgba(28, 63, 148, 0.28)',
+              backgroundColor: 'rgba(28, 63, 148, 0.09)',
+              cursor: disabled ? 'default' : 'pointer',
+              userSelect: 'none',
+            }
+          : {
+              display: 'inline-flex',
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 5,
+              paddingTop: 4,
+              paddingBottom: 4,
+              paddingLeft: 8,
+              paddingRight: 6,
+              borderRadius: 999,
+              cursor: disabled ? 'default' : 'pointer',
+              userSelect: 'none',
+            },
     },
-    style: {
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      width: '100%',
-      height: '100%',
-      opacity: 0,
-      cursor: 'pointer',
-    },
-  });
+    children,
+    createElement('input', {
+      type: 'file',
+      accept: 'image/*',
+      disabled,
+      onChange: (event: { target?: { files?: FileList | null; value?: string } }) => {
+        const file = event?.target?.files?.[0];
+        if (event?.target) {
+          event.target.value = '';
+        }
+        if (file) {
+          onPickFile(file);
+        }
+      },
+      style: {
+        display: 'none',
+      },
+    })
+  );
 }
 
 const PROFILE_META_KEY = 'papyrus.profile.meta.v2';
@@ -152,12 +191,35 @@ export default function ProfileScreen() {
   const eloTier = getEloTier(eloRating);
   const rankInfo = useMemo(() => getScholarRankInfo(totalScore), [totalScore]);
 
-  const currentStreak = useStreakStore((s) => s.currentStreak);
-  const longestStreak = useStreakStore((s) => s.longestStreak);
+  const rawCurrentStreak = useStreakStore((s) => s.currentStreak);
+  const rawLongestStreak = useStreakStore((s) => s.longestStreak);
+  const streakStatus = useStreakStore((s) => s.status);
+  const lastActiveDate = useStreakStore((s) => s.lastActiveDate);
   const todayCompleted = useStreakStore((s) => s.todayCompleted);
   const historyDates = useStreakStore((s) => s.historyDates);
   const checkInToday = useStreakStore((s) => s.checkInToday);
   const membershipTier = useMembershipStore((s) => s.tier);
+
+  const reconciledStreak = useMemo(
+    () =>
+      reconcileStreakWithHistory(historyDates, getLocalDateString(), {
+        allowFrozenGap: streakStatus === 'frozen',
+        fallbackLastActiveDate: lastActiveDate,
+        fallbackCurrentStreak: rawCurrentStreak,
+      }),
+    [historyDates, lastActiveDate, rawCurrentStreak, streakStatus]
+  );
+  const currentStreak =
+    streakStatus === 'broken'
+      ? 0
+      : reconciledStreak.normalizedDates.length > 0 && streakStatus !== 'frozen'
+      ? reconciledStreak.consecutiveDays
+      : rawCurrentStreak;
+  const longestStreak = Math.max(
+    rawLongestStreak,
+    currentStreak,
+    reconciledStreak.longestInHistory
+  );
 
   const gifts = useNotificationStore((s) => s.gifts);
   const claimGift = useNotificationStore((s) => s.claimGift);
@@ -478,7 +540,7 @@ export default function ProfileScreen() {
   }, [myAuthoredPosts, mySocialProfile?.profileViewsCount]);
 
   const last7Days = useMemo(() => {
-    const activeSet = new Set(historyDates ?? []);
+    const activeSet = new Set(reconciledStreak.normalizedDates);
     const out: Array<{ key: string; label: string; done: boolean; isToday: boolean }> = [];
     const now = new Date();
     for (let i = 6; i >= 0; i--) {
@@ -493,7 +555,7 @@ export default function ProfileScreen() {
       });
     }
     return out;
-  }, [historyDates]);
+  }, [reconciledStreak.normalizedDates]);
 
   const persistCoverSelection = async (
     nextCoverUrl: string | null,
@@ -503,23 +565,25 @@ export default function ProfileScreen() {
     userEditedCoverRef.current = true;
     setCustomCoverUrl(nextCoverUrl);
     setCoverPresetId(nextPresetId);
-    await preferenceStorage.setItem(
-      `${PROFILE_META_KEY}.${viewerId}`,
-      JSON.stringify({
-        university: university.trim(),
-        major: major.trim(),
-        locationArea: locationArea.trim(),
-        interestsText,
-        bio: bio.trim(),
-        isPrivateAccount,
-        showOnlineStatus,
-        coverPresetId: nextPresetId,
-        customCoverUrl: nextCoverUrl,
-      })
-    );
     propagateIdentityUpdate(viewerId, { coverUrl: nextCoverUrl });
+    await preferenceStorage
+      .setItem(
+        `${PROFILE_META_KEY}.${viewerId}`,
+        JSON.stringify({
+          university: university.trim(),
+          major: major.trim(),
+          locationArea: locationArea.trim(),
+          interestsText,
+          bio: bio.trim(),
+          isPrivateAccount,
+          showOnlineStatus,
+          coverPresetId: nextPresetId,
+          customCoverUrl: nextCoverUrl,
+        })
+      )
+      .catch(() => undefined);
     if (user) {
-      void syncUserProgressToCloud({ coverUrl: nextCoverUrl });
+      await syncUserProgressToCloud({ coverUrl: nextCoverUrl }).catch(() => undefined);
     }
   };
 
@@ -726,7 +790,7 @@ export default function ProfileScreen() {
   const allSets = questionSets.length > 0 ? questionSets : seedQuestionSets;
 
   return (
-    <Screen scroll={false}>
+    <Screen maxWidth={760} scrollResetKey={activeTab}>
       <TopBar
         title="Trang cá nhân"
         right={
@@ -745,10 +809,7 @@ export default function ProfileScreen() {
         }
       />
 
-      <ScrollView
-        contentContainerStyle={[styles.container, { paddingHorizontal: spacing.lg }]}
-        showsVerticalScrollIndicator={false}
-      >
+      <View style={styles.container}>
         <View style={{ maxWidth: maxW, alignSelf: 'center', width: '100%' }}>
           <SmoothReveal>
             <Card style={styles.fbHeaderCard}>
@@ -791,17 +852,17 @@ export default function ProfileScreen() {
                       />
                     ))}
                     {Platform.OS === 'web' ? (
-                      <View style={[styles.changeCoverBtn, { position: 'relative', overflow: 'hidden' }]}>
+                      <WebCoverFileLabel
+                        disabled={coverBusy}
+                        label="Chọn ảnh bìa từ thiết bị"
+                        variant="pill"
+                        onPickFile={(file) => void handleWebCoverFilePicked(file)}
+                      >
                         <Ionicons name="camera" size={14} color="#FFFFFF" />
                         <Text style={{ color: '#FFFFFF', fontSize: 11.5, fontWeight: '800' }}>
                           {coverBusy ? 'Đang tải…' : 'Đổi ảnh bìa'}
                         </Text>
-                        <WebCoverFileOverlay
-                          disabled={coverBusy}
-                          label="Chọn ảnh bìa từ thiết bị"
-                          onPickFile={(file) => void handleWebCoverFilePicked(file)}
-                        />
-                      </View>
+                      </WebCoverFileLabel>
                     ) : (
                       <Pressable
                         accessibilityRole="button"
@@ -1704,7 +1765,7 @@ export default function ProfileScreen() {
 
           <View style={{ height: spacing.xxl }} />
         </View>
-      </ScrollView>
+      </View>
 
       {/* STORY MANAGER MODAL: Manage all posted stories & pin individual ones to Profile */}
       {storyManagerOpen ? (
@@ -1816,7 +1877,12 @@ export default function ProfileScreen() {
                           </Text>
                           <Text style={{ fontSize: 11, color: palette.inkMuted }}>
                             {new Date(st.createdAt).toLocaleString('vi-VN')} ·{' '}
-                            {st.viewedByIds.length} lượt xem
+                            {
+                              (Array.isArray(st.viewedByIds) ? st.viewedByIds : []).filter(
+                                (uid) => uid && uid !== st.authorId && uid !== 'guest'
+                              ).length
+                            }{' '}
+                            lượt xem
                           </Text>
                         </View>
 
@@ -1927,32 +1993,17 @@ export default function ProfileScreen() {
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
               {!isGuest ? (
                 Platform.OS === 'web' ? (
-                  <View
-                    style={{
-                      position: 'relative',
-                      overflow: 'hidden',
-                      borderRadius: radii.sm,
-                      borderWidth: 1,
-                      borderColor: palette.indigoBorder,
-                      backgroundColor: palette.indigoTint,
-                      paddingVertical: 11,
-                      paddingHorizontal: 14,
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 8,
-                    }}
+                  <WebCoverFileLabel
+                    disabled={coverBusy}
+                    label="Chọn ảnh bìa mới từ thiết bị"
+                    variant="block"
+                    onPickFile={(file) => void handleWebCoverFilePicked(file)}
                   >
                     <Ionicons name="image-outline" size={18} color={palette.indigo} />
                     <Text style={{ fontSize: 13, fontWeight: '800', color: palette.indigo }}>
                       {coverBusy ? 'Đang tải ảnh bìa…' : 'Chọn ảnh bìa mới từ thiết bị'}
                     </Text>
-                    <WebCoverFileOverlay
-                      disabled={coverBusy}
-                      label="Chọn ảnh bìa mới từ thiết bị"
-                      onPickFile={(file) => void handleWebCoverFilePicked(file)}
-                    />
-                  </View>
+                  </WebCoverFileLabel>
                 ) : (
                   <Button
                     variant="secondary"

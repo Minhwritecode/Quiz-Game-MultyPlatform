@@ -684,6 +684,34 @@ export async function updateStoryPinInSupabase(
   }
 }
 
+export async function syncStoryEngagementToSupabase(
+  storyId: string,
+  viewedByIds: string[],
+  reactions: Record<string, string[]>
+): Promise<boolean> {
+  if (!supabase || !isValidUuid(storyId)) return false;
+  try {
+    const uid = await getAuthenticatedUserId();
+    if (!uid) return false;
+    const rpcRes = await supabase.rpc('sync_social_story_engagement', {
+      p_story_id: storyId,
+      p_viewed_by_ids: viewedByIds,
+      p_reactions: reactions,
+    });
+    if (!rpcRes.error) return true;
+    const { error } = await supabase
+      .from('social_stories')
+      .update({
+        viewed_by_ids: viewedByIds,
+        reactions,
+      })
+      .eq('id', storyId);
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
 export async function deleteStoryFromSupabase(storyId: string): Promise<boolean> {
   if (!supabase || !isValidUuid(storyId)) return false;
   try {

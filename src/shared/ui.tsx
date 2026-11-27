@@ -190,12 +190,16 @@ export function Screen({
   scroll = true,
   bottomNav = false,
   transparent = false,
+  maxWidth: maxWidthProp,
+  scrollResetKey,
   contentStyle,
   onPullRefresh,
 }: PropsWithChildren<{
   scroll?: boolean;
   bottomNav?: boolean;
   transparent?: boolean;
+  maxWidth?: number;
+  scrollResetKey?: string | number;
   contentStyle?: object;
   onPullRefresh?: () => Promise<void> | void;
 }>) {
@@ -203,7 +207,7 @@ export function Screen({
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const desktopWeb = Platform.OS === 'web' && width >= 900;
-  const maxWidth = width >= 900 ? 1160 : 760;
+  const maxWidth = maxWidthProp ?? (width >= 900 ? 1160 : 760);
   const bottomBarHeight = 62 + Math.max(6, insets.bottom);
 
   const [refreshing, setRefreshing] = useState(false);
@@ -215,6 +219,15 @@ export function Screen({
   const scrollYRef = useRef(0);
   const startTouchYRef = useRef<number | null>(null);
   const idleDecayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (scrollResetKey === undefined) return;
+    scrollYRef.current = 0;
+    scrollViewRef.current?.scrollTo({ y: 0, animated: false });
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.scrollY !== 0) {
+      window.scrollTo(0, 0);
+    }
+  }, [scrollResetKey]);
 
   const resetPullVisual = () => {
     startTouchYRef.current = null;

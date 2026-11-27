@@ -8,6 +8,103 @@ export interface PickedStoryMedia {
   durationSec?: number;
 }
 
+const VIDEO_IDB_PREFIX = 'idb-video://';
+const MEDIA_IDB_NAME = 'papyrus_story_media_v1';
+const MEDIA_IDB_STORE = 'videos';
+let mediaDbPromise: Promise<IDBDatabase | null> | null = null;
+const liveBlobUrlCache = new Map<string, string>();
+
+function openMediaIdb(): Promise<IDBDatabase | null> {
+  if (Platform.OS !== 'web' || typeof indexedDB === 'undefined') {
+    return Promise.resolve(null);
+  }
+  if (mediaDbPromise) return mediaDbPromise;
+  mediaDbPromise = new Promise((resolve) => {
+    try {
+      const req = indexedDB.open(MEDIA_IDB_NAME, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(MEDIA_IDB_STORE)) {
+          db.createObjectStore(MEDIA_IDB_STORE);
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+  return mediaDbPromise;
+}
+
+async function saveVideoBlobToIdb(file: Blob): Promise<string | null> {
+  const db = await openMediaIdb();
+  if (!db) return null;
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  const key = `${VIDEO_IDB_PREFIX}${id}`;
+  const ok = await new Promise<boolean>((resolve) => {
+    try {
+      const tx = db.transaction(MEDIA_IDB_STORE, 'readwrite');
+      tx.objectStore(MEDIA_IDB_STORE).put(file, key);
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => resolve(false);
+    } catch {
+      resolve(false);
+    }
+  });
+  if (!ok) return null;
+  if (typeof URL !== 'undefined') {
+    liveBlobUrlCache.set(key, URL.createObjectURL(file));
+  }
+  return key;
+}
+
+/**
+ * Resolves `idb-video://...`, `https://...`, `data:video/...`, or in-session `blob:...`
+ * into a live browser-playable URL for `<video>` on iOS Safari & Desktop Web.
+ */
+export async function resolvePlayableVideoUri(rawUri?: string | null): Promise<string | null> {
+  if (!rawUri) return null;
+  if (Platform.OS !== 'web') return rawUri;
+
+  if (rawUri.startsWith(VIDEO_IDB_PREFIX)) {
+    const cached = liveBlobUrlCache.get(rawUri);
+    if (cached) return cached;
+    const db = await openMediaIdb();
+    if (!db) return null;
+    const blob = await new Promise<Blob | null>((resolve) => {
+      try {
+        const tx = db.transaction(MEDIA_IDB_STORE, 'readonly');
+        const req = tx.objectStore(MEDIA_IDB_STORE).get(rawUri);
+        req.onsuccess = () => resolve(req.result instanceof Blob ? req.result : null);
+        req.onerror = () => resolve(null);
+      } catch {
+        resolve(null);
+      }
+    });
+    if (!blob || typeof URL === 'undefined') return null;
+    const objectUrl = URL.createObjectURL(blob);
+    liveBlobUrlCache.set(rawUri, objectUrl);
+    return objectUrl;
+  }
+
+  if (rawUri.startsWith('data:video/')) {
+    const cached = liveBlobUrlCache.get(rawUri.slice(0, 96));
+    if (cached) return cached;
+    try {
+      const res = await fetch(rawUri);
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      liveBlobUrlCache.set(rawUri.slice(0, 96), objectUrl);
+      return objectUrl;
+    } catch {
+      return rawUri;
+    }
+  }
+
+  return rawUri;
+}
+
 function readWebFileAsDataUrl(accept: string): Promise<{ dataUrl: string; file: File } | null> {
   if (typeof document === 'undefined') return Promise.resolve(null);
   return new Promise((resolve) => {
@@ -183,7 +280,7 @@ export async function compressCoverImageFileWeb(file: File): Promise<string> {
   }
   const objectUrl = URL.createObjectURL(file);
   try {
-    return await cropAndCompressDataUrl(objectUrl, 840, 280, 0.78);
+    return await cropAndCompressDataUrl(objectUrl, 780, 260, 0.74);
   } catch {
     const dataUrl = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
@@ -194,7 +291,7 @@ export async function compressCoverImageFileWeb(file: File): Promise<string> {
       reader.onerror = () => reject(new Error('Không đọc được ảnh bìa.'));
       reader.readAsDataURL(file);
     });
-    return await cropAndCompressDataUrl(dataUrl, 840, 280, 0.78).catch(() => dataUrl);
+    return await cropAndCompressDataUrl(dataUrl, 780, 260, 0.74).catch(() => dataUrl);
   } finally {
     URL.revokeObjectURL(objectUrl);
   }
@@ -266,8 +363,19 @@ export async function pickStoryMedia(kind: 'image' | 'video'): Promise<PickedSto
           }
           const objectUrl = URL.createObjectURL(file);
           const { thumbnailUri, durationSec } = await captureFirstVideoFrameWeb(objectUrl);
-          // Persist dataURL for compact videos (<= 3.5MB), otherwise keep full-length objectURL
-          if (file.size <= 3_500_000) {
+          // Persist full-length video Blob in IndexedDB so it plays reliably across reloads on iOS Safari & Chrome
+          const idbUri = await saveVideoBlobToIdb(file);
+          if (idbUri) {
+            URL.revokeObjectURL(objectUrl);
+            resolve({
+              mediaType: 'video',
+              uri: idbUri,
+              thumbnailUri: thumbnailUri || '',
+              durationSec,
+            });
+            return;
+          }
+          if (file.size <= 1_800_000) {
             const reader = new FileReader();
             reader.onload = () => {
               const fullVideoDataUrl =

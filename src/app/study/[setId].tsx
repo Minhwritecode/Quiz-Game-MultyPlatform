@@ -233,16 +233,33 @@ export default function StudyScreen() {
   };
 
   const progress = (index + 1) / Math.max(1, effectiveQuestions.length);
+  const wrongAnswersCount = answers.filter((item) => !item.isCorrect).length;
+  const correctAnswersCount = answers.filter((item) => item.isCorrect).length;
+  const hpLossPerWrong = Math.max(
+    15,
+    Math.min(25, Math.round(100 / Math.max(4, Math.min(6, effectiveQuestions.length))))
+  );
+  const playerHp = Math.max(0, 100 - wrongAnswersCount * hpLossPerWrong);
+  const bossMaxHp = Math.max(1, effectiveQuestions.length) * 20;
+  const bossHp = Math.max(0, bossMaxHp - correctAnswersCount * 20);
+  const currentAnsweredWrong = Boolean(
+    revealed && answers.find((item) => item.questionId === question.id)?.isCorrect === false
+  );
+  const currentAnsweredCorrect = Boolean(
+    revealed && answers.find((item) => item.questionId === question.id)?.isCorrect === true
+  );
   const studyActionEffect = revealed
-    ? selected === question.correctIndex
+    ? currentAnsweredCorrect
       ? 'victory'
       : 'hurt'
     : 'idle';
 
   const studyCombatState = revealed
-    ? selected === question.correctIndex
+    ? currentAnsweredCorrect
       ? 'player_attack'
-      : 'enemy_attack'
+      : currentAnsweredWrong
+      ? 'enemy_attack'
+      : 'idle'
     : 'idle';
 
   return (
@@ -292,16 +309,17 @@ export default function StudyScreen() {
       {/* Magic Particles */}
       <MagicParticles trigger={particleTrigger} type="sparkles" />
 
-      {/* Immersive 3D RPG Sanctuary Trial Stage + EXP Gauge */}
+      {/* Immersive 3D RPG Sanctuary Trial Stage + Dynamic Player/Boss HP & EXP */}
       <RpgCombatArena3D
         combatState={studyCombatState}
         combo={level}
-        triggerKey={index * 10 + (revealed ? 1 : 0) + particleTrigger}
-        playerHp={100}
+        triggerKey={index * 10 + (revealed ? 1 : 0) + particleTrigger + wrongAnswersCount}
+        playerHp={playerHp}
         playerMaxHp={100}
-        bossHp={Math.max(5, effectiveQuestions.length - index)}
-        bossMaxHp={Math.max(1, effectiveQuestions.length)}
-        playerLabel={`Đại Pháp Sư · Lv.${level} (${exp}/100 EXP)`}
+        bossHp={bossHp}
+        bossMaxHp={bossMaxHp}
+        damageAmount={studyCombatState === 'enemy_attack' ? hpLossPerWrong : 20}
+        playerLabel={`Đại Pháp Sư · Lv.${level} (${playerHp}/100 HP)`}
         bossLabel="Hộ Pháp Cổ Ngữ"
         arenaTheme="sanctuary"
         height={210}

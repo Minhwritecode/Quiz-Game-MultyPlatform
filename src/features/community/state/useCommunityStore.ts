@@ -6,6 +6,7 @@ import {
   deleteStoryFromSupabase,
   generateClientUuid,
   persistStoryToSupabase,
+  syncStoryEngagementToSupabase,
   updateStoryPinInSupabase,
 } from '@/composition/social';
 import {
@@ -100,7 +101,7 @@ export const useCommunityStore = create<CommunityState>()(
           id: generateClientUuid(),
           isHighlight: pinned,
           pinnedOnProfile: pinned,
-          viewedByIds: [input.authorId],
+          viewedByIds: [],
           reactions: {},
           expiresAt,
           createdAt,
@@ -114,36 +115,49 @@ export const useCommunityStore = create<CommunityState>()(
       markStoryViewed: (storyId, viewerId) => {
         if (!viewerId || viewerId === 'guest') return;
         const target = get().stories.find((s) => s.id === storyId);
-        if (!target) return;
+        if (!target || target.authorId === viewerId) return;
         const currentViewed = Array.isArray(target.viewedByIds) ? target.viewedByIds : [];
         if (currentViewed.includes(viewerId)) return;
+        const nextViewed = [...currentViewed, viewerId];
+        const currentReactions =
+          target.reactions && typeof target.reactions === 'object' ? target.reactions : {};
         set((state) => ({
           stories: state.stories.map((s) =>
             s.id === storyId
               ? {
                   ...s,
-                  viewedByIds: [
-                    ...(Array.isArray(s.viewedByIds) ? s.viewedByIds : []),
-                    viewerId,
-                  ],
+                  viewedByIds: nextViewed,
                 }
               : s
           ),
         }));
+        if (typeof syncStoryEngagementToSupabase === 'function') {
+          void syncStoryEngagementToSupabase(storyId, nextViewed, currentReactions);
+        }
       },
 
       reactToStory: (storyId, emoji, viewerId) => {
         if (!viewerId || viewerId === 'guest') return;
+        let syncedViewed: string[] | null = null;
+        let syncedReactions: Record<string, string[]> | null = null;
         set((state) => ({
           stories: state.stories.map((s) => {
             if (s.id !== storyId) return s;
             const currentReactions =
               s.reactions && typeof s.reactions === 'object' ? s.reactions : {};
             const prev = Array.isArray(currentReactions[emoji]) ? currentReactions[emoji]! : [];
-            const next = prev.includes(viewerId) ? prev : [...prev, viewerId];
-            return { ...s, reactions: { ...currentReactions, [emoji]: next } };
+            const next = prev.includes(viewerId)
+              ? prev.filter((id) => id !== viewerId)
+              : [...prev, viewerId];
+            const nextReactions = { ...currentReactions, [emoji]: next };
+            syncedViewed = Array.isArray(s.viewedByIds) ? s.viewedByIds : [];
+            syncedReactions = nextReactions;
+            return { ...s, reactions: nextReactions };
           }),
         }));
+        if (syncedViewed && syncedReactions && typeof syncStoryEngagementToSupabase === 'function') {
+          void syncStoryEngagementToSupabase(storyId, syncedViewed, syncedReactions);
+        }
       },
 
       togglePinStoryOnProfile: (storyId, ownerId) => {
@@ -185,12 +199,12 @@ export const useCommunityStore = create<CommunityState>()(
               rem.id,
               existing
                 ? {
-                    ...existing,
-                    ...rem,
-                    // Preserve local blob video URI during the active browser session if present
-                    videoUri: rem.videoUri || existing.videoUri || null,
-                    thumbnailUri: rem.thumbnailUri || existing.thumbnailUri || null,
-                  }
+                  ...existing,
+                  ...rem,
+                  // Preserve local blob video URI during the active browser session if present
+                  videoUri: rem.videoUri || existing.videoUri || null,
+                  thumbnailUri: rem.thumbnailUri || existing.thumbnailUri || null,
+                }
                 : rem
             );
           }
@@ -295,20 +309,20 @@ export const useCommunityStore = create<CommunityState>()(
             p.id !== postId
               ? p
               : {
-                  ...p,
-                  comments: [
-                    ...p.comments,
-                    {
-                      id: `cmt-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
-                      authorId: author.id,
-                      authorName: author.name,
-                      authorAvatar: author.avatar,
-                      content: clean,
-                      likes: 0,
-                      createdAt: new Date().toISOString(),
-                    },
-                  ],
-                }
+                ...p,
+                comments: [
+                  ...p.comments,
+                  {
+                    id: `cmt-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+                    authorId: author.id,
+                    authorName: author.name,
+                    authorAvatar: author.avatar,
+                    content: clean,
+                    likes: 0,
+                    createdAt: new Date().toISOString(),
+                  },
+                ],
+              }
           ),
         }));
       },
@@ -453,13 +467,30 @@ export const useCommunityStore = create<CommunityState>()(
             const rawGrad = Array.isArray(s.gradient) ? s.gradient : [];
             const g0 = typeof rawGrad[0] === 'string' && rawGrad[0] ? rawGrad[0] : '#312E81';
             const g1 = typeof rawGrad[1] === 'string' && rawGrad[1] ? rawGrad[1] : '#7C3AED';
+            const cleanVideoUri =
+              typeof s.videoUri === 'string' && !s.videoUri.startsWith('blob:')
+                ? s.videoUri
+                : null;
+            const cleanImageUri =
+              typeof s.imageUri === 'string' && !s.imageUri.startsWith('blob:')
+                ? s.imageUri
+                : null;
+            const cleanThumbUri =
+              typeof s.thumbnailUri === 'string' && !s.thumbnailUri.startsWith('blob:')
+                ? s.thumbnailUri
+                : cleanImageUri;
             return {
               ...s,
               authorName: s.authorName || 'Thành viên Papyrus',
               text: typeof s.text === 'string' ? s.text : '',
               subtext: typeof s.subtext === 'string' ? s.subtext : '',
               gradient: [g0, g1] as [string, string],
-              viewedByIds: Array.isArray(s.viewedByIds) ? s.viewedByIds : [],
+              videoUri: cleanVideoUri,
+              imageUri: cleanImageUri,
+              thumbnailUri: cleanThumbUri,
+              viewedByIds: Array.isArray(s.viewedByIds)
+                ? s.viewedByIds.filter((uid) => uid && uid !== s.authorId && uid !== 'guest')
+                : [],
               reactions:
                 s.reactions && typeof s.reactions === 'object' && !Array.isArray(s.reactions)
                   ? s.reactions

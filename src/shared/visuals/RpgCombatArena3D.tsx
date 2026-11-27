@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState } from 'react';
-import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Model3DView } from '@/shared/Model3DView';
 import { Model3DErrorBoundary } from '@/shared/Model3DErrorBoundary';
 import { radii } from '@/core/theme/tokens';
@@ -15,6 +15,7 @@ export interface RpgCombatArena3DProps {
   playerMaxHp?: number;
   bossHp?: number;
   bossMaxHp?: number;
+  damageAmount?: number;
   playerLabel?: string;
   bossLabel?: string;
   arenaTheme?: 'colosseum' | 'sanctuary' | 'library';
@@ -36,29 +37,43 @@ export const RpgCombatArena3D = memo(function RpgCombatArena3D({
   playerMaxHp = 3,
   bossHp = 100,
   bossMaxHp = 100,
+  damageAmount = 20,
   playerLabel = 'Đại Pháp Sư (Bạn)',
   bossLabel = 'Golem Hắc Thạch',
   height = 228,
 }: RpgCombatArena3DProps) {
   const [spell, setSpell] = useState<RpgSpellElement>('fire_arrow');
-  const projAnim = useRef(new Animated.Value(0)).current;
-  const rockAnim = useRef(new Animated.Value(0)).current;
+  const [projAnim] = useState(() => new Animated.Value(0));
+  const [rockAnim] = useState(() => new Animated.Value(0));
+  const [shakeAnim] = useState(() => new Animated.Value(0));
+  const useNative = Platform.OS !== 'web';
 
   useEffect(() => {
     if (combatState === 'player_attack') {
       projAnim.setValue(0);
-      Animated.timing(projAnim, { toValue: 1, duration: 480, useNativeDriver: true }).start();
+      Animated.timing(projAnim, { toValue: 1, duration: 480, useNativeDriver: useNative }).start();
     } else if (combatState === 'enemy_attack') {
       rockAnim.setValue(0);
-      Animated.timing(rockAnim, { toValue: 1, duration: 620, useNativeDriver: true }).start();
+      shakeAnim.setValue(0);
+      Animated.parallel([
+        Animated.timing(rockAnim, { toValue: 1, duration: 620, useNativeDriver: useNative }),
+        Animated.sequence([
+          Animated.timing(shakeAnim, { toValue: -7, duration: 70, useNativeDriver: useNative }),
+          Animated.timing(shakeAnim, { toValue: 7, duration: 70, useNativeDriver: useNative }),
+          Animated.timing(shakeAnim, { toValue: -5, duration: 70, useNativeDriver: useNative }),
+          Animated.timing(shakeAnim, { toValue: 0, duration: 90, useNativeDriver: useNative }),
+        ]),
+      ]).start();
     }
-  }, [combatState, triggerKey, projAnim, rockAnim]);
+  }, [combatState, triggerKey, projAnim, rockAnim, shakeAnim, useNative]);
 
   const playerPct = Math.max(0, Math.min(100, Math.round((playerHp / Math.max(1, playerMaxHp)) * 100)));
   const bossPct = Math.max(0, Math.min(100, Math.round((bossHp / Math.max(1, bossMaxHp)) * 100)));
+  const playerHpColor =
+    playerPct <= 25 ? '#EF4444' : playerPct <= 55 ? '#F59E0B' : '#10B981';
 
   return (
-    <View style={[styles.container, { height }]}>
+    <Animated.View style={[styles.container, { height, transform: [{ translateX: shakeAnim }] }]}>
       <View style={styles.stageRow}>
         <View style={{ flex: 1 }}>
           <Model3DErrorBoundary>
@@ -116,26 +131,40 @@ export const RpgCombatArena3D = memo(function RpgCombatArena3D({
       ) : null}
 
       {combatState === 'enemy_attack' ? (
-        <Animated.Text
-          style={{
-            position: 'absolute',
-            top: '18%',
-            left: '16%',
-            fontSize: 30,
-            transform: [
-              { translateY: rockAnim.interpolate({ inputRange: [0, 1], outputRange: [-20, 82] }) },
-            ],
-          }}
-        >
-          🪨🪨💥
-        </Animated.Text>
+        <>
+          <View style={styles.combatBannerDanger} pointerEvents="none">
+            <Text style={styles.combatBannerText}>
+              🪨 GOLEM HẤT ĐÁ CHÔN VÙI! (-{damageAmount} HP)
+            </Text>
+          </View>
+          <Animated.Text
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              top: '22%',
+              left: '14%',
+              fontSize: 28,
+              transform: [
+                { translateY: rockAnim.interpolate({ inputRange: [0, 1], outputRange: [-16, 74] }) },
+              ],
+            }}
+          >
+            🪨💥 -{damageAmount} HP
+          </Animated.Text>
+        </>
+      ) : combatState === 'player_attack' ? (
+        <View style={styles.combatBannerSuccess} pointerEvents="none">
+          <Text style={styles.combatBannerText}>
+            ⚡ ĐÒN PHÉP CHÍ MẠNG! (-{damageAmount} HP Golem)
+          </Text>
+        </View>
       ) : null}
 
       <View style={styles.hudTop} pointerEvents="none">
         <View style={{ flex: 1, gap: 3 }}>
           <Text style={styles.fighterName} numberOfLines={1}>🧙‍♂️ {playerLabel}</Text>
           <View style={styles.hpTrack}>
-            <View style={[styles.hpFill, { width: `${playerPct}%`, backgroundColor: '#10B981' }]} />
+            <View style={[styles.hpFill, { width: `${playerPct}%`, backgroundColor: playerHpColor }]} />
           </View>
         </View>
         <View style={styles.vsBadge}>
@@ -163,7 +192,7 @@ export const RpgCombatArena3D = memo(function RpgCombatArena3D({
           </Pressable>
         ))}
       </View>
-    </View>
+    </Animated.View>
   );
 });
 
@@ -229,4 +258,32 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(165, 180, 252, 0.28)',
   },
   weaponText: { color: '#F8FAFC', fontSize: 10.5, fontWeight: '800' },
+  combatBannerDanger: {
+    position: 'absolute',
+    top: 38,
+    alignSelf: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: radii.pill,
+    backgroundColor: 'rgba(220, 38, 38, 0.92)',
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+  },
+  combatBannerSuccess: {
+    position: 'absolute',
+    top: 38,
+    alignSelf: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: radii.pill,
+    backgroundColor: 'rgba(5, 150, 105, 0.92)',
+    borderWidth: 1,
+    borderColor: '#6EE7B7',
+  },
+  combatBannerText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.3,
+  },
 });
