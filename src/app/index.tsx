@@ -619,7 +619,7 @@ export default function HomeScreen() {
 
               <View style={styles.heroActions}>
                 <View style={styles.heroBtnWrap}>
-                  <Button icon="camera-outline" onPress={() => router.push('/create/scan')} variant="primary" fullWidth>
+                  <Button icon="camera-outline" onPress={() => router.push('/create/scan')} variant="primary" multiline fullWidth>
                     {t.home.createAiBtn}
                   </Button>
                 </View>
@@ -628,6 +628,7 @@ export default function HomeScreen() {
                     icon="library-outline"
                     variant="secondary"
                     onPress={() => router.push('/sets')}
+                    multiline
                     fullWidth
                   >
                     {language === 'vi' ? 'Thư viện đề' : 'Study library'}
@@ -1124,7 +1125,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   heroActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },
-  heroBtnWrap: { flex: 1, minWidth: 165 },
+  heroBtnWrap: { flex: 1, minWidth: 138 },
   sceneWrapWide: { width: '41%', minWidth: 290, marginLeft: spacing.xl },
   sceneWrapMobile: { width: '100%', marginTop: spacing.sm },
   compactStatsRow: {
@@ -1136,6 +1137,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     borderWidth: 1,
+    borderBottomWidth: 2.5,
     borderRadius: radii.md,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.sm,

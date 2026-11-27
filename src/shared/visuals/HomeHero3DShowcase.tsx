@@ -1,9 +1,10 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Svg, { Circle, Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { AppIcon } from '@/shared/AppIcon';
 import { Model3DView, type Model3DActionEffect, type Model3DType } from '@/shared/Model3DView';
 import { Model3DErrorBoundary } from '@/shared/Model3DErrorBoundary';
-import { usePalette } from '@/shared/ui';
+import { useIsDarkTheme, usePalette } from '@/shared/ui';
 import { radii, spacing } from '@/core/theme/tokens';
 
 const SHOWCASE_MODELS: Array<{
@@ -29,6 +30,7 @@ export const HomeHero3DShowcase = memo(function HomeHero3DShowcase({
   reduceMotion?: boolean;
 }) {
   const palette = usePalette();
+  const isDark = useIsDarkTheme();
   const [selected, setSelected] = useState<Model3DType>('royalScroll');
   const [effect, setEffect] = useState<Model3DActionEffect>('idle');
   const [pulse, setPulse] = useState(0);
@@ -51,11 +53,24 @@ export const HomeHero3DShowcase = memo(function HomeHero3DShowcase({
         style={[
           styles.stageBox,
           {
-            backgroundColor: '#182735',
-            borderColor: '#534837',
+            backgroundColor: isDark ? '#0B1633' : '#10234E',
+            borderColor: palette.goldBorder,
           },
         ]}
       >
+        <View pointerEvents="none" style={StyleSheet.absoluteFill} aria-hidden={true}>
+          <Svg width="100%" height="100%" style={StyleSheet.absoluteFill}>
+            <Defs>
+              <RadialGradient id="hero3d-aura" cx="50%" cy="48%" r="58%">
+                <Stop offset="0%" stopColor="#F5B73B" stopOpacity={0.22} />
+                <Stop offset="55%" stopColor="#3B6CE0" stopOpacity={0.14} />
+                <Stop offset="100%" stopColor="#10234E" stopOpacity={0} />
+              </RadialGradient>
+            </Defs>
+            <Rect x="0" y="0" width="100%" height="100%" fill="url(#hero3d-aura)" />
+            <Circle cx="50%" cy="50%" r="36%" stroke="#F5B73B" strokeWidth={1} strokeOpacity={0.14} fill="none" />
+          </Svg>
+        </View>
         <Model3DErrorBoundary>
           <Model3DView
             model={selected}
@@ -161,7 +176,7 @@ const styles = StyleSheet.create({
     position: 'relative',
     borderRadius: radii.md,
     overflow: 'hidden',
-    borderWidth: 1,
+    borderWidth: 1.5,
   },
   canvasFrame: {
     borderWidth: 0,
