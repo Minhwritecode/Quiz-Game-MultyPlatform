@@ -26,6 +26,7 @@ export {
 } from '@/features/study/data/sessionPdf';
 export { pickRichSourceDocument } from '@/features/scan-ocr/data/documentSource';
 export {
+  compressCoverImageFileWeb,
   pickAvatarImageDataUrl,
   pickCoverImageDataUrl,
   pickStoryMedia,

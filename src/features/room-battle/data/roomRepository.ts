@@ -92,34 +92,75 @@ export const battleRepository = {
       return [];
     }
   },
+  async loadCloudSetWithQuestions(setId: string): Promise<QuestionSet | null> {
+    if (!supabase || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(setId)) {
+      return null;
+    }
+    try {
+      const [setRes, qRes] = await Promise.all([
+        supabase
+          .from('question_sets')
+          .select('id,title,subject,updated_at')
+          .eq('id', setId)
+          .maybeSingle(),
+        supabase
+          .from('questions')
+          .select('id,content,options,correct_index,explanation,position')
+          .eq('set_id', setId)
+          .order('position', { ascending: true }),
+      ]);
+      if (!setRes.data || !Array.isArray(qRes.data) || qRes.data.length === 0) return null;
+      return {
+        id: String(setRes.data.id),
+        title: String(setRes.data.title || 'Bộ câu hỏi'),
+        subject: String(setRes.data.subject || 'Đại học'),
+        updatedAt: String(setRes.data.updated_at || new Date().toISOString()),
+        syncStatus: 'synced',
+        questions: qRes.data.map((row: Record<string, unknown>, idx: number) => ({
+          id: String(row.id || `q-${idx}`),
+          content: String(row.content || `Câu hỏi ${idx + 1}`),
+          options: Array.isArray(row.options)
+            ? (row.options as unknown[]).map(String)
+            : ['Đáp án A', 'Đáp án B', 'Đáp án C', 'Đáp án D'],
+          correctIndex:
+            typeof row.correct_index === 'number' ? Number(row.correct_index) : 0,
+          explanation: row.explanation ? String(row.explanation) : '',
+          position: typeof row.position === 'number' ? Number(row.position) : idx,
+        })),
+      };
+    } catch {
+      return null;
+    }
+  },
   async ensureCloudSet(localSet: QuestionSet): Promise<string> {
-    if (!supabase) throw new Error('Server is not configured.');
+    if (!supabase) throw new Error('Máy chủ chưa được cấu hình.');
     const { data: sessionData } = await supabase.auth.getSession();
     const uid = sessionData.session?.user?.id;
-    if (!uid) throw new Error('Sign in to host an online room.');
+    if (!uid) throw new Error('Vui lòng đăng nhập để mở phòng Colosseum trực tuyến.');
 
-    // Check if already owned directly
+    // Check if already owned directly (including soft-deleted rows so revision stays accurate)
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(localSet.id);
     if (isUuid) {
       const existing = await supabase
         .from('question_sets')
-        .select('id')
+        .select('id,is_deleted')
         .eq('id', localSet.id)
         .eq('owner_id', uid)
-        .eq('is_deleted', false)
         .maybeSingle();
-      if (existing.data?.id) return existing.data.id;
+      if (existing.data?.id && !existing.data.is_deleted) return existing.data.id;
     }
 
     const mappedSetId = deterministicUserUuid(uid, localSet.id);
     const alreadyMapped = await supabase
       .from('question_sets')
-      .select('id')
+      .select('id,is_deleted,revision')
       .eq('id', mappedSetId)
       .eq('owner_id', uid)
-      .eq('is_deleted', false)
       .maybeSingle();
-    if (alreadyMapped.data?.id) return alreadyMapped.data.id;
+    if (alreadyMapped.data?.id && !alreadyMapped.data.is_deleted) {
+      return alreadyMapped.data.id;
+    }
+    const baseRevision = String(alreadyMapped.data?.revision ?? '0');
 
     // Normalize questions to strict 4 distinct options so sync_push_set succeeds across any schema version
     const normalizedQuestions = localSet.questions.slice(0, 50).map((q, idx) => {
@@ -150,9 +191,21 @@ export const battleRepository = {
       };
     });
 
+    const safeUuid = () => {
+      try {
+        return Crypto.randomUUID();
+      } catch {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+          const r = (Math.random() * 16) | 0;
+          const v = c === 'x' ? r : (r & 0x3) | 0x8;
+          return v.toString(16);
+        });
+      }
+    };
+
     const pushRes = await supabase.rpc('sync_push_set', {
-      mutation_id: Crypto.randomUUID(),
-      base_revision: '0',
+      mutation_id: safeUuid(),
+      base_revision: baseRevision,
       document: {
         id: mappedSetId,
         title: localSet.title.slice(0, 190),

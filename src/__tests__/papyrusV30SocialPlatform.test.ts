@@ -227,6 +227,18 @@ describe('Papyrus v3.0 — Real Data Social Platform, 24h Grouped Stories & Gues
     expect(comm.togglePinStoryOnProfile(st2.id, 'user-minh')).toBe(true);
     const updatedSt2 = useCommunityStore.getState().stories.find((s) => s.id === st2.id)!;
     expect(updatedSt2.pinnedOnProfile).toBe(true);
+
+    // Calling markStoryViewed when already viewed must be a strict no-op (prevents StoryViewerModal infinite loop)
+    const refBefore = useCommunityStore.getState().stories;
+    comm.markStoryViewed(st1.id, 'user-minh');
+    expect(useCommunityStore.getState().stories).toBe(refBefore);
+    comm.markStoryViewed(st1.id, 'user-lan');
+    expect(
+      useCommunityStore.getState().stories.find((s) => s.id === st1.id)!.viewedByIds
+    ).toContain('user-lan');
+    const refAfterFirstView = useCommunityStore.getState().stories;
+    comm.markStoryViewed(st1.id, 'user-lan');
+    expect(useCommunityStore.getState().stories).toBe(refAfterFirstView);
   });
 
   it('Legacy Content Migration: preserves real user-created posts & messages while discarding legacy fake seeds', () => {

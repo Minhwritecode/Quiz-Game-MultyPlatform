@@ -2007,10 +2007,10 @@ export default function CommunityScreen() {
                     ) : (
                       (docSearchQuery.trim().length >= 2 ? liveWikiResults : dailyFeed).map(
                         (art) => {
-                          const showThumb = Boolean(art.thumbnailUrl && !brokenThumbs[art.id]);
+                          const showRemoteThumb = Boolean(art.thumbnailUrl && !brokenThumbs[art.id]);
                           return (
                             <Card key={art.id} style={{ gap: 10 }}>
-                              {showThumb ? (
+                              {showRemoteThumb ? (
                                 <Image
                                   source={{ uri: art.thumbnailUrl! }}
                                   onError={() =>
@@ -2022,7 +2022,41 @@ export default function CommunityScreen() {
                                   ]}
                                   resizeMode="cover"
                                 />
-                              ) : null}
+                              ) : (
+                                <View
+                                  style={[
+                                    styles.newsThumb,
+                                    {
+                                      backgroundColor: palette.indigoDeep,
+                                      padding: spacing.md,
+                                      justifyContent: 'space-between',
+                                    },
+                                  ]}
+                                >
+                                  <Text
+                                    style={{
+                                      color: '#93C5FD',
+                                      fontSize: 11,
+                                      fontWeight: '800',
+                                      letterSpacing: 0.4,
+                                    }}
+                                    numberOfLines={1}
+                                  >
+                                    {art.source.toUpperCase()} · {art.category}
+                                  </Text>
+                                  <Text
+                                    style={{
+                                      color: '#FFFFFF',
+                                      fontSize: 16,
+                                      lineHeight: 22,
+                                      fontWeight: '800',
+                                    }}
+                                    numberOfLines={2}
+                                  >
+                                    {art.title}
+                                  </Text>
+                                </View>
+                              )}
 
                               <View
                                 style={{

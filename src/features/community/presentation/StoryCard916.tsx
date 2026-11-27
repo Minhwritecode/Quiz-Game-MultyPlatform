@@ -89,9 +89,13 @@ export const StoryCard916 = memo(function StoryCard916({
   const palette = usePalette();
   const thumb = story.thumbnailUri || story.imageUri || null;
   const isVideo = story.mediaType === 'video' || Boolean(story.videoUri);
-  const label = customLabel || story.authorName;
+  const label = customLabel || story.authorName || 'Thành viên Papyrus';
   const initial = (label.trim()[0] || 'S').toUpperCase();
   const segmentBars = Math.min(Math.max(1, totalCount), 6);
+  const safeGrad: [string, string] =
+    Array.isArray(story.gradient) && story.gradient.length >= 2
+      ? [story.gradient[0] || '#312E81', story.gradient[1] || '#7C3AED']
+      : ['#312E81', '#7C3AED'];
 
   return (
     <Pressable
@@ -101,14 +105,14 @@ export const StoryCard916 = memo(function StoryCard916({
       style={({ pressed }) => [
         styles.card,
         {
-          backgroundColor: story.gradient[0],
+          backgroundColor: safeGrad[0],
           borderColor: seen ? palette.paperMuted : palette.indigo,
           opacity: pressed ? 0.9 : 1,
           transform: pressed ? [{ scale: 0.97 }] : undefined,
         },
         !thumb && Platform.OS === 'web'
           ? ({
-              backgroundImage: `linear-gradient(160deg, ${story.gradient[0]} 0%, ${story.gradient[1]} 100%)`,
+              backgroundImage: `linear-gradient(160deg, ${safeGrad[0]} 0%, ${safeGrad[1]} 100%)`,
             } as unknown as ViewStyle)
           : undefined,
       ]}

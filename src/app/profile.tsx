@@ -1,6 +1,6 @@
 import { errorMessage } from '@/core/domain/failure';
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { createElement, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image,
   Modal,
@@ -56,12 +56,51 @@ import {
   seedQuestionSets,
   syncUserProgressToCloud,
 } from '@/composition/preferences';
-import { pickAvatarImageDataUrl, pickCoverImageDataUrl } from '@/composition/platform';
+import {
+  compressCoverImageFileWeb,
+  pickAvatarImageDataUrl,
+  pickCoverImageDataUrl,
+} from '@/composition/platform';
 import { saveQuestionSet } from '@/features/question-sets/domain/saveQuestionSet';
 import { DUEL_CATEGORIES, getEloTier } from '@/features/room-battle/domain/elo';
 import { sfx } from '@/core/audio/sfx';
 
 type ProfileTab = 'timeline' | 'saved' | 'vault' | 'insights' | 'friends' | 'about';
+
+function WebCoverFileOverlay({
+  disabled,
+  label,
+  onPickFile,
+}: {
+  disabled?: boolean;
+  label: string;
+  onPickFile: (file: File) => void;
+}) {
+  return createElement('input', {
+    type: 'file',
+    accept: 'image/*',
+    disabled,
+    'aria-label': label,
+    onChange: (event: { target?: { files?: FileList | null; value?: string } }) => {
+      const file = event?.target?.files?.[0];
+      if (event?.target) {
+        event.target.value = '';
+      }
+      if (file) {
+        onPickFile(file);
+      }
+    },
+    style: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      width: '100%',
+      height: '100%',
+      opacity: 0,
+      cursor: 'pointer',
+    },
+  });
+}
 
 const PROFILE_META_KEY = 'papyrus.profile.meta.v2';
 const DAY_LABELS = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
@@ -297,8 +336,8 @@ export default function ProfileScreen() {
       isGuest
         ? []
         : stories
-            .filter((s) => s.authorId === viewerId)
-            .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)),
+          .filter((s) => s.authorId === viewerId)
+          .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)),
     [isGuest, stories, viewerId]
   );
 
@@ -323,18 +362,18 @@ export default function ProfileScreen() {
       isGuest
         ? []
         : socialPosts
-            .filter(
-              (p) =>
-                (p.internalAuthorId || p.authorId) === viewerId &&
-                p.lifecycleStatus !== 'removed'
-            )
-            .sort((a, b) =>
-              a.isPinnedProfile !== b.isPinnedProfile
-                ? a.isPinnedProfile
-                  ? -1
-                  : 1
-                : Date.parse(b.createdAt) - Date.parse(a.createdAt)
-            ),
+          .filter(
+            (p) =>
+              (p.internalAuthorId || p.authorId) === viewerId &&
+              p.lifecycleStatus !== 'removed'
+          )
+          .sort((a, b) =>
+            a.isPinnedProfile !== b.isPinnedProfile
+              ? a.isPinnedProfile
+                ? -1
+                : 1
+              : Date.parse(b.createdAt) - Date.parse(a.createdAt)
+          ),
     [isGuest, socialPosts, viewerId]
   );
 
@@ -362,10 +401,10 @@ export default function ProfileScreen() {
       isGuest
         ? 0
         : friendRequests.filter(
-            (r) =>
-              r.status === 'accepted' &&
-              (r.senderId === viewerId || r.receiverId === viewerId)
-          ).length,
+          (r) =>
+            r.status === 'accepted' &&
+            (r.senderId === viewerId || r.receiverId === viewerId)
+        ).length,
     [friendRequests, isGuest, viewerId]
   );
   const pendingFollowRequestsToMe = useMemo(
@@ -494,6 +533,20 @@ export default function ProfileScreen() {
     try {
       const dataUrl = await pickCoverImageDataUrl();
       if (!dataUrl) return;
+      await persistCoverSelection(dataUrl);
+      setMessage('Đã cập nhật ảnh bìa trang cá nhân.');
+    } catch (error) {
+      setMessage(errorMessage(error, 'Không thể đổi ảnh bìa lúc này.'));
+    } finally {
+      setCoverBusy(false);
+    }
+  }
+
+  async function handleWebCoverFilePicked(file: File) {
+    if (!file || isGuest || coverBusy) return;
+    setCoverBusy(true);
+    try {
+      const dataUrl = await compressCoverImageFileWeb(file);
       await persistCoverSelection(dataUrl);
       setMessage('Đã cập nhật ảnh bìa trang cá nhân.');
     } catch (error) {
@@ -668,6 +721,7 @@ export default function ProfileScreen() {
 
   const activeCoverPreset =
     COVER_PRESETS.find((c) => c.id === coverPresetId) ?? COVER_PRESETS[0]!;
+  const effectiveCoverUrl = customCoverUrl ?? mySocialProfile?.coverUrl ?? null;
   const winRate = gamesPlayed > 0 ? `${Math.round((wins / gamesPlayed) * 100)}%` : '—';
   const allSets = questionSets.length > 0 ? questionSets : seedQuestionSets;
 
@@ -701,16 +755,16 @@ export default function ProfileScreen() {
               <View
                 style={[
                   styles.coverBanner,
-                  Platform.OS === 'web' && !customCoverUrl
+                  Platform.OS === 'web' && !effectiveCoverUrl
                     ? ({
                       backgroundImage: `linear-gradient(135deg, ${activeCoverPreset.c1} 0%, ${activeCoverPreset.c2} 100%)`,
                     } as object)
                     : { backgroundColor: activeCoverPreset.c1 },
                 ]}
               >
-                {customCoverUrl ? (
+                {effectiveCoverUrl ? (
                   <Image
-                    source={{ uri: customCoverUrl }}
+                    source={{ uri: effectiveCoverUrl }}
                     style={StyleSheet.absoluteFill}
                     resizeMode="cover"
                   />
@@ -729,24 +783,38 @@ export default function ProfileScreen() {
                           {
                             backgroundColor: cp.c2,
                             borderColor:
-                              coverPresetId === cp.id && !customCoverUrl
+                              coverPresetId === cp.id && !effectiveCoverUrl
                                 ? '#FFFFFF'
                                 : 'transparent',
                           },
                         ]}
                       />
                     ))}
-                    <Pressable
-                      accessibilityRole="button"
-                      disabled={coverBusy}
-                      onPress={() => void handlePickCoverPhoto()}
-                      style={styles.changeCoverBtn}
-                    >
-                      <Ionicons name="camera" size={14} color="#FFFFFF" />
-                      <Text style={{ color: '#FFFFFF', fontSize: 11.5, fontWeight: '800' }}>
-                        {coverBusy ? 'Đang tải…' : 'Đổi ảnh bìa'}
-                      </Text>
-                    </Pressable>
+                    {Platform.OS === 'web' ? (
+                      <View style={[styles.changeCoverBtn, { position: 'relative', overflow: 'hidden' }]}>
+                        <Ionicons name="camera" size={14} color="#FFFFFF" />
+                        <Text style={{ color: '#FFFFFF', fontSize: 11.5, fontWeight: '800' }}>
+                          {coverBusy ? 'Đang tải…' : 'Đổi ảnh bìa'}
+                        </Text>
+                        <WebCoverFileOverlay
+                          disabled={coverBusy}
+                          label="Chọn ảnh bìa từ thiết bị"
+                          onPickFile={(file) => void handleWebCoverFilePicked(file)}
+                        />
+                      </View>
+                    ) : (
+                      <Pressable
+                        accessibilityRole="button"
+                        disabled={coverBusy}
+                        onPress={() => void handlePickCoverPhoto()}
+                        style={styles.changeCoverBtn}
+                      >
+                        <Ionicons name="camera" size={14} color="#FFFFFF" />
+                        <Text style={{ color: '#FFFFFF', fontSize: 11.5, fontWeight: '800' }}>
+                          {coverBusy ? 'Đang tải…' : 'Đổi ảnh bìa'}
+                        </Text>
+                      </Pressable>
+                    )}
                   </View>
                 ) : null}
               </View>
@@ -944,7 +1012,7 @@ export default function ProfileScreen() {
                     <ScrollView
                       horizontal
                       showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={{ gap: 10 }}
+                      contentContainerStyle={{ gap: 10, paddingVertical: 4 }}
                     >
                       <CreateStoryCard916
                         avatarUrl={viewerAvatar}
@@ -993,11 +1061,10 @@ export default function ProfileScreen() {
                       { id: 'insights', label: 'Số liệu' },
                       {
                         id: 'friends',
-                        label: `Bạn bè${
-                          pendingFollowRequestsToMe.length > 0
-                            ? ` (+${pendingFollowRequestsToMe.length})`
-                            : ''
-                        }`,
+                        label: `Bạn bè${pendingFollowRequestsToMe.length > 0
+                          ? ` (+${pendingFollowRequestsToMe.length})`
+                          : ''
+                          }`,
                       },
                       { id: 'about', label: 'Cấp & Chuỗi' },
                     ] as const
@@ -1858,6 +1925,46 @@ export default function ProfileScreen() {
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
+              {!isGuest ? (
+                Platform.OS === 'web' ? (
+                  <View
+                    style={{
+                      position: 'relative',
+                      overflow: 'hidden',
+                      borderRadius: radii.sm,
+                      borderWidth: 1,
+                      borderColor: palette.indigoBorder,
+                      backgroundColor: palette.indigoTint,
+                      paddingVertical: 11,
+                      paddingHorizontal: 14,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8,
+                    }}
+                  >
+                    <Ionicons name="image-outline" size={18} color={palette.indigo} />
+                    <Text style={{ fontSize: 13, fontWeight: '800', color: palette.indigo }}>
+                      {coverBusy ? 'Đang tải ảnh bìa…' : 'Chọn ảnh bìa mới từ thiết bị'}
+                    </Text>
+                    <WebCoverFileOverlay
+                      disabled={coverBusy}
+                      label="Chọn ảnh bìa mới từ thiết bị"
+                      onPickFile={(file) => void handleWebCoverFilePicked(file)}
+                    />
+                  </View>
+                ) : (
+                  <Button
+                    variant="secondary"
+                    icon="image-outline"
+                    disabled={coverBusy}
+                    onPress={() => void handlePickCoverPhoto()}
+                    fullWidth
+                  >
+                    {coverBusy ? 'Đang tải ảnh bìa…' : 'Chọn ảnh bìa mới từ thiết bị'}
+                  </Button>
+                )
+              ) : null}
               {user ? (
                 <TextInput
                   value={name}

@@ -1,4 +1,4 @@
-import { createElement, useCallback, useEffect, useState } from 'react';
+import { createElement, useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Image,
@@ -15,6 +15,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { STORY_GRADIENTS, type ScholarStory } from '../domain/models';
+import { useCommunityStore } from '../state/useCommunityStore';
 import { Button, Card, usePalette } from '@/shared/ui';
 import { radii, spacing, typography } from '@/core/theme/tokens';
 import { pickStoryMedia } from '@/composition/platform';
@@ -83,6 +84,7 @@ function StoryViewerModalInner({
 }) {
   const router = useRouter();
   const reduceMotion = usePapyrusStore((s) => s.reduceMotion);
+  const storeStories = useCommunityStore((s) => s.stories);
   const [activeIndex, setActiveIndex] = useState(initialIndex);
   const [paused, setPaused] = useState(false);
   const [muted, setMuted] = useState(false);
@@ -91,8 +93,23 @@ function StoryViewerModalInner({
   const [progressAnim] = useState(() => new Animated.Value(0));
   const [flipAnim] = useState(() => new Animated.Value(1));
   const [burstAnim] = useState(() => new Animated.Value(0));
+  const onMarkViewedRef = useRef(onMarkViewed);
+  useEffect(() => {
+    onMarkViewedRef.current = onMarkViewed;
+  }, [onMarkViewed]);
 
-  const story = slides[activeIndex] ?? slides[0]!;
+  const rawSlide = slides[activeIndex] ?? slides[0]!;
+  const story = storeStories.find((s) => s.id === rawSlide.id) ?? rawSlide;
+  const safeAuthorName = story.authorName?.trim() || 'Thành viên Papyrus';
+  const safeGrad: [string, string] =
+    Array.isArray(story.gradient) && story.gradient.length >= 2
+      ? [story.gradient[0] || '#312E81', story.gradient[1] || '#7C3AED']
+      : ['#312E81', '#7C3AED'];
+  const safeViewedByIds = Array.isArray(story.viewedByIds) ? story.viewedByIds : [];
+  const safeReactions =
+    story.reactions && typeof story.reactions === 'object' && !Array.isArray(story.reactions)
+      ? story.reactions
+      : {};
   const isVideo = Boolean(story.mediaType === 'video' || story.videoUri);
   const isWebVideo = Boolean(isVideo && story.videoUri && Platform.OS === 'web');
 
@@ -134,10 +151,10 @@ function StoryViewerModalInner({
   }, [activeIndex, flipAnim, progressAnim, reduceMotion]);
 
   useEffect(() => {
-    if (onMarkViewed && story?.id) {
-      onMarkViewed(story.id);
+    if (story?.id) {
+      onMarkViewedRef.current?.(story.id);
     }
-  }, [onMarkViewed, story?.id]);
+  }, [story?.id]);
 
   // Timer ONLY runs for image/text slides (or non-web fallback).
   // Web video slides are driven 100% by the `<video>` element's real duration (`onTimeUpdate` & `onEnded`)!
@@ -197,9 +214,9 @@ function StoryViewerModalInner({
   const bgStyle =
     Platform.OS === 'web'
       ? ({
-          backgroundImage: `linear-gradient(160deg, ${story.gradient[0]} 0%, ${story.gradient[1]} 100%)`,
+          backgroundImage: `linear-gradient(160deg, ${safeGrad[0]} 0%, ${safeGrad[1]} 100%)`,
         } as unknown as ViewStyle)
-      : { backgroundColor: story.gradient[0] };
+      : { backgroundColor: safeGrad[0] };
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
@@ -256,9 +273,9 @@ function StoryViewerModalInner({
               StyleSheet.absoluteFill,
               Platform.OS === 'web'
                 ? ({
-                    backgroundImage:
-                      'linear-gradient(180deg, rgba(2,6,23,0.68) 0%, rgba(2,6,23,0.06) 28%, rgba(2,6,23,0.08) 68%, rgba(2,6,23,0.86) 100%)',
-                  } as unknown as ViewStyle)
+                  backgroundImage:
+                    'linear-gradient(180deg, rgba(2,6,23,0.68) 0%, rgba(2,6,23,0.06) 28%, rgba(2,6,23,0.08) 68%, rgba(2,6,23,0.86) 100%)',
+                } as unknown as ViewStyle)
                 : { backgroundColor: 'rgba(2,6,23,0.28)' },
             ]}
           />
@@ -302,17 +319,17 @@ function StoryViewerModalInner({
                     <Image source={{ uri: story.authorAvatar }} style={styles.authorAvatarImg} />
                   ) : (
                     <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 15 }}>
-                      {(story.authorName[0] || 'P').toUpperCase()}
+                      {(safeAuthorName[0] || 'P').toUpperCase()}
                     </Text>
                   )}
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 14 }} numberOfLines={1}>
-                    {story.authorName}
+                    {safeAuthorName}
                   </Text>
                   <Text style={{ color: 'rgba(255,255,255,0.82)', fontSize: 11 }} numberOfLines={1}>
                     {slides.length > 1 ? `Tin ${activeIndex + 1}/${slides.length} · ` : ''}
-                    {story.viewedByIds.length} lượt xem
+                    {safeViewedByIds.length} lượt xem
                   </Text>
                 </View>
               </Pressable>
@@ -452,8 +469,9 @@ function StoryViewerModalInner({
 
               <View style={styles.emojiBar}>
                 {(['❤️', '🔥', '😂', '😮', '👏'] as const).map((emo) => {
-                  const count = story.reactions[emo]?.length ?? 0;
-                  const reacted = story.reactions[emo]?.includes(viewerId);
+                  const arr = Array.isArray(safeReactions[emo]) ? safeReactions[emo]! : [];
+                  const count = arr.length;
+                  const reacted = arr.includes(viewerId);
                   return (
                     <Pressable
                       key={emo}
@@ -716,8 +734,8 @@ function StoryComposerModalInner({
               styles.preview916Box,
               Platform.OS === 'web'
                 ? ({
-                    backgroundImage: `linear-gradient(150deg, ${activeGrad.colors[0]} 0%, ${activeGrad.colors[1]} 100%)`,
-                  } as unknown as ViewStyle)
+                  backgroundImage: `linear-gradient(150deg, ${activeGrad.colors[0]} 0%, ${activeGrad.colors[1]} 100%)`,
+                } as unknown as ViewStyle)
                 : { backgroundColor: activeGrad.colors[0] },
             ]}
           >

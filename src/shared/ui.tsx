@@ -6,7 +6,7 @@ import { useStreakStore } from '@/features/streak/state/useStreakStore';
 import { useAssistantUiStore } from '@/core/state/useAssistantUiStore';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, usePathname } from 'expo-router';
-import { memo, useEffect, useMemo, useRef, useState, type PropsWithChildren, type ReactNode } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type ComponentRef, type PropsWithChildren, type ReactNode } from 'react';
 import {
   Animated,
   Easing,
@@ -173,14 +173,14 @@ function navigateWithViewTransition(runNav: () => void, reduceMotion: boolean) {
     });
     vt.finished.finally(() => {
       const mainHeading = document.getElementById('papyrus-route-focus');
-      mainHeading?.focus?.();
+      mainHeading?.focus?.({ preventScroll: true });
     });
     return;
   }
   runNav();
   if (Platform.OS === 'web' && typeof document !== 'undefined') {
     requestAnimationFrame(() => {
-      document.getElementById('papyrus-route-focus')?.focus?.();
+      document.getElementById('papyrus-route-focus')?.focus?.({ preventScroll: true });
     });
   }
 }
@@ -207,8 +207,11 @@ export function Screen({
   const bottomBarHeight = 62 + Math.max(6, insets.bottom);
 
   const [refreshing, setRefreshing] = useState(false);
-  const [pullOffset, setPullOffset] = useState(0);
+  const [pullVisible, setPullVisible] = useState(false);
+  const pullVisibleRef = useRef(false);
   const pullOffsetRef = useRef(0);
+  const pullAnim = useRef(new Animated.Value(0)).current;
+  const scrollViewRef = useRef<ComponentRef<typeof ScrollView> | null>(null);
   const scrollYRef = useRef(0);
   const startTouchYRef = useRef<number | null>(null);
   const idleDecayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -216,10 +219,17 @@ export function Screen({
   const resetPullVisual = () => {
     startTouchYRef.current = null;
     pullOffsetRef.current = 0;
-    setPullOffset(0);
+    pullAnim.setValue(0);
+    if (pullVisibleRef.current) {
+      pullVisibleRef.current = false;
+      setPullVisible(false);
+    }
     if (idleDecayTimerRef.current) {
       clearTimeout(idleDecayTimerRef.current);
       idleDecayTimerRef.current = null;
+    }
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.scrollY !== 0) {
+      window.scrollTo(0, 0);
     }
   };
 
@@ -245,7 +255,11 @@ export function Screen({
   };
 
   useEffect(() => {
-    if (Platform.OS !== 'web' || typeof window === 'undefined' || !scroll) return;
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    if (window.scrollY !== 0) {
+      window.scrollTo(0, 0);
+    }
+    if (!scroll) return;
     const handleGlobalRelease = () => {
       const pulled = pullOffsetRef.current;
       if (pulled > 0 || startTouchYRef.current !== null) {
@@ -289,7 +303,12 @@ export function Screen({
             if (dy > 16) {
               const next = Math.min(88, Math.round(dy * 0.52));
               pullOffsetRef.current = next;
-              setPullOffset(next);
+              pullAnim.setValue(next);
+              const shouldShow = next >= 24;
+              if (shouldShow !== pullVisibleRef.current) {
+                pullVisibleRef.current = shouldShow;
+                setPullVisible(shouldShow);
+              }
               if (idleDecayTimerRef.current) clearTimeout(idleDecayTimerRef.current);
               idleDecayTimerRef.current = setTimeout(() => {
                 resetPullVisual();
@@ -318,10 +337,10 @@ export function Screen({
     >
       {bottomNav && desktopWeb && <DesktopNav />}
 
-      {/* Minimalist silent orbital pull indicator (NO text banner, refreshes current state in-place!) */}
-      {(pullOffset >= 24 || refreshing) && (
+      {/* Minimalist silent orbital pull indicator (driven by Animated.Value — zero scroll layout shift!) */}
+      {(pullVisible || refreshing) && (
         <View pointerEvents="none" style={styles.pullBannerWrap}>
-          <View
+          <Animated.View
             style={{
               width: 34,
               height: 34,
@@ -331,21 +350,47 @@ export function Screen({
               borderColor: palette.indigo,
               alignItems: 'center',
               justifyContent: 'center',
-              opacity: refreshing ? 1 : Math.min(1, pullOffset / 56),
+              opacity: refreshing
+                ? 1
+                : pullAnim.interpolate({
+                    inputRange: [0, 56, 88],
+                    outputRange: [0.25, 1, 1],
+                  }),
               transform: [
-                { translateY: refreshing ? 10 : Math.min(18, Math.round(pullOffset * 0.22)) },
-                { rotate: `${pullOffset * 4}deg` },
+                {
+                  translateY: refreshing
+                    ? 10
+                    : pullAnim.interpolate({
+                        inputRange: [0, 88],
+                        outputRange: [0, 18],
+                      }),
+                },
+                {
+                  rotate: refreshing
+                    ? '0deg'
+                    : pullAnim.interpolate({
+                        inputRange: [0, 88],
+                        outputRange: ['0deg', '320deg'],
+                      }),
+                },
               ],
             }}
           >
             <Ionicons name="sync" size={16} color={palette.indigo} />
-          </View>
+          </Animated.View>
         </View>
       )}
 
       {scroll ? (
         <ScrollView
+          ref={scrollViewRef}
           {...webTouchHandlers}
+          style={[
+            styles.scrollViewport,
+            Platform.OS === 'web'
+              ? ({ overscrollBehaviorY: 'contain' } as unknown as ViewStyle)
+              : undefined,
+          ]}
           onScroll={(e) => {
             const y = e.nativeEvent.contentOffset.y;
             scrollYRef.current = y;
@@ -354,14 +399,17 @@ export function Screen({
             }
           }}
           refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => void triggerInPlaceRefresh()}
-              tintColor={palette.indigo}
-              colors={[palette.indigo]}
-            />
+            Platform.OS === 'web' ? undefined : (
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={() => void triggerInPlaceRefresh()}
+                tintColor={palette.indigo}
+                colors={[palette.indigo]}
+              />
+            )
           }
-          contentInsetAdjustmentBehavior="automatic"
+          contentInsetAdjustmentBehavior="never"
+          automaticallyAdjustContentInsets={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           scrollEventThrottle={16}
@@ -1189,7 +1237,8 @@ export const IconTile = memo(function IconTile({
 export const uiColors = { colors, spacing, radii, typography };
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 },
+  safe: { flex: 1, minHeight: 0 },
+  scrollViewport: { flex: 1, width: '100%', minHeight: 0 },
   pullBannerWrap: {
     position: 'absolute',
     top: 8,
@@ -1206,9 +1255,14 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: radii.pill,
   },
-  scroll: { alignItems: 'center', paddingHorizontal: spacing.lg, flexGrow: 1 },
-  content: { width: '100%', flexGrow: 1 },
-  nonScrollContent: { flex: 1, alignSelf: 'center', paddingHorizontal: spacing.lg },
+  scroll: {
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    paddingHorizontal: spacing.lg,
+    flexGrow: 1,
+  },
+  content: { width: '100%' },
+  nonScrollContent: { flex: 1, minHeight: 0, alignSelf: 'center', paddingHorizontal: spacing.lg },
   topBar: {
     minHeight: 58,
     flexDirection: 'row',

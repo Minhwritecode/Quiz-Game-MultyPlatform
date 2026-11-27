@@ -177,17 +177,40 @@ function captureFirstVideoFrameWeb(videoSrc: string): Promise<{ thumbnailUri: st
   });
 }
 
+export async function compressCoverImageFileWeb(file: File): Promise<string> {
+  if (typeof document === 'undefined' || typeof URL === 'undefined') {
+    throw new Error('Trình duyệt không hỗ trợ xử lý tệp ảnh.');
+  }
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    return await cropAndCompressDataUrl(objectUrl, 840, 280, 0.78);
+  } catch {
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () =>
+        typeof reader.result === 'string'
+          ? resolve(reader.result)
+          : reject(new Error('Không đọc được ảnh bìa.'));
+      reader.onerror = () => reject(new Error('Không đọc được ảnh bìa.'));
+      reader.readAsDataURL(file);
+    });
+    return await cropAndCompressDataUrl(dataUrl, 840, 280, 0.78).catch(() => dataUrl);
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
 export async function pickCoverImageDataUrl(): Promise<string | null> {
   if (Platform.OS === 'web') {
     const picked = await readWebFileAsDataUrl('image/*');
     if (!picked) return null;
-    return await cropAndCompressDataUrl(picked.dataUrl, 860, 290, 0.8);
+    return await compressCoverImageFileWeb(picked.file);
   }
   const result = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: ['images'],
     allowsEditing: true,
     aspect: [16, 6],
-    quality: 0.82,
+    quality: 0.8,
     base64: true,
   });
   if (result.canceled || !result.assets?.[0]) return null;

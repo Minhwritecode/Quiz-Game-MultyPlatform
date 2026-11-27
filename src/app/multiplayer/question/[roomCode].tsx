@@ -112,6 +112,10 @@ export default function MultiplayerQuestionScreen() {
       void fetchQuestion();
     };
 
+    const onRoomSynced = () => {
+      void fetchQuestion();
+    };
+
     const onPause = () => setIsPaused(true);
     const onResume = (payload: { remainingTime?: number }) => {
       setIsPaused(false);
@@ -130,6 +134,7 @@ export default function MultiplayerQuestionScreen() {
     socket.on(SOCKET_EVENTS.LEADERBOARD_UPDATED, onLeaderboardUpdated);
     socket.on(SOCKET_EVENTS.SHOW_LEADERBOARD, onShowLeaderboard);
     socket.on(SOCKET_EVENTS.NEXT_QUESTION, onNextQuestion);
+    socket.on(SOCKET_EVENTS.ROOM_SYNC_STATE, onRoomSynced);
     socket.on(SOCKET_EVENTS.QUIZ_PAUSED, onPause);
     socket.on(SOCKET_EVENTS.QUIZ_RESUMED, onResume);
     socket.on(SOCKET_EVENTS.QUIZ_FINISHED, onQuizFinished);
@@ -139,6 +144,7 @@ export default function MultiplayerQuestionScreen() {
       socket.off(SOCKET_EVENTS.LEADERBOARD_UPDATED, onLeaderboardUpdated);
       socket.off(SOCKET_EVENTS.SHOW_LEADERBOARD, onShowLeaderboard);
       socket.off(SOCKET_EVENTS.NEXT_QUESTION, onNextQuestion);
+      socket.off(SOCKET_EVENTS.ROOM_SYNC_STATE, onRoomSynced);
       socket.off(SOCKET_EVENTS.QUIZ_PAUSED, onPause);
       socket.off(SOCKET_EVENTS.QUIZ_RESUMED, onResume);
       socket.off(SOCKET_EVENTS.QUIZ_FINISHED, onQuizFinished);

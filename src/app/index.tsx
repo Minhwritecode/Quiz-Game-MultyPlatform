@@ -368,17 +368,17 @@ export default function HomeScreen() {
           const bg = !answered
             ? palette.paper
             : isCorrect
-            ? palette.mintTint
-            : isChosen
-            ? palette.dangerTint
-            : palette.paper;
+              ? palette.mintTint
+              : isChosen
+                ? palette.dangerTint
+                : palette.paper;
           const bdr = !answered
             ? palette.paperMuted
             : isCorrect
-            ? palette.mint
-            : isChosen
-            ? palette.danger
-            : palette.paperMuted;
+              ? palette.mint
+              : isChosen
+                ? palette.danger
+                : palette.paperMuted;
           return (
             <Pressable
               key={idx}
@@ -1030,12 +1030,12 @@ const QuickAction = memo(function QuickAction({
   palette,
 }: {
   icon:
-    | 'locate-outline'
-    | 'flask-outline'
-    | 'shield-outline'
-    | 'extension-puzzle-outline'
-    | 'game-controller-outline'
-    | 'chatbubbles-outline';
+  | 'locate-outline'
+  | 'flask-outline'
+  | 'shield-outline'
+  | 'extension-puzzle-outline'
+  | 'game-controller-outline'
+  | 'chatbubbles-outline';
   tint: 'primary' | 'success' | 'danger' | 'reward' | 'fire';
   title: string;
   description: string;
@@ -1123,8 +1123,8 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     borderWidth: 1,
   },
-  heroActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
-  heroBtnWrap: { flex: 1, minWidth: 0 },
+  heroActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },
+  heroBtnWrap: { flex: 1, minWidth: 165 },
   sceneWrapWide: { width: '41%', minWidth: 290, marginLeft: spacing.xl },
   sceneWrapMobile: { width: '100%', marginTop: spacing.sm },
   compactStatsRow: {

@@ -157,7 +157,7 @@ export async function syncUserProgressToCloud(input: {
       ...(input.wins !== undefined ? { wins: input.wins } : {}),
       ...(input.eloRating !== undefined ? { eloRating: input.eloRating } : {}),
       ...(input.eloPeak !== undefined ? { eloPeak: input.eloPeak } : {}),
-      ...(input.coverUrl !== undefined && (!input.coverUrl || input.coverUrl.length < 140_000)
+      ...(input.coverUrl !== undefined && (!input.coverUrl || input.coverUrl.length < 8_000)
         ? { coverUrl: input.coverUrl }
         : {}),
       ...(input.bio !== undefined ? { bio: input.bio } : {}),
@@ -183,6 +183,19 @@ export async function syncUserProgressToCloud(input: {
     await supabase.auth.updateUser({
       data: { papyrus_sync: mergedSync },
     }).catch(() => undefined);
+
+    const profilePatch: Record<string, unknown> = {};
+    if (input.coverUrl !== undefined) profilePatch.cover_url = input.coverUrl;
+    if (input.bio !== undefined) profilePatch.bio = input.bio;
+    if (input.university !== undefined) profilePatch.university = input.university;
+    if (input.major !== undefined) profilePatch.major = input.major;
+    if (Object.keys(profilePatch).length > 0) {
+      await supabase
+        .from('profiles')
+        .update(profilePatch)
+        .eq('id', authUser.id)
+        .then(() => undefined, () => undefined);
+    }
 
     await supabase
       .rpc('sync_user_progress', {
@@ -220,9 +233,7 @@ export async function fetchCloudProfileSnapshot(): Promise<CloudProfileSnapshot 
     const [{ data: profile }, { data: catRows }] = await Promise.all([
       supabase
         .from('profiles')
-        .select(
-          'display_name, avatar_url, role, elo_rating, elo_peak, games_played, total_score, best_score, wins, membership_tier, current_streak, longest_streak, streak_freeze_count, last_active_date'
-        )
+        .select('*')
         .eq('id', authUser.id)
         .maybeSingle(),
       supabase
@@ -316,10 +327,30 @@ export async function fetchCloudProfileSnapshot(): Promise<CloudProfileSnapshot 
       lastActiveDate,
       historyDates,
       categoryElos,
-      coverUrl: typeof metaSync.coverUrl === 'string' ? metaSync.coverUrl : null,
-      bio: typeof metaSync.bio === 'string' ? metaSync.bio : undefined,
-      university: typeof metaSync.university === 'string' ? metaSync.university : undefined,
-      major: typeof metaSync.major === 'string' ? metaSync.major : undefined,
+      coverUrl:
+        typeof (profile as Record<string, unknown> | null)?.cover_url === 'string'
+          ? String((profile as Record<string, unknown>).cover_url)
+          : typeof metaSync.coverUrl === 'string'
+          ? metaSync.coverUrl
+          : null,
+      bio:
+        typeof (profile as Record<string, unknown> | null)?.bio === 'string'
+          ? String((profile as Record<string, unknown>).bio)
+          : typeof metaSync.bio === 'string'
+          ? metaSync.bio
+          : undefined,
+      university:
+        typeof (profile as Record<string, unknown> | null)?.university === 'string'
+          ? String((profile as Record<string, unknown>).university)
+          : typeof metaSync.university === 'string'
+          ? metaSync.university
+          : undefined,
+      major:
+        typeof (profile as Record<string, unknown> | null)?.major === 'string'
+          ? String((profile as Record<string, unknown>).major)
+          : typeof metaSync.major === 'string'
+          ? metaSync.major
+          : undefined,
     };
   } catch {
     return null;

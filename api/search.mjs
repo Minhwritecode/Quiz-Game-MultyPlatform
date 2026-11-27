@@ -50,6 +50,18 @@ function formatRelativeVi(pubDateStr) {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 }
 
+function extractRssThumbnail(block = '', desc = '') {
+  const mediaContent = block.match(/<media:(?:content|thumbnail)[^>]+url=["']([^"']+)["']/i)?.[1];
+  if (mediaContent && /^https?:\/\//i.test(mediaContent)) return decodeEntities(mediaContent);
+  const enclosure = block.match(/<enclosure[^>]+url=["']([^"']+)["']/i)?.[1];
+  if (enclosure && /^https?:\/\//i.test(enclosure)) return decodeEntities(enclosure);
+  const rawImg = (desc || block).match(/<img[^>]+src=["']([^"']+)["']/i)?.[1];
+  if (rawImg && /^https?:\/\//i.test(rawImg) && !rawImg.includes('lh3.googleusercontent.com/J6_coFbogxhRI9iM864NL_liGXvsQp2AupsKei7z0cNNfDvGUmWUy20nuUhkREQyrpY4bEeIBuc=s0-w300')) {
+    return decodeEntities(rawImg);
+  }
+  return null;
+}
+
 function parseRssItems(xmlText, defaultCategory = 'Tin mới nhất', maxItems = 8) {
   const items = [];
   const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
@@ -76,7 +88,7 @@ function parseRssItems(xmlText, defaultCategory = 'Tin mới nhất', maxItems =
       title,
       summary: ensureCompleteSummary(desc, title, publisher),
       url: link,
-      thumbnailUrl: null,
+      thumbnailUrl: extractRssThumbnail(block, desc),
       publishedLabel: formatRelativeVi(pubDate),
       publishedAtMs: Date.parse(pubDate) || Date.now(),
     });
@@ -114,7 +126,7 @@ export default async function handler(req, res) {
 
   try {
     if (mode === 'trending' || !rawQ) {
-      const [vnTechRss, globalAiRss, hnLatest, devToTop] = await Promise.allSettled([
+      const [vnTechRss, globalAiRss, hnLatest, devToTop, spaceNews, wikiFeatured] = await Promise.allSettled([
         fetchWithTimeout(
           'https://news.google.com/rss/search?q=' +
             encodeURIComponent('công nghệ OR trí tuệ nhân tạo OR khoa học OR giáo dục đại học when:2d') +
@@ -125,19 +137,19 @@ export default async function handler(req, res) {
             encodeURIComponent('AI OR Science OR Software Engineering OR Space when:1d') +
             '&hl=en-US&gl=US&ceid=US:en'
         ).then((r) => (r.ok ? r.text() : '')),
-        fetchWithTimeout('https://hn.algolia.com/api/v1/search_by_date?tags=story&numericFilters=points>25&hitsPerPage=5').then(
+        fetchWithTimeout('https://hn.algolia.com/api/v1/search_by_date?tags=story&numericFilters=points>25&hitsPerPage=4').then(
           (r) => (r.ok ? r.json() : null)
         ),
-        fetchWithTimeout('https://dev.to/api/articles?per_page=4&top=1').then((r) => (r.ok ? r.json() : null)),
+        fetchWithTimeout('https://dev.to/api/articles?per_page=5&top=1').then((r) => (r.ok ? r.json() : null)),
+        fetchWithTimeout('https://api.spaceflightnewsapi.net/v4/articles/?limit=4').then((r) => (r.ok ? r.json() : null)),
+        fetchWithTimeout(
+          'https://vi.wikipedia.org/w/api.php?action=query&prop=extracts|pageimages&exintro=1&explaintext=1&piprop=thumbnail&pithumbsize=800&generator=search&gsrsearch=' +
+            encodeURIComponent('Trí tuệ nhân tạo Khoa học máy tính Vật lý lượng tử') +
+            '&gsrlimit=4&format=json'
+        ).then((r) => (r.ok ? r.json() : null)),
       ]);
 
       const merged = [];
-      if (vnTechRss.status === 'fulfilled' && vnTechRss.value) {
-        merged.push(...parseRssItems(vnTechRss.value, 'Tin Công nghệ & Khoa học VN', 6));
-      }
-      if (globalAiRss.status === 'fulfilled' && globalAiRss.value) {
-        merged.push(...parseRssItems(globalAiRss.value, 'Global Tech & AI', 4));
-      }
       if (devToTop.status === 'fulfilled' && Array.isArray(devToTop.value)) {
         for (const d of devToTop.value) {
           if (!d?.title || UNSAFE_PATTERNS.test(d.title)) continue;
@@ -146,13 +158,51 @@ export default async function handler(req, res) {
             source: 'Dev.to Tech',
             category: d.tag_list?.[0] ? `#${d.tag_list[0]}` : 'Kỹ thuật Phần mềm',
             title: d.title,
-            summary: ensureCompleteSummary(d.description || '', d.title),
+            summary: ensureCompleteSummary(d.description || '', d.title, 'Dev.to'),
             url: d.url,
             thumbnailUrl: d.cover_image || d.social_image || null,
             publishedLabel: formatRelativeVi(d.published_timestamp),
-            publishedAtMs: Date.parse(d.published_timestamp) || Date.now() - 3600000,
+            publishedAtMs: Date.parse(d.published_timestamp) || Date.now() - 1800000,
           });
         }
+      }
+      if (spaceNews.status === 'fulfilled' && Array.isArray(spaceNews.value?.results)) {
+        for (const sp of spaceNews.value.results) {
+          if (!sp?.title || UNSAFE_PATTERNS.test(sp.title)) continue;
+          merged.push({
+            id: `space-${sp.id}`,
+            source: 'OpenAlex Khoa Học',
+            category: `${sp.news_site || 'Space News'} · Khoa học & Vũ trụ`,
+            title: sp.title,
+            summary: ensureCompleteSummary(sp.summary || '', sp.title, sp.news_site || 'Space News'),
+            url: sp.url,
+            thumbnailUrl: sp.image_url || null,
+            publishedLabel: formatRelativeVi(sp.published_at),
+            publishedAtMs: Date.parse(sp.published_at) || Date.now() - 2400000,
+          });
+        }
+      }
+      if (wikiFeatured.status === 'fulfilled' && wikiFeatured.value?.query?.pages) {
+        for (const p of Object.values(wikiFeatured.value.query.pages)) {
+          if (!p?.title || !p?.thumbnail?.source || UNSAFE_PATTERNS.test(p.title)) continue;
+          merged.push({
+            id: `viwiki-trend-${p.pageid}`,
+            source: 'Wikipedia VI',
+            category: 'Chuyên đề Học thuật',
+            title: String(p.title),
+            summary: ensureCompleteSummary(String(p.extract || ''), String(p.title), 'Wikipedia'),
+            url: `https://vi.wikipedia.org/?curid=${p.pageid}`,
+            thumbnailUrl: p.thumbnail.source,
+            publishedLabel: 'Học liệu chọn lọc',
+            publishedAtMs: Date.now() - 3200000,
+          });
+        }
+      }
+      if (vnTechRss.status === 'fulfilled' && vnTechRss.value) {
+        merged.push(...parseRssItems(vnTechRss.value, 'Tin Công nghệ & Khoa học VN', 5));
+      }
+      if (globalAiRss.status === 'fulfilled' && globalAiRss.value) {
+        merged.push(...parseRssItems(globalAiRss.value, 'Global Tech & AI', 3));
       }
       if (hnLatest.status === 'fulfilled' && Array.isArray(hnLatest.value?.hits)) {
         for (const h of hnLatest.value.hits) {

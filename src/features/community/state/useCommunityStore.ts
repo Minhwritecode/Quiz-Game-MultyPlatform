@@ -113,10 +113,20 @@ export const useCommunityStore = create<CommunityState>()(
 
       markStoryViewed: (storyId, viewerId) => {
         if (!viewerId || viewerId === 'guest') return;
+        const target = get().stories.find((s) => s.id === storyId);
+        if (!target) return;
+        const currentViewed = Array.isArray(target.viewedByIds) ? target.viewedByIds : [];
+        if (currentViewed.includes(viewerId)) return;
         set((state) => ({
           stories: state.stories.map((s) =>
-            s.id === storyId && !s.viewedByIds.includes(viewerId)
-              ? { ...s, viewedByIds: [...s.viewedByIds, viewerId] }
+            s.id === storyId
+              ? {
+                  ...s,
+                  viewedByIds: [
+                    ...(Array.isArray(s.viewedByIds) ? s.viewedByIds : []),
+                    viewerId,
+                  ],
+                }
               : s
           ),
         }));
@@ -127,9 +137,11 @@ export const useCommunityStore = create<CommunityState>()(
         set((state) => ({
           stories: state.stories.map((s) => {
             if (s.id !== storyId) return s;
-            const prev = s.reactions[emoji] ?? [];
+            const currentReactions =
+              s.reactions && typeof s.reactions === 'object' ? s.reactions : {};
+            const prev = Array.isArray(currentReactions[emoji]) ? currentReactions[emoji]! : [];
             const next = prev.includes(viewerId) ? prev : [...prev, viewerId];
-            return { ...s, reactions: { ...s.reactions, [emoji]: next } };
+            return { ...s, reactions: { ...currentReactions, [emoji]: next } };
           }),
         }));
       },
@@ -432,14 +444,29 @@ export const useCommunityStore = create<CommunityState>()(
         const cleanStories = (persisted.stories ?? [])
           .filter(
             (s) =>
+              Boolean(s && s.id) &&
               !LEGACY_SEED_STORY_IDS.has(s.id) &&
               !LEGACY_FAKE_USER_IDS.has(s.authorId) &&
               s.authorId !== 'guest'
           )
-          .map((s) => ({
-            ...s,
-            pinnedOnProfile: s.pinnedOnProfile ?? Boolean(s.isHighlight),
-          }));
+          .map((s) => {
+            const rawGrad = Array.isArray(s.gradient) ? s.gradient : [];
+            const g0 = typeof rawGrad[0] === 'string' && rawGrad[0] ? rawGrad[0] : '#312E81';
+            const g1 = typeof rawGrad[1] === 'string' && rawGrad[1] ? rawGrad[1] : '#7C3AED';
+            return {
+              ...s,
+              authorName: s.authorName || 'Thành viên Papyrus',
+              text: typeof s.text === 'string' ? s.text : '',
+              subtext: typeof s.subtext === 'string' ? s.subtext : '',
+              gradient: [g0, g1] as [string, string],
+              viewedByIds: Array.isArray(s.viewedByIds) ? s.viewedByIds : [],
+              reactions:
+                s.reactions && typeof s.reactions === 'object' && !Array.isArray(s.reactions)
+                  ? s.reactions
+                  : {},
+              pinnedOnProfile: s.pinnedOnProfile ?? Boolean(s.isHighlight),
+            };
+          });
         const cleanPosts = (persisted.posts ?? []).filter(
           (p) =>
             !LEGACY_SEED_POST_IDS.has(p.id) &&
