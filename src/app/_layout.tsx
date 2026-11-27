@@ -34,18 +34,6 @@ import { useNotificationStore } from '@/features/notifications/state/useNotifica
 import { palettes, spacing } from '@/core/theme/tokens';
 import { sfx } from '@/core/audio/sfx';
 
-const PRIMARY_TAB_PATHS = new Set([
-  '/',
-  '/sets',
-  '/community',
-  '/messages',
-  '/battle',
-  '/leaderboard',
-  '/friends',
-  '/profile',
-  '/settings',
-]);
-
 function isAppActivelyForegrounded(): boolean {
   if (Platform.OS === 'web' && typeof document !== 'undefined') {
     return document.visibilityState === 'visible' && document.hasFocus();
@@ -96,8 +84,6 @@ function RootLayout() {
   const reduceMotion = usePapyrusStore((s) => s.reduceMotion);
   const [systemMotion, setSystemMotion] = useState(false);
   const [splashDone, setSplashDone] = useState(process.env.NODE_ENV === 'test');
-  const [navLoadingActive, setNavLoadingActive] = useState(false);
-  const prevPathRef = useRef(pathname);
 
   // Track global Online/Offline state + Lock Web/PWA root viewport so iOS keyboard/overscroll never pushes UI down
   useEffect(() => {
@@ -168,26 +154,6 @@ function RootLayout() {
     const listener = AccessibilityInfo.addEventListener('reduceMotionChanged', setSystemMotion);
     return () => listener.remove();
   }, []);
-
-  // STRICT SEPARATION: Tab & Route transitions use ONLY the sleek Astral Prism Loader (NEVER Skeleton!)
-  useEffect(() => {
-    if (process.env.NODE_ENV === 'test' || !splashDone) {
-      prevPathRef.current = pathname;
-      return;
-    }
-    const prev = prevPathRef.current;
-    prevPathRef.current = pathname;
-    if (!PRIMARY_TAB_PATHS.has(pathname)) {
-      setNavLoadingActive(false);
-      return;
-    }
-    if (prev !== pathname) {
-      setNavLoadingActive(true);
-      const t = setTimeout(() => setNavLoadingActive(false), 185);
-      return () => clearTimeout(t);
-    }
-    return undefined;
-  }, [pathname, splashDone]);
 
   const queryClient = useMemo(
     () => new QueryClient({ defaultOptions: { queries: { staleTime: 30_000, retry: 1 } } }),
@@ -430,19 +396,6 @@ function RootLayout() {
                 />
               </Suspense>
 
-              {/* Sleek Astral Prism Page/Tab Loader Overlay (strictly separated from network skeletons) */}
-              {navLoadingActive && (
-                <View
-                  pointerEvents="none"
-                  style={[
-                    styles.navOverlay,
-                    { backgroundColor: isDark ? 'rgba(18, 21, 31, 0.48)' : 'rgba(247, 243, 232, 0.62)' },
-                  ]}
-                >
-                  <PapyrusMorphLoader compact />
-                </View>
-              )}
-
               <InAppNotificationBanner />
               <AssistantWidget />
               <AppUpdateBanner />
@@ -476,15 +429,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: spacing.lg,
-  },
-  navOverlay: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    zIndex: 80,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });
